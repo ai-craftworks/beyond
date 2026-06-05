@@ -1,0 +1,23 @@
+{
+  "expo": {
+    "name": "Solo Leveling System",
+    "slug": "solo-leveling-system",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0A0E1A",
+    "android": {
+      "package": "com.sololevelingsystem.app",
+      "permissions": []
+    },
+    "plugins": [
+      "expo-sqlite"
+    ],
+    "owner": "bhaswanth",
+    "extra": {
+      "eas": {
+        "projectId": "770aa58b-caf6-474b-8b82-a29fd312c886"
+      }
+    }
+  }
+}
