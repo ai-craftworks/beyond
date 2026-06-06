@@ -1,17 +1,28 @@
 {
   "expo": {
-    "name": "Solo Leveling System",
-    "slug": "solo-leveling-system",
+    "name": "Beyond",
+    "slug": "beyond",
     "version": "1.0.0",
     "orientation": "portrait",
+    "icon": "./assets/images/logo.png",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#0A0E1A",
+    "splash": {
+      "image": "./assets/images/logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0A0E1A"
+    },
     "android": {
-      "package": "com.sololevelingsystem.app",
-      "permissions": []
+      "package": "com.beyond.app",
+      "permissions": [],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/images/logo.png",
+        "backgroundColor": "#0A0E1A"
+      }
     },
     "plugins": [
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-av"
     ],
     "owner": "bhaswanth",
     "extra": {
