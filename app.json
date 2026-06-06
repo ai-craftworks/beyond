@@ -24,11 +24,6 @@
       "expo-sqlite",
       "expo-av"
     ],
-    "owner": "bhaswanth",
-    "extra": {
-      "eas": {
-        "projectId": "770aa58b-caf6-474b-8b82-a29fd312c886"
-      }
-    }
+    "owner": "bhaswanth"
   }
 }
