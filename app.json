@@ -14,7 +14,10 @@
     },
     "android": {
       "package": "com.beyond.app",
-      "permissions": [],
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS"
+      ],
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/logo.png",
         "backgroundColor": "#0A0E1A"
@@ -24,6 +27,11 @@
       "expo-sqlite",
       "expo-av"
     ],
-    "owner": "bhaswanth"
+    "owner": "bhaswanth",
+    "extra": {
+      "eas": {
+        "projectId": "3235744a-b8b0-4c01-8a57-4d81e020eef0"
+      }
+    }
   }
 }
