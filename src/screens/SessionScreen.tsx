@@ -21,6 +21,7 @@ import { SystemPanel, SystemButton, ExpBar } from '../components/UIComponents';
 import LevelUpModal from '../components/LevelUpModal';
 import { COLORS, expRequiredForLevel, TITLE_CONDITIONS } from '../constants/game';
 import { RootStackParamList } from '../../App';
+import { playSound } from '../utils/sounds';
 
 type Route = RouteProp<RootStackParamList, 'Session'>;
 type Nav   = NativeStackNavigationProp<RootStackParamList, 'Session'>;
@@ -69,6 +70,7 @@ const SessionScreen: React.FC = () => {
     setExercises(prev => prev.map(e => e.id === ex.id ? { ...e, is_completed: 1 } : e));
     setExpGained(prev => prev + ex.exp_reward);
     triggerFlash();
+    playSound('click');   
     await completeSessionExercise(ex.id!);
   };
 
@@ -144,10 +146,13 @@ const SessionScreen: React.FC = () => {
 
       setPlayer({ ...p, ...updates } as Player);
       setNewTitle(awardedTitle);
+      if (awardedTitle) playSound('title');
 
       if (levelled) {
+        playSound('levelup');  
         setLvlUp(true);
       } else {
+        playSound('complete'); 
         navigation.goBack();
       }
     } catch (e) {

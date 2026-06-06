@@ -5,19 +5,21 @@
  */
 
 import React, { useCallback, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Alert, TouchableOpacity } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import {
-  getPlayer, Player, getTitles, EarnedTitle,
-  getRecentSessions, Session,
-} from '../database/Database';
+import { getPlayer, Player, getTitles, EarnedTitle, getRecentSessions, Session, resetAllData } from '../database/Database';
 import { SystemPanel, SectionHeader, StatRow, ExpBar } from '../components/UIComponents';
 import { COLORS, getRankForLevel, STATS } from '../constants/game';
+
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../../App';
 
 const ProfileScreen: React.FC = () => {
   const [player,   setPlayer]   = useState<Player | null>(null);
   const [titles,   setTitles]   = useState<EarnedTitle[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   useFocusEffect(useCallback(() => { loadAll(); }, []));
 
@@ -33,6 +35,24 @@ const ProfileScreen: React.FC = () => {
   const rank       = getRankForLevel(player.level);
   const completed  = sessions.filter(s => s.status === 'completed').length;
   const totalExp   = sessions.reduce((sum, s) => sum + (s.total_exp || 0), 0);
+
+  const handleReset = () => {
+    Alert.alert(
+      '⚠ Reset All Data',
+      'This will permanently delete your player, all exercises, plans, sessions, and titles. You will start from scratch.\n\nThis cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete Everything',
+          style: 'destructive',
+          onPress: async () => {
+            await resetAllData();
+            navigation.replace('Registration');
+          },
+        },
+      ]
+    );
+  };
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
@@ -120,6 +140,11 @@ const ProfileScreen: React.FC = () => {
             </View>
           ))}
       </SystemPanel>
+
+      {/* Reset button */}
+      <TouchableOpacity style={styles.resetBtn} onPress={handleReset}>
+        <Text style={styles.resetBtnText}>⚠ Reset All Data & Start Fresh</Text>
+      </TouchableOpacity>
     </ScrollView>
   );
 };
@@ -158,6 +183,22 @@ const styles = StyleSheet.create({
   sessionRight: { alignItems: 'flex-end', gap: 2 },
   sessionExp:   { color: COLORS.accentCyan, fontSize: 12, fontWeight: '700' },
   sessionStatus:{ fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
+
+  resetBtn: {
+    marginTop: 24,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: COLORS.accentRed,
+    borderRadius: 8,
+    paddingVertical: 14,
+    alignItems: 'center',
+  },
+  resetBtnText: {
+    color: COLORS.accentRed,
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 0.5,
+  },
 });
 
 export default ProfileScreen;

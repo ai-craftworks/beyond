@@ -400,3 +400,25 @@ export const getTitles = async (): Promise<EarnedTitle[]> => {
   const db = await getDb();
   return db.getAllAsync<EarnedTitle>(`SELECT * FROM titles ORDER BY earned_at DESC`);
 };
+
+/**
+ * Deletes ALL data from every table and resets the singleton DB connection.
+ * After calling this, the app should navigate back to Registration.
+ */
+export const resetAllData = async (): Promise<void> => {
+  const db = await getDb();
+  await db.execAsync(`
+    DELETE FROM session_exercises;
+    DELETE FROM sessions;
+    DELETE FROM plan_exercises;
+    DELETE FROM plans;
+    DELETE FROM exercises;
+    DELETE FROM titles;
+    DELETE FROM player;
+  `);
+  // Reset auto-increment counters
+  await db.execAsync(`
+    DELETE FROM sqlite_sequence WHERE name IN
+      ('player','exercises','plans','plan_exercises','sessions','session_exercises','titles');
+  `);
+};
