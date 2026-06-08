@@ -6,10 +6,7 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import {
-  View, Text, ScrollView, StyleSheet, RefreshControl,
-  TouchableOpacity, Animated,
-} from 'react-native';
+import { View, Text, ScrollView, StyleSheet, RefreshControl, TouchableOpacity, Animated, Alert } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
@@ -17,6 +14,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   getPlayer, Player, getTodaySessions, Session,
   getPlans, createSession, populateSessionExercises,
+  getMissedSessions, applyMissedSessionPenalty,   // ← add these two
 } from '../database/Database';
 import { SystemPanel, SectionHeader, StatRow, ExpBar, RankBadge, EmptyState } from '../components/UIComponents';
 import { COLORS, getRankForLevel, STATS } from '../constants/game';
@@ -48,8 +46,25 @@ const DashboardScreen: React.FC = () => {
   const loadData = async () => {
     const p = await getPlayer();
     setPlayer(p);
+    await checkMissedPenalties();
     await generateTodaySessions();
     setSessions(await getTodaySessions());
+  };
+
+  // Finds sessions from previous days still marked 'pending' and applies their penalty
+  const checkMissedPenalties = async () => {
+    const missed = await getMissedSessions();
+    for (const session of missed) {
+      const deducted = await applyMissedSessionPenalty(session.id!);
+      if (deducted > 0) {
+        // Brief alert so player knows they were penalised
+        Alert.alert(
+          '⚠ Quest Missed',
+          `You missed a quest from ${session.date}.\n-${deducted} EXP penalty applied.`,
+          [{ text: 'Understood', style: 'destructive' }]
+        );
+      }
+    }
   };
 
   const generateTodaySessions = async () => {

@@ -67,6 +67,17 @@ export const STATS = [
 
 export type StatKey = typeof STATS[number]['key'];
 
+// Unit types for exercises
+export const UNIT_TYPES = [
+  { value: 'reps',         label: 'Reps',     suffix: 'reps',  description: 'e.g. Push-ups, Pull-ups' },
+  { value: 'distance_km',  label: 'Km',       suffix: 'km',    description: 'e.g. Running, Cycling' },
+  { value: 'distance_m',   label: 'Metres',   suffix: 'm',     description: 'e.g. Sprints, Swimming' },
+  { value: 'time_min',     label: 'Minutes',  suffix: 'min',   description: 'e.g. Plank, Yoga' },
+  { value: 'time_sec',     label: 'Seconds',  suffix: 'sec',   description: 'e.g. Holds, Bursts' },
+] as const;
+
+export type UnitTypeValue = typeof UNIT_TYPES[number]['value'];
+
 export const EXERCISE_CATEGORIES = [
   { value: 'strength',    label: 'Strength',    stat: 'strength'     },
   { value: 'cardio',      label: 'Cardio',      stat: 'endurance'    },

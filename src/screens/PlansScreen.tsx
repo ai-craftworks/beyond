@@ -34,6 +34,7 @@ const PlansScreen: React.FC = () => {
   const [planName, setPlanName]     = useState('');
   const [planDesc, setPlanDesc]     = useState('');
   const [repeatDays, setRepeatDays] = useState<string[]>([]);
+  const [penaltyExp, setPenaltyExp] = useState('0');
 
   // Add exercise form
   const [selExId, setSelExId] = useState<number | null>(null);
@@ -53,8 +54,14 @@ const PlansScreen: React.FC = () => {
 
   const handleCreatePlan = async () => {
     if (!planName.trim()) return Alert.alert('System', 'Plan name required.');
-    await createPlan({ name: planName.trim(), description: planDesc.trim(), is_active: 0, repeat_days: JSON.stringify(repeatDays) });
-    setPlanName(''); setPlanDesc(''); setRepeatDays([]);
+    await createPlan({
+      name: planName.trim(),
+      description: planDesc.trim(),
+      is_active: 0,
+      repeat_days: JSON.stringify(repeatDays),
+      penalty_exp: Number(penaltyExp) || 0,
+    });
+    setPlanName(''); setPlanDesc(''); setRepeatDays([]); setPenaltyExp('0');
     setCreateModal(false);
     await loadPlans();
   };
@@ -76,7 +83,7 @@ const PlansScreen: React.FC = () => {
     if (!selExId) return Alert.alert('System', 'Select an exercise first.');
     if (isNaN(Number(sets)) || Number(sets) < 1) return Alert.alert('System', 'Enter valid sets.');
     if (isNaN(Number(reps)) || Number(reps) < 1) return Alert.alert('System', 'Enter valid reps.');
-    await addExerciseToPlan({ plan_id: selectedPlan!.id!, exercise_id: selExId, sets: Number(sets), reps: Number(reps), order_index: planExercises.length });
+    await addExerciseToPlan({ plan_id: selectedPlan!.id!, exercise_id: selExId, sets: Number(sets), target: Number(reps), order_index: planExercises.length });
     setPlanExercises(await getPlanExercises(selectedPlan!.id!));
     setSelExId(null); setSets('3'); setReps('10');
     setAddExModal(false);
@@ -128,6 +135,14 @@ const PlansScreen: React.FC = () => {
                 ))}
               </View>
               <Text style={styles.hint}>Empty = generate every day when active.</Text>
+              <SystemInput
+                label="Missed Quest Penalty (EXP)"
+                value={penaltyExp}
+                onChangeText={setPenaltyExp}
+                keyboardType="numeric"
+                placeholder="0 = no penalty"
+              />
+              <Text style={styles.hint}>EXP deducted if you skip this quest for the day.</Text>
               <View style={styles.row}>
                 <SystemButton title="Cancel" variant="ghost" style={styles.flex1} onPress={() => setCreateModal(false)} />
                 <SystemButton title="Create" style={styles.flex1} onPress={handleCreatePlan} />
@@ -172,7 +187,9 @@ const PlansScreen: React.FC = () => {
                   <View key={pe.id} style={styles.peRow}>
                     <View style={styles.peInfo}>
                       <Text style={styles.peName}>{pe.exercise_name}</Text>
-                      <Text style={styles.peSets}>{pe.sets} sets × {pe.reps} reps  ·  +{pe.exp_reward ?? 20} EXP</Text>
+                      <Text style={styles.peSets}>
+                        {pe.sets} sets × {pe.target} {pe.unit_label ?? 'reps'}  ·  +{((pe.exp_per_unit ?? 2) * pe.target * pe.sets).toFixed(0)} EXP total
+                      </Text>
                     </View>
                     <TouchableOpacity onPress={() => handleRemoveExercise(pe.id!)}>
                       <Text style={styles.peDelete}>✕</Text>
@@ -198,13 +215,21 @@ const PlansScreen: React.FC = () => {
                   <TouchableOpacity key={ex.id} style={[styles.exPickItem, selExId === ex.id && styles.exPickItemOn]}
                     onPress={() => setSelExId(ex.id!)}>
                     <Text style={[styles.exPickTxt, selExId === ex.id && styles.exPickTxtOn]}>{ex.name}</Text>
-                    <Text style={styles.exPickExp}>+{ex.exp_reward} EXP</Text>
+                    <Text style={styles.exPickExp}>+{ex.exp_per_unit} EXP/{ex.unit_label}</Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
               <View style={styles.row}>
                 <SystemInput label="Sets" value={sets} onChangeText={setSets} keyboardType="numeric" style={styles.flex1} />
-                <SystemInput label="Reps" value={reps} onChangeText={setReps} keyboardType="numeric" style={styles.flex1} />
+                <SystemInput
+                  label={selExId && allExercises.find(e => e.id === selExId)?.unit_label
+                    ? `Target (${allExercises.find(e => e.id === selExId)?.unit_label})`
+                    : 'Target Amount'}
+                  value={reps}
+                  onChangeText={setReps}
+                  keyboardType="decimal-pad"
+                  style={styles.flex1}
+                />
               </View>
               <View style={styles.row}>
                 <SystemButton title="Cancel" variant="ghost" style={styles.flex1} onPress={() => setAddExModal(false)} />
@@ -240,6 +265,10 @@ const PlanCard: React.FC<{ plan: Plan; onManage: () => void; onToggle: () => voi
               ? days.map(d => <View key={d} style={styles.dayPill}><Text style={styles.dayPillTxt}>{d}</Text></View>)
               : <Text style={styles.everyDay}>Every day (when active)</Text>}
           </View>
+          {/* Penalty indicator */}
+          {plan.penalty_exp > 0 && (
+            <Text style={styles.penaltyTxt}>⚠ -{plan.penalty_exp} EXP if missed</Text>
+          )}
         </TouchableOpacity>
         <View style={styles.planActions}>
           <TouchableOpacity style={styles.actionBtn} onPress={onToggle}>
@@ -309,6 +338,7 @@ const styles = StyleSheet.create({
   exPickTxt:    { color: COLORS.textSecondary, fontSize: 14, flex: 1 },
   exPickTxtOn:  { color: COLORS.accentCyan },
   exPickExp:    { color: COLORS.textMuted, fontSize: 12 },
+  penaltyTxt: { color: COLORS.accentRed, fontSize: 11, fontWeight: '600', marginTop: 5 },
 });
 
 export default PlansScreen;
