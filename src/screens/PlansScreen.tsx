@@ -119,11 +119,11 @@ const PlansScreen: React.FC = () => {
 
       {/* ── Create Plan Modal ── */}
       <Modal visible={createModal} animationType="slide" transparent onRequestClose={() => setCreateModal(false)}>
-        <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.sheet}>
             <View style={styles.handle} />
             <Text style={styles.sheetTitle}>◆ NEW PLAN</Text>
-            <ScrollView keyboardShouldPersistTaps="handled">
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
               <SystemInput label="Plan Name" value={planName} onChangeText={setPlanName} placeholder="e.g. Morning Grind" />
               <SystemInput label="Description" value={planDesc} onChangeText={setPlanDesc} placeholder="Optional..." multiline />
               <Text style={styles.selectLbl}>REPEAT DAYS</Text>
@@ -204,11 +204,11 @@ const PlansScreen: React.FC = () => {
 
       {/* ── Add Exercise Modal ── */}
       <Modal visible={addExModal} animationType="fade" transparent onRequestClose={() => setAddExModal(false)}>
-        <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.sheet}>
             <View style={styles.handle} />
             <Text style={styles.sheetTitle}>◆ ADD EXERCISE</Text>
-            <ScrollView keyboardShouldPersistTaps="handled">
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
               <Text style={styles.selectLbl}>SELECT EXERCISE</Text>
               <ScrollView style={styles.exPickList} nestedScrollEnabled>
                 {allExercises.map(ex => (
@@ -286,7 +286,7 @@ const PlanCard: React.FC<{ plan: Plan; onManage: () => void; onToggle: () => voi
 
 const styles = StyleSheet.create({
   root:         { flex: 1, backgroundColor: COLORS.bgPrimary },
-  list:         { padding: 16, paddingBottom: 40 },
+  list:         { padding: 16, paddingBottom: 100 },
 
   planCard:     { backgroundColor: COLORS.bgSecondary, borderRadius: 10, borderWidth: 1, borderColor: COLORS.borderMain, marginBottom: 10, overflow: 'hidden' },
   planCardOn:   { borderColor: COLORS.accentCyan },

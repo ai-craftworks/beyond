@@ -53,16 +53,17 @@ export const initDatabase = async (): Promise<void> => {
     );
 
     CREATE TABLE IF NOT EXISTS exercises (
-      id            INTEGER PRIMARY KEY AUTOINCREMENT,
-      name          TEXT    NOT NULL,
-      description   TEXT    DEFAULT '',
-      unit_type     TEXT    DEFAULT 'reps',
-      exp_per_unit  REAL    DEFAULT 2,
-      unit_label    TEXT    DEFAULT 'reps',
-      stat_type     TEXT    DEFAULT 'strength',
-      stat_reward   INTEGER DEFAULT 1,
-      category      TEXT    DEFAULT 'strength',
-      created_at    TEXT    DEFAULT (datetime('now'))
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      name        TEXT    NOT NULL,
+      description TEXT    DEFAULT '',
+      exp_reward  INTEGER DEFAULT 20,
+      unit_type   TEXT    DEFAULT 'reps',
+      exp_per_unit REAL   DEFAULT 2,
+      unit_label  TEXT    DEFAULT 'reps',
+      stat_type   TEXT    DEFAULT 'strength',
+      stat_reward INTEGER DEFAULT 1,
+      category    TEXT    DEFAULT 'strength',
+      created_at  TEXT    DEFAULT (datetime('now'))
     );
 
     CREATE TABLE IF NOT EXISTS plans (
@@ -141,6 +142,42 @@ export const initDatabase = async (): Promise<void> => {
       FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
     );
   `);
+
+  // Safely add new columns to existing installs — ALTER TABLE ignores errors if column exists
+  const safeAlter = async (sql: string) => {
+    try { await db.execAsync(sql); } catch (_) {}
+  };
+  await safeAlter(`ALTER TABLE exercises ADD COLUMN unit_type TEXT DEFAULT 'reps'`);
+  await safeAlter(`ALTER TABLE exercises ADD COLUMN exp_per_unit REAL DEFAULT 2`);
+  await safeAlter(`ALTER TABLE exercises ADD COLUMN unit_label TEXT DEFAULT 'reps'`);
+  await safeAlter(`ALTER TABLE plans ADD COLUMN penalty_exp INTEGER DEFAULT 0`);
+  await safeAlter(`ALTER TABLE plan_exercises ADD COLUMN target REAL DEFAULT 10`);
+  await safeAlter(`ALTER TABLE session_exercises ADD COLUMN target REAL DEFAULT 10`);
+  await safeAlter(`ALTER TABLE session_exercises ADD COLUMN unit_type TEXT DEFAULT 'reps'`);
+  await safeAlter(`ALTER TABLE session_exercises ADD COLUMN unit_label TEXT DEFAULT 'reps'`);
+  await safeAlter(`ALTER TABLE session_exercises ADD COLUMN exp_per_unit REAL DEFAULT 2`);
+  await safeAlter(`ALTER TABLE session_exercises ADD COLUMN actual_amount REAL DEFAULT 0`);
+  await safeAlter(`ALTER TABLE session_exercises ADD COLUMN is_bonus INTEGER DEFAULT 0`);
+
+  // Create bonus_exercises table if it doesn't exist
+  await db.execAsync(`
+    CREATE TABLE IF NOT EXISTS bonus_exercises (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id    INTEGER NOT NULL,
+      exercise_id   INTEGER NOT NULL,
+      exercise_name TEXT    DEFAULT '',
+      target        REAL    DEFAULT 0,
+      unit_type     TEXT    DEFAULT 'reps',
+      unit_label    TEXT    DEFAULT 'reps',
+      exp_per_unit  REAL    DEFAULT 2,
+      actual_amount REAL    DEFAULT 0,
+      is_completed  INTEGER DEFAULT 0,
+      exp_reward    REAL    DEFAULT 0,
+      stat_type     TEXT    DEFAULT 'strength',
+      stat_reward   INTEGER DEFAULT 1,
+      FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+    );
+  `);
 };
 
 // ─────────────────────────────────────────────
@@ -170,9 +207,10 @@ export interface Exercise {
   id?: number;
   name: string;
   description: string;
-  unit_type: string;      // 'reps' | 'distance_km' | 'distance_m' | 'time_min' | 'time_sec'
-  exp_per_unit: number;   // EXP awarded per 1 unit completed
-  unit_label: string;     // display label: 'reps', 'km', 'min', etc.
+  exp_reward: number;    // kept for backwards compat with old rows
+  unit_type: string;
+  exp_per_unit: number;
+  unit_label: string;
   stat_type: string;
   stat_reward: number;
   category: string;
@@ -185,7 +223,7 @@ export interface Plan {
   description: string;
   is_active: number;
   repeat_days: string;
-  penalty_exp: number;   // EXP deducted if session is missed
+  penalty_exp: number;
   created_at?: string;
 }
 
@@ -292,9 +330,9 @@ export const updatePlayer = async (updates: Partial<Player>): Promise<void> => {
 export const createExercise = async (ex: Omit<Exercise, 'id' | 'created_at'>): Promise<number> => {
   const db = await getDb();
   const result = await db.runAsync(
-    `INSERT INTO exercises (name, description, unit_type, exp_per_unit, unit_label, stat_type, stat_reward, category)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    [ex.name, ex.description, ex.unit_type, ex.exp_per_unit, ex.unit_label, ex.stat_type, ex.stat_reward, ex.category]
+    `INSERT INTO exercises (name, description, exp_reward, unit_type, exp_per_unit, unit_label, stat_type, stat_reward, category)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [ex.name, ex.description, ex.exp_per_unit, ex.unit_type, ex.exp_per_unit, ex.unit_label, ex.stat_type, ex.stat_reward, ex.category]
   );
   return result.lastInsertRowId;
 };
@@ -458,10 +496,6 @@ export const getTitles = async (): Promise<EarnedTitle[]> => {
   return db.getAllAsync<EarnedTitle>(`SELECT * FROM titles ORDER BY earned_at DESC`);
 };
 
-// ─────────────────────────────────────────────
-// BONUS EXERCISES
-// ─────────────────────────────────────────────
-
 export const getBonusExercises = async (sessionId: number): Promise<BonusExercise[]> => {
   const db = await getDb();
   return db.getAllAsync<BonusExercise>(
@@ -493,55 +527,35 @@ export const completeBonusExercise = async (
   );
 };
 
-// ─────────────────────────────────────────────
-// PENALTY
-// ─────────────────────────────────────────────
-
-// Call this for sessions that were never completed (status still 'pending')
-// from a previous day. Applies the plan's penalty_exp deduction.
-export const applyMissedSessionPenalty = async (sessionId: number): Promise<number> => {
-  const db = await getDb();
-
-  // get penalty amount from the plan linked to this session
-  const session = await db.getFirstAsync<{ plan_id: number }>(
-    `SELECT plan_id FROM sessions WHERE id = ?`, [sessionId]
-  );
-  if (!session) return 0;
-
-  const plan = await db.getFirstAsync<{ penalty_exp: number }>(
-    `SELECT penalty_exp FROM plans WHERE id = ?`, [session.plan_id]
-  );
-  const penalty = plan?.penalty_exp ?? 0;
-  if (penalty === 0) return 0;
-
-  // Mark session as skipped
-  await db.runAsync(
-    `UPDATE sessions SET status = 'skipped' WHERE id = ?`, [sessionId]
-  );
-
-  // Deduct from player — floor at 0
-  const player = await db.getFirstAsync<{ total_exp: number; exp: number }>(
-    `SELECT total_exp, exp FROM player WHERE id = 1`
-  );
-  if (!player) return 0;
-
-  const newExp      = Math.max(0, player.exp - penalty);
-  const newTotalExp = Math.max(0, player.total_exp - penalty);
-  await db.runAsync(
-    `UPDATE player SET exp = ?, total_exp = ? WHERE id = 1`,
-    [newExp, newTotalExp]
-  );
-
-  return penalty; // return how much was deducted so UI can show it
-};
-
-// Returns sessions from previous days that are still 'pending' (missed)
 export const getMissedSessions = async (): Promise<Session[]> => {
   const db = await getDb();
   const today = new Date().toISOString().split('T')[0];
   return db.getAllAsync<Session>(
     `SELECT * FROM sessions WHERE date < ? AND status = 'pending'`, [today]
   );
+};
+
+export const applyMissedSessionPenalty = async (sessionId: number): Promise<number> => {
+  const db = await getDb();
+  const session = await db.getFirstAsync<{ plan_id: number }>(
+    `SELECT plan_id FROM sessions WHERE id = ?`, [sessionId]
+  );
+  if (!session) return 0;
+  const plan = await db.getFirstAsync<{ penalty_exp: number }>(
+    `SELECT penalty_exp FROM plans WHERE id = ?`, [session.plan_id]
+  );
+  const penalty = plan?.penalty_exp ?? 0;
+  if (penalty === 0) return 0;
+  await db.runAsync(`UPDATE sessions SET status = 'skipped' WHERE id = ?`, [sessionId]);
+  const player = await db.getFirstAsync<{ total_exp: number; exp: number }>(
+    `SELECT total_exp, exp FROM player WHERE id = 1`
+  );
+  if (!player) return 0;
+  await db.runAsync(
+    `UPDATE player SET exp = ?, total_exp = ? WHERE id = 1`,
+    [Math.max(0, player.exp - penalty), Math.max(0, player.total_exp - penalty)]
+  );
+  return penalty;
 };
 
 /**

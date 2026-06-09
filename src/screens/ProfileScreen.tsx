@@ -151,7 +151,7 @@ const ProfileScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   root:         { flex: 1, backgroundColor: COLORS.bgPrimary },
-  content:      { padding: 16, paddingBottom: 40 },
+  content:      { padding: 16, paddingBottom: 100 },
 
   rankBanner:   { backgroundColor: COLORS.bgSecondary, borderWidth: 1.5, borderRadius: 14, padding: 20, flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   bigRank:      { fontSize: 76, fontWeight: '900', letterSpacing: -2, marginRight: 16, opacity: 0.9 },

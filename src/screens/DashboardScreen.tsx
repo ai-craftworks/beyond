@@ -203,7 +203,7 @@ const QuestCard: React.FC<{ session: Session; onPress: () => void }> = ({ sessio
 
 const styles = StyleSheet.create({
   root:    { flex: 1, backgroundColor: COLORS.bgPrimary },
-  content: { padding: 16, paddingBottom: 40 },
+  content: { padding: 16, paddingBottom: 100 },
 
   header:    { alignItems: 'center', paddingVertical: 14, marginBottom: 4 },
   sysTag:    { color: COLORS.accentCyan, fontSize: 11, fontWeight: '700', letterSpacing: 4, marginBottom: 3 },

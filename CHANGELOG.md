@@ -10,3 +10,9 @@
 
 - Integrated sounds.
 - Fixed bottom tab bar overlap issue.
+
+### 08 June, 2026
+
+- Modified workouts to add exp per unit.
+- Midified workouts to add different types of units.
+- Added penality for plans.
