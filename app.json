@@ -13,6 +13,7 @@
       "backgroundColor": "#0A0E1A"
     },
     "android": {
+      "versionCode": 2,
       "package": "com.beyond.app",
       "permissions": [
         "android.permission.RECORD_AUDIO",
