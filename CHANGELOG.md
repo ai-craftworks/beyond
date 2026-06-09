@@ -1,7 +1,5 @@
 # Changelogs
 
-## v1.0.0
-
 ### 05 June, 2026
 
 - Created the application with Claude.
@@ -16,3 +14,7 @@
 - Modified workouts to add exp per unit.
 - Midified workouts to add different types of units.
 - Added penality for plans.
+
+### 09 June, 2026
+
+- Added more sound effects.
