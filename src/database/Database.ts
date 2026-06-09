@@ -347,6 +347,14 @@ export const deleteExercise = async (id: number): Promise<void> => {
   await db.runAsync(`DELETE FROM exercises WHERE id = ?`, [id]);
 };
 
+export const updateExercise = async (id: number, updates: Partial<Exercise>): Promise<void> => {
+  const db = await getDb();
+  const keys = Object.keys(updates);
+  if (keys.length === 0) return;
+  const fields = keys.map(k => `${k} = ?`).join(', ');
+  await db.runAsync(`UPDATE exercises SET ${fields} WHERE id = ?`, [...Object.values(updates), id]);
+};
+
 // ─────────────────────────────────────────────
 // PLANS
 // ─────────────────────────────────────────────
@@ -461,6 +469,11 @@ export const updateSession = async (id: number, updates: Partial<Session>): Prom
   if (keys.length === 0) return;
   const fields = keys.map(k => `${k} = ?`).join(', ');
   await db.runAsync(`UPDATE sessions SET ${fields} WHERE id = ?`, [...Object.values(updates), id]);
+};
+
+export const getSession = async (id: number): Promise<Session | null> => {
+  const db = await getDb();
+  return db.getFirstAsync<Session>(`SELECT * FROM sessions WHERE id = ?`, [id]);
 };
 
 // actualAmount = how much the player actually did (reps, km, minutes, etc.)

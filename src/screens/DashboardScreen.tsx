@@ -189,9 +189,9 @@ const DashboardScreen: React.FC = () => {
 const QuestCard: React.FC<{ session: Session; onPress: () => void }> = ({ session, onPress }) => {
   const col = { pending: COLORS.textSecondary, in_progress: COLORS.accentCyan, completed: COLORS.accentGreen, skipped: COLORS.textMuted }[session.status];
   const lbl = { pending: '○ PENDING', in_progress: '◉ IN PROGRESS', completed: '✓ COMPLETED', skipped: '✗ SKIPPED' }[session.status];
-  const done = session.status === 'completed' || session.status === 'skipped';
+  const done = session.status === 'skipped';
   return (
-    <TouchableOpacity style={styles.questCard} onPress={onPress} disabled={done} activeOpacity={0.7}>
+    <TouchableOpacity style={styles.questCard} onPress={onPress} disabled={done} activeOpacity={0.8}>
       <View style={styles.questLeft}>
         <Text style={styles.questName}>{session.plan_name}</Text>
         <Text style={[styles.questStatus, { color: col }]}>{lbl}</Text>

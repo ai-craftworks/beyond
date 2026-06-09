@@ -11,7 +11,7 @@ import {
   updateSession, completeSessionExercise,
   SessionExercise, Player, saveTitle,
   getBonusExercises, addBonusExerciseToSession,
-  completeBonusExercise, BonusExercise, getExercises, Exercise,
+  completeBonusExercise, BonusExercise, getExercises, Exercise, getSession
 } from '../database/Database';
 import { SystemPanel, SystemButton, ExpBar } from '../components/UIComponents';
 import LevelUpModal from '../components/LevelUpModal';
@@ -21,6 +21,8 @@ import { playSound } from '../utils/sounds';
 
 type Route = RouteProp<RootStackParamList, 'Session'>;
 type Nav   = NativeStackNavigationProp<RootStackParamList, 'Session'>;
+
+const db_getSession = getSession;
 
 const SessionScreen: React.FC = () => {
   const route      = useRoute<Route>();
@@ -46,6 +48,8 @@ const SessionScreen: React.FC = () => {
   const [pendingBonus, setPendingBonus] = useState<BonusExercise | null>(null);
   const [inputAmount, setInputAmount]   = useState('');
 
+  const [isAlreadyCompleted, setAlreadyCompleted] = useState(false);
+
   const flashAnim  = useRef(new Animated.Value(0)).current;
   const flashScale = useRef(new Animated.Value(0.8)).current;
 
@@ -63,9 +67,14 @@ const SessionScreen: React.FC = () => {
     setBonusEx(bonus);
     setAllEx(all);
     setPlayer(p);
+    const sessionData = await getSession(sessionId);
+    setAlreadyCompleted(sessionData?.status === 'completed');
     setLoading(false);
-    await updateSession(sessionId, { status: 'in_progress', started_at: new Date().toISOString() });
-    playSound('questStart');  
+    const currentSession = await db_getSession(sessionId);
+    if (currentSession?.status === 'pending') {
+      await updateSession(sessionId, { status: 'in_progress', started_at: new Date().toISOString() });
+      playSound('questStart');
+    }
   };
 
   const triggerFlash = (amount: number) => {
@@ -308,14 +317,25 @@ const SessionScreen: React.FC = () => {
         )}
 
         {/* Actions */}
-        <SystemButton
-          title={finishing ? 'Processing...' : '⚔  COMPLETE SESSION'}
-          onPress={handleFinishSession}
-          loading={finishing}
-          disabled={(exercises.filter(e => e.is_completed).length === 0 && bonusExercises.filter(e => e.is_completed).length === 0) || finishing}
-          style={styles.finishBtn}
-        />
-        <SystemButton title="Abandon Session" variant="ghost" onPress={() => navigation.goBack()} style={styles.abandonBtn} />
+        {isAlreadyCompleted ? (
+          /* Session already done — show completed banner instead of action buttons */
+          <View style={styles.completedBanner}>
+            <Text style={styles.completedBannerIcon}>✓</Text>
+            <Text style={styles.completedBannerText}>QUEST COMPLETED</Text>
+            <Text style={styles.completedBannerSub}>You can still add bonus exercises above</Text>
+          </View>
+        ) : (
+          <>
+            <SystemButton
+              title={finishing ? 'Processing...' : '⚔  COMPLETE SESSION'}
+              onPress={handleFinishSession}
+              loading={finishing}
+              disabled={(exercises.filter(e => e.is_completed).length === 0 && bonusExercises.filter(e => e.is_completed).length === 0) || finishing}
+              style={styles.finishBtn}
+            />
+            <SystemButton title="Abandon Session" variant="ghost" onPress={() => navigation.goBack()} style={styles.abandonBtn} />
+          </>
+        )}
       </ScrollView>
 
       {/* Level-up modal */}
@@ -537,6 +557,11 @@ const styles = StyleSheet.create({
   exPickTxt:     { color: COLORS.textSecondary, fontSize: 14, flex: 1 },
   exPickTxtOn:   { color: COLORS.accentCyan },
   exPickSub:     { color: COLORS.textMuted, fontSize: 11 },
+
+  completedBanner:     { marginTop: 24, marginBottom: 8, backgroundColor: `${COLORS.accentGreen}12`, borderWidth: 1, borderColor: COLORS.accentGreen, borderRadius: 10, padding: 20, alignItems: 'center', gap: 6 },
+  completedBannerIcon: { color: COLORS.accentGreen, fontSize: 28 },
+  completedBannerText: { color: COLORS.accentGreen, fontSize: 16, fontWeight: '800', letterSpacing: 2 },
+  completedBannerSub:  { color: COLORS.textSecondary, fontSize: 12, textAlign: 'center' },
 });
 
 export default SessionScreen;
