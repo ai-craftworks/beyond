@@ -19,6 +19,7 @@ import {
 import { SystemPanel, SectionHeader, StatRow, ExpBar, RankBadge, EmptyState } from '../components/UIComponents';
 import { COLORS, getRankForLevel, STATS } from '../constants/game';
 import { RootStackParamList, TabParamList } from '../../App';
+import { playSound } from '../utils/sounds';
 
 type Nav = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList>,
@@ -57,6 +58,7 @@ const DashboardScreen: React.FC = () => {
     for (const session of missed) {
       const deducted = await applyMissedSessionPenalty(session.id!);
       if (deducted > 0) {
+        playSound('penalty');
         // Brief alert so player knows they were penalised
         Alert.alert(
           '⚠ Quest Missed',

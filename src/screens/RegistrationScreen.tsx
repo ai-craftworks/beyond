@@ -16,6 +16,7 @@ import { createPlayer } from '../database/Database';
 import { SystemInput, SystemButton } from '../components/UIComponents';
 import { COLORS } from '../constants/game';
 import { RootStackParamList } from '../../App';
+import { playSound } from '../utils/sounds';
 
 type Props = { navigation: NativeStackNavigationProp<RootStackParamList, 'Registration'> };
 
@@ -41,6 +42,7 @@ const RegistrationScreen: React.FC<Props> = ({ navigation }) => {
   }, []);
 
   const handleNext = () => {
+    playSound('click'); 
     if (step === 0) {
       if (!name.trim())              return Alert.alert('System', 'Enter your name, Hunter.');
       if (!age || isNaN(Number(age))) return Alert.alert('System', 'Enter a valid age.');
@@ -53,6 +55,7 @@ const RegistrationScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   const handleRegister = async () => {
+    playSound('click'); 
     setLoading(true);
     try {
       await createPlayer(name.trim(), Number(age), Number(weight), Number(height));

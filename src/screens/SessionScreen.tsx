@@ -17,6 +17,7 @@ import { SystemPanel, SystemButton, ExpBar } from '../components/UIComponents';
 import LevelUpModal from '../components/LevelUpModal';
 import { COLORS, expRequiredForLevel, TITLE_CONDITIONS } from '../constants/game';
 import { RootStackParamList } from '../../App';
+import { playSound } from '../utils/sounds';
 
 type Route = RouteProp<RootStackParamList, 'Session'>;
 type Nav   = NativeStackNavigationProp<RootStackParamList, 'Session'>;
@@ -64,6 +65,7 @@ const SessionScreen: React.FC = () => {
     setPlayer(p);
     setLoading(false);
     await updateSession(sessionId, { status: 'in_progress', started_at: new Date().toISOString() });
+    playSound('questStart');  
   };
 
   const triggerFlash = (amount: number) => {
@@ -126,6 +128,7 @@ const SessionScreen: React.FC = () => {
       prev.map(e => e.id === ex.id ? { ...e, is_completed: 1, actual_amount: actualAmount, exp_reward: expEarned } : e)
     );
     triggerFlash(expEarned);
+    playSound('exerciseDone');
     await completeSessionExercise(ex.id!, actualAmount, expEarned);
   };
 
@@ -135,6 +138,7 @@ const SessionScreen: React.FC = () => {
       prev.map(e => e.id === ex.id ? { ...e, is_completed: 1, actual_amount: actualAmount, exp_reward: expEarned } : e)
     );
     triggerFlash(expEarned);
+    playSound('exerciseDone'); 
     await completeBonusExercise(ex.id!, actualAmount, expEarned);
   };
 
@@ -216,8 +220,15 @@ const SessionScreen: React.FC = () => {
       setPlayer({ ...p, ...updates } as Player);
       setNewTitle(awardedTitle);
 
-      if (levelled) { setLvlUp(true); }
-      else { navigation.goBack(); }
+      if (awardedTitle) playSound('title');  
+
+      if (levelled) {
+        playSound('levelUp');                  // ← add
+        setLvlUp(true);
+      } else {
+        playSound('sessionDone');              // ← add
+        navigation.goBack();
+      }
     } catch (e) {
       console.error(e);
       Alert.alert('Error', 'Something went wrong.');

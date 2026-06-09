@@ -14,6 +14,7 @@ import { COLORS, getRankForLevel, STATS } from '../constants/game';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
+import { playSound } from '../utils/sounds';
 
 const ProfileScreen: React.FC = () => {
   const [player,   setPlayer]   = useState<Player | null>(null);
@@ -28,6 +29,7 @@ const ProfileScreen: React.FC = () => {
     setPlayer(p);
     setTitles(t);
     setSessions(s);
+    playSound('profile');
   };
 
   if (!player) return null;
