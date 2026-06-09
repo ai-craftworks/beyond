@@ -25,7 +25,7 @@
     },
     "plugins": [
       "expo-sqlite",
-      "expo-av"
+      "expo-audio"
     ],
     "owner": "bhaswanth",
     "extra": {

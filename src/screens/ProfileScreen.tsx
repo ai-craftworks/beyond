@@ -14,6 +14,7 @@ import { COLORS, getRankForLevel, STATS } from '../constants/game';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../../App';
+import { playSound } from '../utils/sounds';
 
 const ProfileScreen: React.FC = () => {
   const [player,   setPlayer]   = useState<Player | null>(null);
@@ -28,6 +29,7 @@ const ProfileScreen: React.FC = () => {
     setPlayer(p);
     setTitles(t);
     setSessions(s);
+    playSound('profile');
   };
 
   if (!player) return null;
@@ -151,7 +153,7 @@ const ProfileScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   root:         { flex: 1, backgroundColor: COLORS.bgPrimary },
-  content:      { padding: 16, paddingBottom: 40 },
+  content:      { padding: 16, paddingBottom: 100 },
 
   rankBanner:   { backgroundColor: COLORS.bgSecondary, borderWidth: 1.5, borderRadius: 14, padding: 20, flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   bigRank:      { fontSize: 76, fontWeight: '900', letterSpacing: -2, marginRight: 16, opacity: 0.9 },

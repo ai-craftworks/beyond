@@ -34,11 +34,19 @@ const PlansScreen: React.FC = () => {
   const [planName, setPlanName]     = useState('');
   const [planDesc, setPlanDesc]     = useState('');
   const [repeatDays, setRepeatDays] = useState<string[]>([]);
+  const [penaltyExp, setPenaltyExp] = useState('0');
 
   // Add exercise form
   const [selExId, setSelExId] = useState<number | null>(null);
   const [sets, setSets]       = useState('3');
   const [reps, setReps]       = useState('10');
+
+  const [editPlanModal, setEditPlanModal]   = useState(false);
+  const [editPlanTarget, setEditPlanTarget] = useState<Plan | null>(null);
+  const [editPlanName, setEditPlanName]     = useState('');
+  const [editPlanDesc, setEditPlanDesc]     = useState('');
+  const [editRepeatDays, setEditRepeatDays] = useState<string[]>([]);
+  const [editPenaltyExp, setEditPenaltyExp] = useState('0');
 
   useFocusEffect(useCallback(() => { loadPlans(); }, []));
 
@@ -53,8 +61,14 @@ const PlansScreen: React.FC = () => {
 
   const handleCreatePlan = async () => {
     if (!planName.trim()) return Alert.alert('System', 'Plan name required.');
-    await createPlan({ name: planName.trim(), description: planDesc.trim(), is_active: 0, repeat_days: JSON.stringify(repeatDays) });
-    setPlanName(''); setPlanDesc(''); setRepeatDays([]);
+    await createPlan({
+      name: planName.trim(),
+      description: planDesc.trim(),
+      is_active: 0,
+      repeat_days: JSON.stringify(repeatDays),
+      penalty_exp: Number(penaltyExp) || 0,
+    });
+    setPlanName(''); setPlanDesc(''); setRepeatDays([]); setPenaltyExp('0');
     setCreateModal(false);
     await loadPlans();
   };
@@ -64,6 +78,31 @@ const PlansScreen: React.FC = () => {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: async () => { await deletePlan(plan.id!); await loadPlans(); } },
     ]);
+
+  const openEditPlan = (plan: Plan) => {
+    setEditPlanTarget(plan);
+    setEditPlanName(plan.name);
+    setEditPlanDesc(plan.description);
+    setEditRepeatDays(JSON.parse(plan.repeat_days || '[]'));
+    setEditPenaltyExp(String(plan.penalty_exp ?? 0));
+    setEditPlanModal(true);
+  };
+
+  const handleSaveEditPlan = async () => {
+    if (!editPlanName.trim()) return Alert.alert('System', 'Plan name required.');
+    await updatePlan(editPlanTarget!.id!, {
+      name:        editPlanName.trim(),
+      description: editPlanDesc.trim(),
+      repeat_days: JSON.stringify(editRepeatDays),
+      penalty_exp: Number(editPenaltyExp) || 0,
+    });
+    setEditPlanModal(false);
+    setEditPlanTarget(null);
+    await loadPlans();
+  };
+
+  const toggleEditDay = (day: string) =>
+    setEditRepeatDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]);
 
   const handleToggleActive = async (plan: Plan) => {
     const next = plan.is_active ? 0 : 1;
@@ -76,7 +115,7 @@ const PlansScreen: React.FC = () => {
     if (!selExId) return Alert.alert('System', 'Select an exercise first.');
     if (isNaN(Number(sets)) || Number(sets) < 1) return Alert.alert('System', 'Enter valid sets.');
     if (isNaN(Number(reps)) || Number(reps) < 1) return Alert.alert('System', 'Enter valid reps.');
-    await addExerciseToPlan({ plan_id: selectedPlan!.id!, exercise_id: selExId, sets: Number(sets), reps: Number(reps), order_index: planExercises.length });
+    await addExerciseToPlan({ plan_id: selectedPlan!.id!, exercise_id: selExId, sets: Number(sets), target: Number(reps), order_index: planExercises.length });
     setPlanExercises(await getPlanExercises(selectedPlan!.id!));
     setSelExId(null); setSets('3'); setReps('10');
     setAddExModal(false);
@@ -106,17 +145,18 @@ const PlansScreen: React.FC = () => {
           <PlanCard plan={item}
             onManage={() => openManage(item)}
             onToggle={() => handleToggleActive(item)}
-            onDelete={() => handleDeletePlan(item)} />
+            onDelete={() => handleDeletePlan(item)}
+            onEdit={() => openEditPlan(item)} />
         )}
       />
 
       {/* ── Create Plan Modal ── */}
       <Modal visible={createModal} animationType="slide" transparent onRequestClose={() => setCreateModal(false)}>
-        <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.sheet}>
             <View style={styles.handle} />
             <Text style={styles.sheetTitle}>◆ NEW PLAN</Text>
-            <ScrollView keyboardShouldPersistTaps="handled">
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
               <SystemInput label="Plan Name" value={planName} onChangeText={setPlanName} placeholder="e.g. Morning Grind" />
               <SystemInput label="Description" value={planDesc} onChangeText={setPlanDesc} placeholder="Optional..." multiline />
               <Text style={styles.selectLbl}>REPEAT DAYS</Text>
@@ -128,6 +168,14 @@ const PlansScreen: React.FC = () => {
                 ))}
               </View>
               <Text style={styles.hint}>Empty = generate every day when active.</Text>
+              <SystemInput
+                label="Missed Quest Penalty (EXP)"
+                value={penaltyExp}
+                onChangeText={setPenaltyExp}
+                keyboardType="numeric"
+                placeholder="0 = no penalty"
+              />
+              <Text style={styles.hint}>EXP deducted if you skip this quest for the day.</Text>
               <View style={styles.row}>
                 <SystemButton title="Cancel" variant="ghost" style={styles.flex1} onPress={() => setCreateModal(false)} />
                 <SystemButton title="Create" style={styles.flex1} onPress={handleCreatePlan} />
@@ -172,7 +220,9 @@ const PlansScreen: React.FC = () => {
                   <View key={pe.id} style={styles.peRow}>
                     <View style={styles.peInfo}>
                       <Text style={styles.peName}>{pe.exercise_name}</Text>
-                      <Text style={styles.peSets}>{pe.sets} sets × {pe.reps} reps  ·  +{pe.exp_reward ?? 20} EXP</Text>
+                      <Text style={styles.peSets}>
+                        {pe.sets} sets × {pe.target} {pe.unit_label ?? 'reps'}  ·  +{((pe.exp_per_unit ?? 2) * pe.target * pe.sets).toFixed(0)} EXP total
+                      </Text>
                     </View>
                     <TouchableOpacity onPress={() => handleRemoveExercise(pe.id!)}>
                       <Text style={styles.peDelete}>✕</Text>
@@ -187,28 +237,76 @@ const PlansScreen: React.FC = () => {
 
       {/* ── Add Exercise Modal ── */}
       <Modal visible={addExModal} animationType="fade" transparent onRequestClose={() => setAddExModal(false)}>
-        <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
           <View style={styles.sheet}>
             <View style={styles.handle} />
             <Text style={styles.sheetTitle}>◆ ADD EXERCISE</Text>
-            <ScrollView keyboardShouldPersistTaps="handled">
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
               <Text style={styles.selectLbl}>SELECT EXERCISE</Text>
               <ScrollView style={styles.exPickList} nestedScrollEnabled>
                 {allExercises.map(ex => (
                   <TouchableOpacity key={ex.id} style={[styles.exPickItem, selExId === ex.id && styles.exPickItemOn]}
                     onPress={() => setSelExId(ex.id!)}>
                     <Text style={[styles.exPickTxt, selExId === ex.id && styles.exPickTxtOn]}>{ex.name}</Text>
-                    <Text style={styles.exPickExp}>+{ex.exp_reward} EXP</Text>
+                    <Text style={styles.exPickExp}>+{ex.exp_per_unit} EXP/{ex.unit_label}</Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
               <View style={styles.row}>
                 <SystemInput label="Sets" value={sets} onChangeText={setSets} keyboardType="numeric" style={styles.flex1} />
-                <SystemInput label="Reps" value={reps} onChangeText={setReps} keyboardType="numeric" style={styles.flex1} />
+                <SystemInput
+                  label={selExId && allExercises.find(e => e.id === selExId)?.unit_label
+                    ? `Target (${allExercises.find(e => e.id === selExId)?.unit_label})`
+                    : 'Target Amount'}
+                  value={reps}
+                  onChangeText={setReps}
+                  keyboardType="decimal-pad"
+                  style={styles.flex1}
+                />
               </View>
               <View style={styles.row}>
                 <SystemButton title="Cancel" variant="ghost" style={styles.flex1} onPress={() => setAddExModal(false)} />
                 <SystemButton title="Add" style={styles.flex1} onPress={handleAddExercise} />
+              </View>
+            </ScrollView>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
+      {/* ── EDIT PLAN MODAL ── */}
+      <Modal visible={editPlanModal} animationType="slide" transparent onRequestClose={() => setEditPlanModal(false)}>
+        <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
+          <View style={styles.sheet}>
+            <View style={styles.handle} />
+            <Text style={styles.sheetTitle}>◆ EDIT PLAN</Text>
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
+              <SystemInput label="Plan Name" value={editPlanName} onChangeText={setEditPlanName} />
+              <SystemInput label="Description" value={editPlanDesc} onChangeText={setEditPlanDesc} multiline />
+
+              <Text style={styles.selectLbl}>REPEAT DAYS</Text>
+              <View style={styles.dayRow}>
+                {DAYS.map(d => (
+                  <TouchableOpacity key={d}
+                    style={[styles.dayChip, editRepeatDays.includes(d) && styles.dayChipOn]}
+                    onPress={() => toggleEditDay(d)}>
+                    <Text style={[styles.dayTxt, editRepeatDays.includes(d) && styles.dayTxtOn]}>{d}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <Text style={styles.hint}>Empty = generate every day when active.</Text>
+
+              <SystemInput
+                label="Missed Quest Penalty (EXP)"
+                value={editPenaltyExp}
+                onChangeText={setEditPenaltyExp}
+                keyboardType="numeric"
+                placeholder="0 = no penalty"
+              />
+
+              <View style={styles.row}>
+                <SystemButton title="Cancel" variant="ghost" style={styles.flex1}
+                  onPress={() => { setEditPlanModal(false); setEditPlanTarget(null); }} />
+                <SystemButton title="Save" style={styles.flex1} onPress={handleSaveEditPlan} />
               </View>
             </ScrollView>
           </View>
@@ -220,8 +318,8 @@ const PlansScreen: React.FC = () => {
 
 // ── PlanCard ──────────────────────────────────
 
-const PlanCard: React.FC<{ plan: Plan; onManage: () => void; onToggle: () => void; onDelete: () => void }> =
-  ({ plan, onManage, onToggle, onDelete }) => {
+const PlanCard: React.FC<{ plan: Plan; onManage: () => void; onToggle: () => void; onDelete: () => void; onEdit: () => void }> =
+  ({ plan, onManage, onToggle, onDelete, onEdit }) => {
     const days: string[] = JSON.parse(plan.repeat_days || '[]');
     return (
       <View style={[styles.planCard, plan.is_active ? styles.planCardOn : null]}>
@@ -240,12 +338,19 @@ const PlanCard: React.FC<{ plan: Plan; onManage: () => void; onToggle: () => voi
               ? days.map(d => <View key={d} style={styles.dayPill}><Text style={styles.dayPillTxt}>{d}</Text></View>)
               : <Text style={styles.everyDay}>Every day (when active)</Text>}
           </View>
+          {/* Penalty indicator */}
+          {plan.penalty_exp > 0 && (
+            <Text style={styles.penaltyTxt}>⚠ -{plan.penalty_exp} EXP if missed</Text>
+          )}
         </TouchableOpacity>
         <View style={styles.planActions}>
           <TouchableOpacity style={styles.actionBtn} onPress={onToggle}>
             <Text style={[styles.actionTxt, { color: plan.is_active ? COLORS.accentRed : COLORS.accentGreen }]}>
               {plan.is_active ? 'Deactivate' : 'Activate'}
             </Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.actionBtn} onPress={onEdit}>
+            <Text style={[styles.actionTxt, { color: COLORS.accentCyan }]}>Edit</Text>
           </TouchableOpacity>
           <TouchableOpacity style={styles.actionBtn} onPress={onDelete}>
             <Text style={[styles.actionTxt, { color: COLORS.textMuted }]}>Delete</Text>
@@ -257,7 +362,7 @@ const PlanCard: React.FC<{ plan: Plan; onManage: () => void; onToggle: () => voi
 
 const styles = StyleSheet.create({
   root:         { flex: 1, backgroundColor: COLORS.bgPrimary },
-  list:         { padding: 16, paddingBottom: 40 },
+  list:         { padding: 16, paddingBottom: 100 },
 
   planCard:     { backgroundColor: COLORS.bgSecondary, borderRadius: 10, borderWidth: 1, borderColor: COLORS.borderMain, marginBottom: 10, overflow: 'hidden' },
   planCardOn:   { borderColor: COLORS.accentCyan },
@@ -309,6 +414,7 @@ const styles = StyleSheet.create({
   exPickTxt:    { color: COLORS.textSecondary, fontSize: 14, flex: 1 },
   exPickTxtOn:  { color: COLORS.accentCyan },
   exPickExp:    { color: COLORS.textMuted, fontSize: 12 },
+  penaltyTxt: { color: COLORS.accentRed, fontSize: 11, fontWeight: '600', marginTop: 5 },
 });
 
 export default PlansScreen;

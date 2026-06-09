@@ -15,7 +15,7 @@ import ExercisesScreen    from './src/screens/ExercisesScreen';
 import PlansScreen        from './src/screens/PlansScreen';
 import ProfileScreen      from './src/screens/ProfileScreen';
 import SessionScreen      from './src/screens/SessionScreen';
-import { initAudio } from './src/utils/sounds';
+import { initAudio, playSound } from './src/utils/sounds';
 
 export type RootStackParamList = {
   Registration: undefined;
@@ -66,6 +66,7 @@ const MainTabs: React.FC = () => {
       <Tab.Screen
         name="Dashboard"
         component={DashboardScreen}
+        listeners={{ tabPress: () => playSound('navigate') }}
         options={{
           title: 'Status',
           headerShown: true,
@@ -79,6 +80,7 @@ const MainTabs: React.FC = () => {
       <Tab.Screen
         name="Exercises"
         component={ExercisesScreen}
+        listeners={{ tabPress: () => playSound('navigate') }}
         options={{
           title: 'Exercises',
           headerShown: true,
@@ -92,6 +94,7 @@ const MainTabs: React.FC = () => {
       <Tab.Screen
         name="Plans"
         component={PlansScreen}
+        listeners={{ tabPress: () => playSound('navigate') }}
         options={{
           title: 'Plans',
           headerShown: true,
@@ -105,6 +108,7 @@ const MainTabs: React.FC = () => {
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
+        listeners={{ tabPress: () => playSound('navigate') }}
         options={{
           title: 'Profile',
           headerShown: true,
@@ -128,6 +132,7 @@ const App: React.FC = () => {
   const bootstrap = async () => {
     try {
       await initAudio();
+      playSound('boot'); 
       await initDatabase();
       const player = await getPlayer();
       setAppState(player ? 'main' : 'register');
