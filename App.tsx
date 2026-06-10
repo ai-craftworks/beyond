@@ -83,6 +83,7 @@ const MainTabs: React.FC = () => {
           ),
         }}
       />
+      
       <Tab.Screen
         name="Exercises"
         component={ExercisesScreen}
@@ -100,23 +101,7 @@ const MainTabs: React.FC = () => {
           ),
         }}
       />
-      <Tab.Screen
-        name="Plans"
-        component={PlansScreen}
-        listeners={{ tabPress: () => playSound('navigate') }}
-        options={{
-          title: 'Plans',
-          headerShown: true,
-          headerTitle: 'Plans',
-          headerStyle: styles.header,
-          headerTitleStyle: styles.headerTitle,
-          headerTintColor: COLORS.accentCyan,
-          tabBarIcon: ({ focused }) => (
-            <Ionicons name={focused ? 'list' : 'list-outline'} size={22}
-              color={focused ? COLORS.accentCyan : COLORS.textMuted} />
-          ),
-        }}
-      />
+      
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
@@ -130,6 +115,24 @@ const MainTabs: React.FC = () => {
           headerTintColor: COLORS.accentCyan,
           tabBarIcon: ({ focused }) => (
             <Ionicons name={focused ? 'person' : 'person-outline'} size={22}
+              color={focused ? COLORS.accentCyan : COLORS.textMuted} />
+          ),
+        }}
+      />
+
+      <Tab.Screen
+        name="Plans"
+        component={PlansScreen}
+        listeners={{ tabPress: () => playSound('navigate') }}
+        options={{
+          title: 'Plans',
+          headerShown: true,
+          headerTitle: 'Plans',
+          headerStyle: styles.header,
+          headerTitleStyle: styles.headerTitle,
+          headerTintColor: COLORS.accentCyan,
+          tabBarIcon: ({ focused }) => (
+            <Ionicons name={focused ? 'list' : 'list-outline'} size={22}
               color={focused ? COLORS.accentCyan : COLORS.textMuted} />
           ),
         }}
