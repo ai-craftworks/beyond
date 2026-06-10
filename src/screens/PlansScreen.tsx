@@ -14,7 +14,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import {
   createPlan, deletePlan, Plan, getPlans,
   getPlanExercises, getExercises, addExerciseToPlan,
-  removeExerciseFromPlan, updatePlan, Exercise, PlanExercise,
+  removeExerciseFromPlan, updatePlan, Exercise, PlanExercise, cancelTodayPendingSessions
 } from '../database/Database';
 import { SystemButton, SystemInput, SectionHeader, EmptyState } from '../components/UIComponents';
 import { COLORS } from '../constants/game';
@@ -76,7 +76,14 @@ const PlansScreen: React.FC = () => {
   const handleDeletePlan = (plan: Plan) =>
     Alert.alert('Delete Plan', `Remove "${plan.name}"?`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => { await deletePlan(plan.id!); await loadPlans(); } },
+      {
+        text: 'Delete', style: 'destructive',
+        onPress: async () => {
+          await cancelTodayPendingSessions(plan.id!);   // ← add
+          await deletePlan(plan.id!);
+          await loadPlans();
+        },
+      },
     ]);
 
   const openEditPlan = (plan: Plan) => {
@@ -106,6 +113,9 @@ const PlansScreen: React.FC = () => {
 
   const handleToggleActive = async (plan: Plan) => {
     const next = plan.is_active ? 0 : 1;
+    if (next === 0) {
+      await cancelTodayPendingSessions(plan.id!);   // ← add: clean up on deactivate
+    }
     await updatePlan(plan.id!, { is_active: next });
     await loadPlans();
     if (selectedPlan?.id === plan.id) setSelectedPlan({ ...plan, is_active: next });

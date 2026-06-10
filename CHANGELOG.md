@@ -18,3 +18,7 @@
 ### 09 June, 2026
 
 - Added more sound effects.
+
+### 10 June, 2026
+
+- Added Guide screen for app usage tips.

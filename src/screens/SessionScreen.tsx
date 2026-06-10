@@ -132,7 +132,7 @@ const SessionScreen: React.FC = () => {
   };
 
   const finalizeExercise = async (ex: SessionExercise, actualAmount: number) => {
-    const expEarned = Math.floor(actualAmount * ex.exp_per_unit);
+    const expEarned = Math.floor((actualAmount / (ex.exp_unit_count || 1)) * ex.exp_per_unit);
     setExercises(prev =>
       prev.map(e => e.id === ex.id ? { ...e, is_completed: 1, actual_amount: actualAmount, exp_reward: expEarned } : e)
     );

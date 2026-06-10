@@ -8,6 +8,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 
 import { initDatabase, getPlayer } from './src/database/Database';
 import { COLORS } from './src/constants/game';
+import { Ionicons } from '@expo/vector-icons';
 
 import RegistrationScreen from './src/screens/RegistrationScreen';
 import DashboardScreen    from './src/screens/DashboardScreen';
@@ -15,6 +16,7 @@ import ExercisesScreen    from './src/screens/ExercisesScreen';
 import PlansScreen        from './src/screens/PlansScreen';
 import ProfileScreen      from './src/screens/ProfileScreen';
 import SessionScreen      from './src/screens/SessionScreen';
+import AboutScreen from './src/screens/AboutScreen';
 import { initAudio, playSound } from './src/utils/sounds';
 
 export type RootStackParamList = {
@@ -28,6 +30,7 @@ export type TabParamList = {
   Exercises: undefined;
   Plans:     undefined;
   Profile:   undefined;
+  About:     undefined; 
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -74,7 +77,10 @@ const MainTabs: React.FC = () => {
           headerStyle: styles.header,
           headerTitleStyle: styles.headerTitle,
           headerTintColor: COLORS.accentCyan,
-          tabBarIcon: ({ focused }) => <TabIcon emoji="⚔️" focused={focused} />,  // ← icon
+          tabBarIcon: ({ focused }) => (
+            <Ionicons name={focused ? 'flash' : 'flash-outline'} size={22}
+              color={focused ? COLORS.accentCyan : COLORS.textMuted} />
+          ),
         }}
       />
       <Tab.Screen
@@ -88,7 +94,10 @@ const MainTabs: React.FC = () => {
           headerStyle: styles.header,
           headerTitleStyle: styles.headerTitle,
           headerTintColor: COLORS.accentCyan,
-          tabBarIcon: ({ focused }) => <TabIcon emoji="🏋️" focused={focused} />,  // ← icon
+          tabBarIcon: ({ focused }) => (
+            <Ionicons name={focused ? 'barbell' : 'barbell-outline'} size={22}
+              color={focused ? COLORS.accentCyan : COLORS.textMuted} />
+          ),
         }}
       />
       <Tab.Screen
@@ -102,7 +111,10 @@ const MainTabs: React.FC = () => {
           headerStyle: styles.header,
           headerTitleStyle: styles.headerTitle,
           headerTintColor: COLORS.accentCyan,
-          tabBarIcon: ({ focused }) => <TabIcon emoji="📋" focused={focused} />,  // ← icon
+          tabBarIcon: ({ focused }) => (
+            <Ionicons name={focused ? 'list' : 'list-outline'} size={22}
+              color={focused ? COLORS.accentCyan : COLORS.textMuted} />
+          ),
         }}
       />
       <Tab.Screen
@@ -116,7 +128,28 @@ const MainTabs: React.FC = () => {
           headerStyle: styles.header,
           headerTitleStyle: styles.headerTitle,
           headerTintColor: COLORS.accentCyan,
-          tabBarIcon: ({ focused }) => <TabIcon emoji="👤" focused={focused} />,  // ← icon
+          tabBarIcon: ({ focused }) => (
+            <Ionicons name={focused ? 'person' : 'person-outline'} size={22}
+              color={focused ? COLORS.accentCyan : COLORS.textMuted} />
+          ),
+        }}
+      />
+
+      <Tab.Screen
+        name="About"
+        component={AboutScreen}
+        listeners={{ tabPress: () => playSound('navigate') }}
+        options={{
+          title: 'Guide',
+          headerShown: true,
+          headerTitle: 'System Guide',
+          headerStyle: styles.header,
+          headerTitleStyle: styles.headerTitle,
+          headerTintColor: COLORS.accentCyan,
+          tabBarIcon: ({ focused }) => (
+            <Ionicons name={focused ? 'information-circle' : 'information-circle-outline'} size={22}
+              color={focused ? COLORS.accentCyan : COLORS.textMuted} />
+          ),
         }}
       />
     </Tab.Navigator>

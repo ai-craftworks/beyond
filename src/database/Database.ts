@@ -158,6 +158,9 @@ export const initDatabase = async (): Promise<void> => {
   await safeAlter(`ALTER TABLE session_exercises ADD COLUMN exp_per_unit REAL DEFAULT 2`);
   await safeAlter(`ALTER TABLE session_exercises ADD COLUMN actual_amount REAL DEFAULT 0`);
   await safeAlter(`ALTER TABLE session_exercises ADD COLUMN is_bonus INTEGER DEFAULT 0`);
+  await safeAlter(`ALTER TABLE exercises ADD COLUMN exp_unit_count REAL DEFAULT 1`);
+  await safeAlter(`ALTER TABLE session_exercises ADD COLUMN exp_unit_count REAL DEFAULT 1`);
+  await safeAlter(`ALTER TABLE bonus_exercises ADD COLUMN exp_unit_count REAL DEFAULT 1`);
 
   // Create bonus_exercises table if it doesn't exist
   await db.execAsync(`
@@ -211,6 +214,7 @@ export interface Exercise {
   unit_type: string;
   exp_per_unit: number;
   unit_label: string;
+  exp_unit_count: number; 
   stat_type: string;
   stat_reward: number;
   category: string;
@@ -233,6 +237,7 @@ export interface PlanExercise {
   exercise_id: number;
   exercise_name?: string;
   exp_per_unit?: number;
+  exp_unit_count?: number;
   unit_type?: string;
   unit_label?: string;
   stat_type?: string;
@@ -263,6 +268,7 @@ export interface SessionExercise {
   unit_type: string;
   unit_label: string;
   exp_per_unit: number;
+  exp_unit_count: number;  
   actual_amount: number;
   is_completed: number;
   exp_reward: number;
@@ -330,9 +336,10 @@ export const updatePlayer = async (updates: Partial<Player>): Promise<void> => {
 export const createExercise = async (ex: Omit<Exercise, 'id' | 'created_at'>): Promise<number> => {
   const db = await getDb();
   const result = await db.runAsync(
-    `INSERT INTO exercises (name, description, exp_reward, unit_type, exp_per_unit, unit_label, stat_type, stat_reward, category)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [ex.name, ex.description, ex.exp_per_unit, ex.unit_type, ex.exp_per_unit, ex.unit_label, ex.stat_type, ex.stat_reward, ex.category]
+    `INSERT INTO exercises (name, description, exp_reward, unit_type, exp_per_unit, exp_unit_count, unit_label, stat_type, stat_reward, category)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [ex.name, ex.description, ex.exp_per_unit, ex.unit_type, ex.exp_per_unit,
+     ex.exp_unit_count ?? 1, ex.unit_label, ex.stat_type, ex.stat_reward, ex.category]
   );
   return result.lastInsertRowId;
 };
@@ -386,6 +393,16 @@ export const deletePlan = async (id: number): Promise<void> => {
   await db.runAsync(`DELETE FROM plans WHERE id = ?`, [id]);
 };
 
+// Removes pending sessions for a plan from today — called when plan is deactivated or deleted
+export const cancelTodayPendingSessions = async (planId: number): Promise<void> => {
+  const db = await getDb();
+  const today = new Date().toISOString().split('T')[0];
+  await db.runAsync(
+    `DELETE FROM sessions WHERE plan_id = ? AND date = ? AND status = 'pending'`,
+    [planId, today]
+  );
+};
+
 export const addExerciseToPlan = async (pe: Omit<PlanExercise, 'id'>): Promise<void> => {
   const db = await getDb();
   await db.runAsync(
@@ -432,11 +449,12 @@ export const populateSessionExercises = async (sessionId: number, planId: number
   for (const pe of planExercises) {
     await db.runAsync(
       `INSERT INTO session_exercises
-         (session_id, exercise_id, exercise_name, sets_total, target, unit_type, unit_label, exp_per_unit, stat_type, stat_reward, is_bonus)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+         (session_id, exercise_id, exercise_name, sets_total, target, unit_type, unit_label, exp_per_unit, exp_unit_count, stat_type, stat_reward, is_bonus)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
       [sessionId, pe.exercise_id, pe.exercise_name ?? '', pe.sets, pe.target,
        pe.unit_type ?? 'reps', pe.unit_label ?? 'reps',
-       pe.exp_per_unit ?? 2, pe.stat_type ?? 'strength', pe.stat_reward ?? 1]
+       pe.exp_per_unit ?? 2, pe.exp_unit_count ?? 1,
+       pe.stat_type ?? 'strength', pe.stat_reward ?? 1]
     );
   }
 };
@@ -444,8 +462,15 @@ export const populateSessionExercises = async (sessionId: number, planId: number
 export const getTodaySessions = async (): Promise<Session[]> => {
   const db = await getDb();
   const today = new Date().toISOString().split('T')[0];
+  // Only return sessions where the plan still exists AND is still active
+  // Also include completed/in_progress sessions regardless (player already started them)
   return db.getAllAsync<Session>(
-    `SELECT * FROM sessions WHERE date = ? ORDER BY id DESC`, [today]
+    `SELECT s.* FROM sessions s
+     INNER JOIN plans p ON s.plan_id = p.id
+     WHERE s.date = ?
+       AND (p.is_active = 1 OR s.status IN ('in_progress', 'completed'))
+     ORDER BY s.id DESC`,
+    [today]
   );
 };
 
@@ -591,4 +616,22 @@ export const resetAllData = async (): Promise<void> => {
     DELETE FROM sqlite_sequence WHERE name IN
       ('player','exercises','plans','plan_exercises','sessions','session_exercises','titles');
   `);
+};
+
+export const getSessionSummary = async (sessionId: number): Promise<{
+  exercises: { name: string; actual_amount: number; unit_label: string; exp_reward: number; is_completed: number }[];
+  bonuses:   { name: string; actual_amount: number; unit_label: string; exp_reward: number; is_completed: number }[];
+}> => {
+  const db = await getDb();
+  const exercises = await db.getAllAsync<any>(
+    `SELECT exercise_name as name, actual_amount, unit_label, exp_reward, is_completed
+     FROM session_exercises WHERE session_id = ? ORDER BY id`,
+    [sessionId]
+  );
+  const bonuses = await db.getAllAsync<any>(
+    `SELECT exercise_name as name, actual_amount, unit_label, exp_reward, is_completed
+     FROM bonus_exercises WHERE session_id = ? ORDER BY id`,
+    [sessionId]
+  );
+  return { exercises, bonuses };
 };
