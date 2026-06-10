@@ -143,41 +143,51 @@ export const initDatabase = async (): Promise<void> => {
     );
   `);
 
-  // Safely add new columns to existing installs — ALTER TABLE ignores errors if column exists
+  /// Add new columns to existing installs — safe to run every launch
   const safeAlter = async (sql: string) => {
     try { await db.execAsync(sql); } catch (_) {}
   };
+
+  // exercises: unit-based EXP system
   await safeAlter(`ALTER TABLE exercises ADD COLUMN unit_type TEXT DEFAULT 'reps'`);
   await safeAlter(`ALTER TABLE exercises ADD COLUMN exp_per_unit REAL DEFAULT 2`);
+  await safeAlter(`ALTER TABLE exercises ADD COLUMN exp_unit_count REAL DEFAULT 1`);
   await safeAlter(`ALTER TABLE exercises ADD COLUMN unit_label TEXT DEFAULT 'reps'`);
+
+  // plans: penalty and stat-per-exp
   await safeAlter(`ALTER TABLE plans ADD COLUMN penalty_exp INTEGER DEFAULT 0`);
+
+  // plan_exercises: target replaces reps
   await safeAlter(`ALTER TABLE plan_exercises ADD COLUMN target REAL DEFAULT 10`);
+
+  // session_exercises: actual tracking fields
   await safeAlter(`ALTER TABLE session_exercises ADD COLUMN target REAL DEFAULT 10`);
   await safeAlter(`ALTER TABLE session_exercises ADD COLUMN unit_type TEXT DEFAULT 'reps'`);
   await safeAlter(`ALTER TABLE session_exercises ADD COLUMN unit_label TEXT DEFAULT 'reps'`);
   await safeAlter(`ALTER TABLE session_exercises ADD COLUMN exp_per_unit REAL DEFAULT 2`);
-  await safeAlter(`ALTER TABLE session_exercises ADD COLUMN actual_amount REAL DEFAULT 0`);
-  await safeAlter(`ALTER TABLE session_exercises ADD COLUMN is_bonus INTEGER DEFAULT 0`);
-  await safeAlter(`ALTER TABLE exercises ADD COLUMN exp_unit_count REAL DEFAULT 1`);
   await safeAlter(`ALTER TABLE session_exercises ADD COLUMN exp_unit_count REAL DEFAULT 1`);
-  await safeAlter(`ALTER TABLE bonus_exercises ADD COLUMN exp_unit_count REAL DEFAULT 1`);
+  await safeAlter(`ALTER TABLE session_exercises ADD COLUMN stat_per_exp REAL DEFAULT 0`);
+  await safeAlter(`ALTER TABLE session_exercises ADD COLUMN exp_per_stat_point REAL DEFAULT 20`);
+  await safeAlter(`ALTER TABLE session_exercises ADD COLUMN actual_amount REAL DEFAULT 0`);
 
-  // Create bonus_exercises table if it doesn't exist
+  // bonus_exercises table
   await db.execAsync(`
     CREATE TABLE IF NOT EXISTS bonus_exercises (
-      id            INTEGER PRIMARY KEY AUTOINCREMENT,
-      session_id    INTEGER NOT NULL,
-      exercise_id   INTEGER NOT NULL,
-      exercise_name TEXT    DEFAULT '',
-      target        REAL    DEFAULT 0,
-      unit_type     TEXT    DEFAULT 'reps',
-      unit_label    TEXT    DEFAULT 'reps',
-      exp_per_unit  REAL    DEFAULT 2,
-      actual_amount REAL    DEFAULT 0,
-      is_completed  INTEGER DEFAULT 0,
-      exp_reward    REAL    DEFAULT 0,
-      stat_type     TEXT    DEFAULT 'strength',
-      stat_reward   INTEGER DEFAULT 1,
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id      INTEGER NOT NULL,
+      exercise_id     INTEGER NOT NULL,
+      exercise_name   TEXT    DEFAULT '',
+      target          REAL    DEFAULT 0,
+      unit_type       TEXT    DEFAULT 'reps',
+      unit_label      TEXT    DEFAULT 'reps',
+      exp_per_unit    REAL    DEFAULT 2,
+      exp_unit_count  REAL    DEFAULT 1,
+      exp_per_stat_point REAL DEFAULT 20,
+      actual_amount   REAL    DEFAULT 0,
+      is_completed    INTEGER DEFAULT 0,
+      exp_reward      REAL    DEFAULT 0,
+      stat_type       TEXT    DEFAULT 'strength',
+      stat_reward     INTEGER DEFAULT 1,
       FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
     );
   `);
@@ -210,13 +220,14 @@ export interface Exercise {
   id?: number;
   name: string;
   description: string;
-  exp_reward: number;    // kept for backwards compat with old rows
-  unit_type: string;
-  exp_per_unit: number;
-  unit_label: string;
-  exp_unit_count: number; 
+  exp_reward: number;
+  unit_type: string;          // 'reps' | 'distance_km' | 'distance_m' | 'time_min' | 'time_sec'
+  exp_per_unit: number;       // EXP awarded per 1 tick
+  exp_unit_count: number;     // units per 1 tick (e.g. 10 = "1 EXP per 10 reps")
+  unit_label: string;         // display label: 'reps', 'km', 'min'...
+  exp_per_stat_point: number; // EXP needed to earn 1 stat point (e.g. 20 = every 20 EXP = +1 stat)
   stat_type: string;
-  stat_reward: number;
+  stat_reward: number;        // kept for legacy; actual gain now computed from exp
   category: string;
   created_at?: string;
 }
@@ -264,17 +275,18 @@ export interface SessionExercise {
   exercise_id: number;
   exercise_name: string;
   sets_total: number;
+  reps: number;
   target: number;
   unit_type: string;
   unit_label: string;
   exp_per_unit: number;
-  exp_unit_count: number;  
+  exp_unit_count: number;
+  exp_per_stat_point: number; // EXP needed per stat point
   actual_amount: number;
   is_completed: number;
   exp_reward: number;
   stat_type: string;
   stat_reward: number;
-  is_bonus: number;
 }
 
 export interface BonusExercise {
@@ -286,6 +298,8 @@ export interface BonusExercise {
   unit_type: string;
   unit_label: string;
   exp_per_unit: number;
+  exp_unit_count: number;
+  exp_per_stat_point: number;
   actual_amount: number;
   is_completed: number;
   exp_reward: number;
@@ -336,10 +350,13 @@ export const updatePlayer = async (updates: Partial<Player>): Promise<void> => {
 export const createExercise = async (ex: Omit<Exercise, 'id' | 'created_at'>): Promise<number> => {
   const db = await getDb();
   const result = await db.runAsync(
-    `INSERT INTO exercises (name, description, exp_reward, unit_type, exp_per_unit, exp_unit_count, unit_label, stat_type, stat_reward, category)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [ex.name, ex.description, ex.exp_per_unit, ex.unit_type, ex.exp_per_unit,
-     ex.exp_unit_count ?? 1, ex.unit_label, ex.stat_type, ex.stat_reward, ex.category]
+    `INSERT INTO exercises
+       (name, description, exp_reward, unit_type, exp_per_unit, exp_unit_count, unit_label, exp_per_stat_point, stat_type, stat_reward, category)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [ex.name, ex.description, ex.exp_per_unit,
+     ex.unit_type ?? 'reps', ex.exp_per_unit, ex.exp_unit_count ?? 1,
+     ex.unit_label ?? 'reps', ex.exp_per_stat_point ?? 20,
+     ex.stat_type, ex.stat_reward, ex.category]
   );
   return result.lastInsertRowId;
 };
@@ -370,7 +387,7 @@ export const createPlan = async (plan: Omit<Plan, 'id' | 'created_at'>): Promise
   const db = await getDb();
   const result = await db.runAsync(
     `INSERT INTO plans (name, description, is_active, repeat_days, penalty_exp) VALUES (?, ?, ?, ?, ?)`,
-    [plan.name, plan.description, plan.is_active, plan.repeat_days, plan.penalty_exp]
+    [plan.name, plan.description, plan.is_active, plan.repeat_days, plan.penalty_exp ?? 0]
   );
   return result.lastInsertRowId;
 };
@@ -415,7 +432,8 @@ export const addExerciseToPlan = async (pe: Omit<PlanExercise, 'id'>): Promise<v
 export const getPlanExercises = async (planId: number): Promise<PlanExercise[]> => {
   const db = await getDb();
   return db.getAllAsync<PlanExercise>(
-    `SELECT pe.*, e.name as exercise_name, e.exp_per_unit, e.unit_type, e.unit_label, e.stat_type, e.stat_reward
+    `SELECT pe.*, e.name as exercise_name, e.exp_per_unit, e.exp_unit_count,
+            e.unit_type, e.unit_label, e.exp_per_stat_point, e.stat_type, e.stat_reward
      FROM plan_exercises pe
      JOIN exercises e ON pe.exercise_id = e.id
      WHERE pe.plan_id = ?
@@ -447,14 +465,23 @@ export const populateSessionExercises = async (sessionId: number, planId: number
   const planExercises = await getPlanExercises(planId);
   const db = await getDb();
   for (const pe of planExercises) {
+    // target: use pe.target if set, fallback to pe.reps (old schema compat)
+    const target = (pe as any).target ?? (pe as any).reps ?? 10;
     await db.runAsync(
       `INSERT INTO session_exercises
-         (session_id, exercise_id, exercise_name, sets_total, target, unit_type, unit_label, exp_per_unit, exp_unit_count, stat_type, stat_reward, is_bonus)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
-      [sessionId, pe.exercise_id, pe.exercise_name ?? '', pe.sets, pe.target,
-       pe.unit_type ?? 'reps', pe.unit_label ?? 'reps',
-       pe.exp_per_unit ?? 2, pe.exp_unit_count ?? 1,
-       pe.stat_type ?? 'strength', pe.stat_reward ?? 1]
+         (session_id, exercise_id, exercise_name, sets_total, reps, target,
+          unit_type, unit_label, exp_per_unit, exp_unit_count, exp_per_stat_point,
+          exp_reward, stat_type, stat_reward)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [sessionId, pe.exercise_id, pe.exercise_name ?? '', pe.sets, target, target,
+       (pe as any).unit_type ?? 'reps',
+       (pe as any).unit_label ?? 'reps',
+       (pe as any).exp_per_unit ?? 2,
+       (pe as any).exp_unit_count ?? 1,
+       (pe as any).exp_per_stat_point ?? 20,
+       (pe as any).exp_per_unit ?? 2,
+       pe.stat_type ?? 'strength',
+       pe.stat_reward ?? 1]
     );
   }
 };
@@ -504,7 +531,9 @@ export const getSession = async (id: number): Promise<Session | null> => {
 // actualAmount = how much the player actually did (reps, km, minutes, etc.)
 // expEarned = actualAmount × exp_per_unit × sets (calculated in SessionScreen)
 export const completeSessionExercise = async (
-  id: number, actualAmount: number, expEarned: number
+  id: number,
+  actualAmount: number,
+  expEarned: number,
 ): Promise<void> => {
   const db = await getDb();
   await db.runAsync(
@@ -534,6 +563,10 @@ export const getTitles = async (): Promise<EarnedTitle[]> => {
   return db.getAllAsync<EarnedTitle>(`SELECT * FROM titles ORDER BY earned_at DESC`);
 };
 
+// ─────────────────────────────────────────────
+// BONUS EXERCISES
+// ─────────────────────────────────────────────
+
 export const getBonusExercises = async (sessionId: number): Promise<BonusExercise[]> => {
   const db = await getDb();
   return db.getAllAsync<BonusExercise>(
@@ -547,11 +580,14 @@ export const addBonusExerciseToSession = async (
   const db = await getDb();
   await db.runAsync(
     `INSERT INTO bonus_exercises
-       (session_id, exercise_id, exercise_name, target, unit_type, unit_label, exp_per_unit, stat_type, stat_reward)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (session_id, exercise_id, exercise_name, target, unit_type, unit_label,
+        exp_per_unit, exp_unit_count, exp_per_stat_point, stat_type, stat_reward)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [sessionId, exercise.id!, exercise.name, target,
-     exercise.unit_type, exercise.unit_label,
-     exercise.exp_per_unit, exercise.stat_type, exercise.stat_reward]
+     exercise.unit_type ?? 'reps', exercise.unit_label ?? 'reps',
+     exercise.exp_per_unit ?? 2, exercise.exp_unit_count ?? 1,
+     exercise.exp_per_stat_point ?? 20,
+     exercise.stat_type, exercise.stat_reward]
   );
 };
 
