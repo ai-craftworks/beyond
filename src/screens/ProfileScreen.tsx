@@ -32,7 +32,6 @@ const ProfileScreen: React.FC = () => {
     setPlayer(p);
     setTitles(t);
     setSessions(s);
-    playSound('profile');
   };
 
   const toggleSession = async (sessionId: number) => {
