@@ -22,3 +22,8 @@
 ### 10 June, 2026
 
 - Added Guide screen for app usage tips.
+
+### 11 June, 2026
+
+- Fixed plan screen issues.
+- Converted sounds from wav to mp3.
