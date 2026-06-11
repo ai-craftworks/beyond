@@ -33,6 +33,7 @@ const ExercisesScreen: React.FC = () => {
   const [statType, setStatType]       = useState('strength');
   const [statReward, setStatRew]      = useState('1');
   const [category, setCategory]       = useState('strength');
+  const [expPerStatPt, setExpPerStatPt] = useState('20');
 
   useFocusEffect(useCallback(() => { load(); }, []));
   const load = async () => setExercises(await getExercises());
@@ -40,6 +41,7 @@ const ExercisesScreen: React.FC = () => {
   const resetForm = () => {
     setName(''); setDesc(''); setUnitType('reps'); setExpPerUnit('2');
     setExpUnitCount('1');
+    setExpPerStatPt('20');
     setStatType('strength'); setStatRew('1'); setCategory('strength');
   };
 
@@ -58,8 +60,8 @@ const ExercisesScreen: React.FC = () => {
         exp_per_unit:   Number(expPerUnit),
         exp_unit_count: Number(expUnitCount) || 1,
         unit_label:     unit.suffix,
+        exp_per_stat_point: Number(expPerStatPt) || 20,  
         stat_type:      statType,
-        stat_reward:    Number(statReward),
         category,
       });
       resetForm();
@@ -87,7 +89,6 @@ const ExercisesScreen: React.FC = () => {
     setEditExpPerUnit(String(ex.exp_per_unit ?? ex.exp_reward ?? 2));
     setEditExpUnitCount(String(ex.exp_unit_count ?? 1));   
     setEditStatType(ex.stat_type);
-    setEditStatRew(String(ex.stat_reward));
     setEditCategory(ex.category);
     setEditModal(true);
   };
@@ -108,7 +109,6 @@ const ExercisesScreen: React.FC = () => {
         exp_reward:   Number(editExpPerUnit),
         unit_label:   unit.suffix,
         stat_type:    editStatType,
-        stat_reward:  Number(editStatReward),
         category:     editCategory,
       });
       setEditModal(false);
@@ -162,7 +162,7 @@ const ExercisesScreen: React.FC = () => {
               </View>
               <View style={[styles.tag, { borderColor: accentForCat(item.category) }]}>
                 <Text style={[styles.tagTxt, { color: accentForCat(item.category) }]}>
-                  {item.stat_type.toUpperCase()} +{item.stat_reward}
+                  {item.stat_type.toUpperCase()}
                 </Text>
               </View>
               <View style={styles.tag}>
@@ -256,11 +256,16 @@ const ExercisesScreen: React.FC = () => {
               </View>
 
               <SystemInput
-                label="Stat +Value"
-                value={statReward}
-                onChangeText={setStatRew}
-                keyboardType="numeric"
+                label={`EXP needed for +1 ${statType.toUpperCase()} point`}
+                value={expPerStatPt}
+                onChangeText={setExpPerStatPt}
+                keyboardType="decimal-pad"
+                placeholder="e.g. 20"
               />
+              <Text style={styles.expHint}>
+                Every {expPerStatPt || '20'} EXP from this exercise = +1 {statType.toUpperCase()}.
+                Example: earn {Number(expPerStatPt || 20) * 3} EXP → +3 {statType.toUpperCase()}
+              </Text>
 
               <View style={styles.row}>
                 <SystemButton title="Cancel" variant="ghost" style={styles.flex1}
@@ -333,7 +338,17 @@ const ExercisesScreen: React.FC = () => {
                 ))}
               </View>
 
-              <SystemInput label="Stat +Value" value={editStatReward} onChangeText={setEditStatRew} keyboardType="numeric" />
+              <SystemInput
+                label={`EXP needed for +1 ${statType.toUpperCase()} point`}
+                value={expPerStatPt}
+                onChangeText={setExpPerStatPt}
+                keyboardType="decimal-pad"
+                placeholder="e.g. 20"
+              />
+              <Text style={styles.expHint}>
+                Every {expPerStatPt || '20'} EXP from this exercise = +1 {statType.toUpperCase()}.
+                Example: earn {Number(expPerStatPt || 20) * 3} EXP → +3 {statType.toUpperCase()}
+              </Text>
 
               <View style={styles.row}>
                 <SystemButton title="Cancel" variant="ghost" style={styles.flex1}

@@ -231,7 +231,11 @@ const PlansScreen: React.FC = () => {
                     <View style={styles.peInfo}>
                       <Text style={styles.peName}>{pe.exercise_name}</Text>
                       <Text style={styles.peSets}>
-                        {pe.sets} sets × {pe.target} {pe.unit_label ?? 'reps'}  ·  +{((pe.exp_per_unit ?? 2) * pe.target * pe.sets).toFixed(0)} EXP total
+                        {pe.sets} sets × {pe.target} {pe.unit_label ?? 'reps'}  ·  +{(
+                          (pe.target * pe.sets)
+                          / ((pe.exp_unit_count ?? 1) > 0 ? (pe.exp_unit_count ?? 1) : 1)
+                          * (pe.exp_per_unit ?? 2)
+                        ).toFixed(0)} EXP total
                       </Text>
                     </View>
                     <TouchableOpacity onPress={() => handleRemoveExercise(pe.id!)}>
@@ -258,7 +262,9 @@ const PlansScreen: React.FC = () => {
                   <TouchableOpacity key={ex.id} style={[styles.exPickItem, selExId === ex.id && styles.exPickItemOn]}
                     onPress={() => setSelExId(ex.id!)}>
                     <Text style={[styles.exPickTxt, selExId === ex.id && styles.exPickTxtOn]}>{ex.name}</Text>
-                    <Text style={styles.exPickExp}>+{ex.exp_per_unit} EXP/{ex.unit_label}</Text>
+                    <Text style={styles.exPickExp}>
+                      {ex.exp_per_unit} EXP/{ex.exp_unit_count ?? 1} {ex.unit_label}
+                    </Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>

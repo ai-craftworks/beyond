@@ -41,10 +41,9 @@ const ProfileScreen: React.FC = () => {
       return;
     }
     setExpandedSession(sessionId);
-    if (!sessionDetails[sessionId]) {
-      const detail = await getSessionSummary(sessionId);
-      setSessionDetails(prev => ({ ...prev, [sessionId]: detail }));
-    }
+    // Always re-fetch — bonus exercises can be added after session completion
+    const detail = await getSessionSummary(sessionId);
+    setSessionDetails(prev => ({ ...prev, [sessionId]: detail }));
   };
 
   if (!player) return null;
@@ -179,11 +178,18 @@ const ProfileScreen: React.FC = () => {
                         </Text>
                         {ex.is_completed && (
                           <Text style={styles.sessionExAmt}>
-                            {ex.actual_amount} {ex.unit_label}  +{ex.exp_reward} EXP
+                            {ex.actual_amount} {ex.unit_label ?? 'reps'}  +{ex.exp_reward} EXP
                           </Text>
                         )}
                       </View>
                     ))}
+                    <View style={styles.sessionExRow}>
+                      <Text style={[styles.sessionExDot, { color: COLORS.accentCyan }]}>Σ</Text>
+                      <Text style={[styles.sessionExName, { color: COLORS.textSecondary }]}>Session Total (incl. bonus)</Text>
+                      <Text style={[styles.sessionExAmt, { color: COLORS.accentCyan }]}>
+                        +{s.total_exp} EXP
+                      </Text>
+                    </View>
                     {detail.bonuses.length > 0 && (
                       <>
                         <Text style={styles.sessionBonusLabel}>BONUS</Text>
@@ -198,7 +204,7 @@ const ProfileScreen: React.FC = () => {
                             </Text>
                             {ex.is_completed && (
                               <Text style={styles.sessionExAmt}>
-                                {ex.actual_amount} {ex.unit_label}  +{ex.exp_reward} EXP
+                                {ex.actual_amount} {ex.unit_label ?? 'reps'}  +{ex.exp_reward} EXP
                               </Text>
                             )}
                           </View>

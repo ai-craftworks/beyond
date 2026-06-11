@@ -142,7 +142,7 @@ const SessionScreen: React.FC = () => {
   };
 
   const finalizeBonusExercise = async (ex: BonusExercise, actualAmount: number) => {
-    const expEarned = Math.floor(actualAmount * ex.exp_per_unit);
+    const expEarned = Math.floor((actualAmount / (ex.exp_unit_count > 0 ? ex.exp_unit_count : 1)) * ex.exp_per_unit);
     setBonusEx(prev =>
       prev.map(e => e.id === ex.id ? { ...e, is_completed: 1, actual_amount: actualAmount, exp_reward: expEarned } : e)
     );
@@ -176,16 +176,24 @@ const SessionScreen: React.FC = () => {
       if (!p) return;
 
       // Sum EXP from main + bonus exercises
-      let mainExp  = doneMain.reduce((sum, e) => sum + e.exp_reward, 0);
-      let bonusExp = doneBonus.reduce((sum, e) => sum + e.exp_reward, 0);
-      const allDone = doneMain.length === exercises.length;
-      if (allDone) mainExp = Math.floor(mainExp * 1.1); // 10% full-clear bonus
-      const totalExp = mainExp + bonusExp;
+      const rawMainExp  = doneMain.reduce((sum, e) => sum + e.exp_reward, 0);
+      const bonusExp    = doneBonus.reduce((sum, e) => sum + e.exp_reward, 0);
+      const allDone     = doneMain.length === exercises.length;
+      // Apply 10% bonus to main exercises only, as a flat addition
+      const bonusAmount = allDone ? Math.floor(rawMainExp * 0.1) : 0;
+      const mainExp     = rawMainExp + bonusAmount;
+      const totalExp    = mainExp + bonusExp;
 
-      // Stat gains
+      // Stat gain = floor(EXP earned by this exercise / exp_per_stat_point)
+      // e.g. earned 60 EXP, exp_per_stat_point = 20 → +3 stat points
       const statDeltas: Record<string, number> = {};
       for (const ex of [...doneMain, ...doneBonus]) {
-        statDeltas[ex.stat_type] = (statDeltas[ex.stat_type] ?? 0) + ex.stat_reward;
+        const expPerStatPoint = (ex as any).exp_per_stat_point > 0
+          ? (ex as any).exp_per_stat_point : 20;
+        const statGain = Math.floor(ex.exp_reward / expPerStatPoint);
+        if (statGain > 0) {
+          statDeltas[ex.stat_type] = (statDeltas[ex.stat_type] ?? 0) + statGain;
+        }
       }
 
       // Level calculation
@@ -368,7 +376,10 @@ const SessionScreen: React.FC = () => {
               </Text>
             </View>
             <Text style={styles.amountExpPreview}>
-              ≈ {Math.floor(Number(inputAmount || 0) * (pendingExercise?.exp_per_unit ?? pendingBonus?.exp_per_unit ?? 0))} EXP
+              ≈ {Math.floor(
+                  (Number(inputAmount || 0) / ((pendingExercise?.exp_unit_count || pendingBonus?.exp_unit_count || 1)))
+                  * (pendingExercise?.exp_per_unit ?? pendingBonus?.exp_per_unit ?? 0)
+                )} EXP
             </Text>
             <View style={styles.amountBtnRow}>
               <SystemButton title="Cancel" variant="ghost" style={styles.flex1}
@@ -450,7 +461,14 @@ const ExerciseItem: React.FC<{ exercise: SessionExercise; index: number; onTap: 
       </View>
       <View style={[styles.expBadge, done && styles.expBadgeDone]}>
         <Text style={[styles.expBadgeTxt, done && styles.expBadgeTxtDone]}>
-          {done ? `+${exercise.exp_reward}` : `~${Math.floor(exercise.target * exercise.sets_total * exercise.exp_per_unit)}`}
+          {done
+            ? `+${exercise.exp_reward}`
+            : `~${Math.floor(
+                (exercise.target * exercise.sets_total)
+                / (exercise.exp_unit_count > 0 ? exercise.exp_unit_count : 1)
+                * exercise.exp_per_unit
+              )}`
+          }
         </Text>
         <Text style={[styles.expBadgeLbl, done && styles.expBadgeTxtDone]}>EXP</Text>
       </View>
@@ -473,7 +491,14 @@ const BonusItem: React.FC<{ exercise: BonusExercise; index: number; onTap: () =>
       </View>
       <View style={[styles.expBadge, styles.bonusExpBadge, done && styles.expBadgeDone]}>
         <Text style={[styles.expBadgeTxt, done && styles.expBadgeTxtDone]}>
-          {done ? `+${exercise.exp_reward}` : `~${Math.floor(exercise.target * exercise.exp_per_unit)}`}
+          {done
+            ? `+${exercise.exp_reward}`
+            : `~${Math.floor(
+                exercise.target
+                / (exercise.exp_unit_count > 0 ? exercise.exp_unit_count : 1)
+                * exercise.exp_per_unit
+              )}`
+          }
         </Text>
         <Text style={[styles.expBadgeLbl, done && styles.expBadgeTxtDone]}>EXP</Text>
       </View>
