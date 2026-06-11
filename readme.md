@@ -1,218 +1,290 @@
-# ⚔ Solo Leveling System
+# ⚔ Beyond
 
 A real-life RPG fitness tracker inspired by the System UI from *Solo Leveling*.
-Complete workouts to earn EXP, level up, unlock ranks from E to National Level,
-and earn titles based on your performance. Everything runs offline — no accounts,
-no servers, no internet required.
+Complete workouts, earn EXP, level up, unlock ranks from E to National Level Hunter,
+and earn titles based on your performance. Everything is stored locally on your device —
+no accounts, no internet required, no cloud sync.
 
 ---
 
-## Screenshots (UI Preview)
+## Table of Contents
 
-| Registration | Dashboard | Active Session | Level Up |
-|---|---|---|---|
-| 3-step wizard | Player card + daily quests | Check off exercises | Animated overlay |
-
-The app uses a dark navy and cyan colour palette inspired directly by the System
-windows in the manhwa.
+1. [Features](#features)
+2. [Prerequisites](#prerequisites)
+3. [Project Setup](#project-setup)
+4. [Preview on Your Phone](#preview-on-your-phone)
+5. [Building an APK — Preview Build](#building-an-apk--preview-build)
+6. [Building an APK — Production Build](#building-an-apk--production-build)
+7. [Installing the APK on Your Phone](#installing-the-apk-on-your-phone)
+8. [Project Structure](#project-structure)
+9. [Game Mechanics](#game-mechanics)
+10. [Database Schema](#database-schema)
+11. [Sound Effects](#sound-effects)
+12. [Troubleshooting](#troubleshooting)
+13. [Package Versions](#package-versions)
 
 ---
 
 ## Features
 
-- **Hunter Registration** — One-time setup: name, age, weight, height
-- **Custom Exercises** — Create any exercise with your own EXP reward and stat boost
-- **Workout Plans** — Group exercises into named plans with set/rep configuration
-- **Repeat Scheduling** — Set plans to repeat on specific weekdays (Mon–Sun)
-- **Daily Quests** — Sessions auto-generate each morning from your active plans
-- **EXP System** — Escalating EXP curve: `100 × level^1.5`
+- **Hunter Registration** — One-time setup collecting name, age, weight and height
+- **Custom Exercises** — Create exercises with unit types (reps, km, metres, minutes, seconds), EXP per unit, and stat boosts. Edit or delete anytime.
+- **Workout Plans** — Group exercises into named plans. Set repeat days, sets, target amount, and a missed-quest penalty. Edit plans anytime.
+- **Daily Quests** — Sessions auto-generate each morning from active plans
+- **Bonus Exercises** — Add optional exercises to any session for extra EXP with no penalty if skipped
+- **EXP per Unit** — EXP scales with actual output (10 push-ups = 20 EXP at 2 EXP/rep; 20 push-ups = 40 EXP)
+- **Session Replay** — Completed sessions stay open so you can add bonus exercises after finishing
+- **Missed Quest Penalty** — Configurable EXP deduction applied automatically the next morning if a quest is not completed
 - **5 Stats** — Strength, Agility, Endurance, Intelligence, Vitality
 - **Rank Progression** — E → D → C → B → A → S → SS → National Level Hunter
-- **12 Titles** — Awarded automatically for hitting milestones (levels and stat thresholds)
+- **12 Titles** — Awarded automatically when level and stat milestones are hit
 - **Level-Up Modal** — Full-screen animated overlay when you level up
-- **10% Full-Clear Bonus** — Complete every exercise in a session for bonus EXP
-- **Session History** — View past sessions and total EXP earned
-- **Fully Offline** — SQLite local storage, no internet needed
-
----
-
-## Tech Stack
-
-| Technology | Version | Purpose |
-|---|---|---|
-| Expo | ~54.0.35 | Build toolchain and cloud APK builds |
-| React Native | 0.81.5 | Core mobile framework |
-| React | 19.1.0 | UI library |
-| TypeScript | ~5.8.3 | Type-safe JavaScript |
-| expo-sqlite | ~16.0.10 | Local SQLite database |
-| React Navigation | ~6.x | Screen navigation |
-| EAS Build | latest CLI | Cloud APK/AAB compilation |
+- **Sound System** — 10 context-aware sound effects (boot, quest start, exercise done, level up, penalty, and more)
+- **Reset** — Wipe all data and start fresh from the Profile screen
+- **Fully Offline** — SQLite local storage, no internet required
 
 ---
 
 ## Prerequisites
 
-You only need two things to run this project:
+You need only two things installed on your computer.
 
 ### 1 — Node.js
 
-Download from https://nodejs.org — choose the **LTS** version (the green button).
-Run the installer with all default options.
+Download from **https://nodejs.org** — choose the **LTS** version (green button).
+Run the installer with all default settings.
 
-Verify the install worked by opening a terminal and running:
+After installing, open a terminal (Command Prompt or PowerShell on Windows) and verify:
 ```
 node --version
 npm --version
 ```
-Both should print version numbers. If they don't, restart your terminal.
+Both should print a version number. If they show an error, restart your terminal and try again.
 
 ### 2 — Expo Go (on your Android phone)
 
-Install **Expo Go** from the Google Play Store on your Android phone.
-This app lets you preview the project by scanning a QR code — no APK needed.
+Install **Expo Go** from the Google Play Store.
+This is used only for previewing — not needed once you install the real APK.
 
 ---
 
-## Running for the First Time
+## Project Setup
 
-Open a terminal (Command Prompt or PowerShell on Windows), then run:
+Open a terminal, navigate to the project folder, and install all dependencies:
 
-```bash
+```
 cd SoloLevelingFinal
 npm install
+```
+
+This downloads all packages into `node_modules/`. It takes 1–3 minutes and only needs to run once, or whenever you add new packages.
+
+---
+
+## Preview on Your Phone
+
+This runs the app instantly on your phone without building an APK. Hot reloads on every file save.
+
+### Step 1 — Start the development server
+
+```
 npx expo start
 ```
 
-### What each command does
+A QR code appears in the terminal after a few seconds.
 
-**`npm install`**
-Downloads all the packages listed in `package.json` into a `node_modules/` folder.
-This only needs to run once, or when you add/remove packages.
-Takes 1–3 minutes on first run.
+### Step 2 — Connect your phone
 
-**`npx expo start`**
-Starts the Metro bundler — a development server that compiles your TypeScript
-files and serves them to the phone.
-A QR code appears in the terminal when it's ready.
+- Your phone and computer must be on the **same WiFi network**
+- Open **Expo Go** on your phone
+- Tap **Scan QR code**
+- Point at the QR code in the terminal
+- The app loads in a few seconds ✓
 
-### Connecting your phone
+Every time you save a file, the app refreshes automatically on your phone.
 
-1. Make sure your phone and computer are on the **same WiFi network**
-2. Open **Expo Go** on your phone
-3. Tap **"Scan QR code"**
-4. Point your camera at the QR code in the terminal
-5. The app loads in a few seconds
+### If the QR code does not connect
 
-Every time you save a file in your editor, the app reloads on your phone automatically.
+Run with tunnel mode — this works even if your phone and PC are on different networks:
+```
+npx expo start --tunnel
+```
 
-> **If the QR code doesn't connect:**
-> Run `npx expo start --tunnel` instead. Tunnel mode routes through Expo's servers
-> and works even when phone and PC are on different networks (e.g. phone on mobile data).
+### If you see a Metro error or red screen
+
+Clear the bundler cache and restart:
+```
+npx expo start --clear
+```
+
+Shake your phone (or press `r` in the terminal) to reload the app at any time.
 
 ---
 
-## Building an APK
+## Building an APK — Preview Build
 
-An APK is a standalone Android app file that installs like any normal app —
-no Expo Go required. Builds happen on Expo's cloud servers so your PC
-does zero compilation. You do not need Java, Android Studio, or any native tools.
+A preview APK is a standalone file you can install on any Android phone without Expo Go.
+The build runs on **Expo's cloud servers** — your PC does zero compilation.
+You do not need Java, Android Studio, or any native tools.
 
 ### Step 1 — Create a free Expo account
 
-Go to https://expo.dev and sign up. The free tier is enough for everything here.
+Go to **https://expo.dev** and sign up. The free tier is sufficient for everything here.
 
 ### Step 2 — Install EAS CLI
 
-EAS (Expo Application Services) is the cloud build service.
+EAS (Expo Application Services) is Expo's cloud build service.
 
-```bash
+```
 npm install -g eas-cli
 ```
 
-The `-g` flag installs it globally so you can use it from any folder.
+The `-g` flag installs it globally so you can run it from any folder.
+
+Verify it installed:
+```
+eas --version
+```
 
 ### Step 3 — Log in to your Expo account
 
-```bash
+```
 eas login
 ```
 
-Enter the email and password you used on expo.dev.
+Enter the email and password you used at expo.dev.
 
 ### Step 4 — Link the project to your account
 
 Run this from inside the project folder:
 
-```bash
+```
 cd SoloLevelingFinal
 eas init
 ```
 
-When asked "Would you like to create a new EAS project?", type **y** and press Enter.
-This writes your project ID into `app.json`.
+When asked **"Would you like to create a new EAS project?"**, type `y` and press Enter.
+This writes your project ID into `app.json` automatically.
 
-### Step 5 — Start the build
+If it asks for a project name, enter: `Beyond`
 
-```bash
-eas build --platform android --profile preview
-```
+### Step 5 — Update app.json (if not already done)
 
-What happens:
-- Your source code is uploaded to Expo's build servers
-- Expo compiles it into a real Android APK in the cloud
-- You see live build progress in the terminal
-- When done (usually 5–15 minutes), you get a download link
-
-You can also monitor the build and download the APK at:
-**https://expo.dev/builds**
-
-### Step 6 — Install the APK on your phone
-
-**Option A — Direct download on phone:**
-Open the download link directly on your Android phone and tap the APK file.
-
-**Option B — Transfer from PC:**
-Download the APK to your PC, then transfer it to your phone via USB cable or
-send it to yourself via email/messaging app.
-
-**Enabling installation from unknown sources:**
-
-Android blocks APK installs from outside the Play Store by default.
-To allow it:
-
-- **Android 8+:** Settings → Apps → Special app access → Install unknown apps →
-  select your browser or file manager → allow
-- **Older Android:** Settings → Security → Unknown sources → enable
-
-Then tap the APK file and tap **Install**.
-
----
-
-## Build Profiles
-
-The `eas.json` file defines two build profiles:
+Open `app.json` and make sure it looks like this:
 
 ```json
 {
-  "build": {
-    "preview": {
-      "android": { "buildType": "apk" }
+  "expo": {
+    "name": "Beyond",
+    "slug": "beyond-app",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0A0E1A",
+    "splash": {
+      "image": "./assets/icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0A0E1A"
     },
-    "production": {
-      "android": { "buildType": "apk" }
-    }
+    "android": {
+      "package": "com.beyond.app",
+      "permissions": [],
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#0A0E1A"
+      }
+    },
+    "plugins": [
+      "expo-sqlite",
+      "expo-audio"
+    ]
   }
 }
 ```
 
-| Profile | Command | Use for |
-|---|---|---|
-| `preview` | `eas build --platform android --profile preview` | Testing — fast build, APK format |
-| `production` | `eas build --platform android --profile production` | Final release APK |
+> If you do not have an `icon.png` yet, remove the `icon`, `splash`, and `adaptiveIcon` fields for now. The build will succeed without them and use a default Expo icon.
 
-Both produce APK files. If you ever want to publish to the Play Store,
-change `"buildType": "apk"` to `"buildType": "aab"` for the production profile
-(Play Store requires AAB format).
+### Step 6 — Start the preview build
+
+```
+eas build --platform android --profile preview
+```
+
+What happens next:
+- Your source code is uploaded to Expo's servers (takes ~30 seconds)
+- The build is queued — position shown in the terminal
+- Build takes **5–15 minutes** depending on queue length
+- When done, a **download link** appears in the terminal
+- You can also monitor progress and download at: **https://expo.dev/builds**
+
+The `preview` profile in `eas.json` produces an **APK** file (`.apk`) which can be directly installed on any Android device.
+
+---
+
+## Building an APK — Production Build
+
+Production builds are identical to preview builds but intended for distribution.
+Use this when you want the final, release-quality version.
+
+```
+eas build --platform android --profile production
+```
+
+The only difference is the `production` profile is the standard EAS release build.
+Build time and process are the same as preview.
+
+> **Play Store:** If you want to upload to the Google Play Store, change `"buildType": "apk"` to `"buildType": "aab"` in the `production` section of `eas.json`. The Play Store requires AAB format. Direct installs require APK format.
+
+### Versioning before a production build
+
+Before each production build, update the version in `app.json`:
+```json
+"version": "1.0.1"
+```
+And increment `versionCode` inside the `android` block:
+```json
+"android": {
+  "versionCode": 2,
+  ...
+}
+```
+`versionCode` must increase with every upload to the Play Store. `version` is the human-readable number shown to users.
+
+---
+
+## Installing the APK on Your Phone
+
+### Option A — Download directly on your phone
+
+Open the download link from the EAS build directly on your Android phone and tap it.
+Your browser will download the `.apk` file.
+
+### Option B — Transfer from PC via USB
+
+1. Download the `.apk` to your PC
+2. Connect your phone via USB cable
+3. Open File Explorer → your phone → Internal Storage
+4. Copy the `.apk` file to any folder (e.g. Downloads)
+5. On your phone, open a file manager and navigate to that folder
+6. Tap the `.apk` file
+
+### Option C — Send to yourself
+
+Email the `.apk` to yourself, or send it via WhatsApp, Telegram, or any messaging app.
+Open it on your phone and tap to install.
+
+### Enabling installation from unknown sources
+
+Android blocks APK files from outside the Play Store by default. You need to allow it once:
+
+**Android 8 and above:**
+Settings → Apps → tap the three-dot menu → Special app access → Install unknown apps → select the app you used to open the file (e.g. Chrome, Files) → toggle **Allow from this source**
+
+**Older Android:**
+Settings → Security → Unknown sources → Enable
+
+After enabling, tap the APK file again and tap **Install**.
 
 ---
 
@@ -221,79 +293,112 @@ change `"buildType": "apk"` to `"buildType": "aab"` for the production profile
 ```
 SoloLevelingFinal/
 │
-├── index.ts                  App entry point
-├── App.tsx                   Root component — navigation and database init
-├── app.json                  Expo config (name, package ID, SDK version)
-├── package.json              All dependencies with exact versions
-├── eas.json                  EAS cloud build configuration
-├── babel.config.js           Babel transpiler config
-├── tsconfig.json             TypeScript compiler config
-├── .gitignore                Files excluded from Git version control
+├── index.ts                    App entry point
+├── App.tsx                     Root — navigation tree, DB init, audio init
+├── app.json                    Expo config (name, package ID, icons, plugins)
+├── eas.json                    EAS cloud build config (APK profiles)
+├── package.json                All dependencies with exact versions
+├── babel.config.js             Babel transpiler config
+├── tsconfig.json               TypeScript compiler settings
+├── .gitignore                  Files excluded from Git
+│
+├── assets/
+│   ├── icon.png                App icon (1024×1024 px)
+│   └── sounds/
+│       ├── boot.wav            System boot hum
+│       ├── navigate.wav        Tab switch blip
+│       ├── click.mp3           Button tap
+│       ├── exerciseDone.mp3    Exercise completion hit
+│       ├── sessionDone.mp3     Session complete whoosh
+│       ├── levelup.mp3         Level-up epic chime
+│       ├── title.mp3           Title earned ping
+│       ├── penalty.wav         Missed quest warning
+│       ├── profile.mp3         Profile scan ambient
+│       └── questStart.wav      Quest start tension
 │
 └── src/
     ├── constants/
-    │   └── game.ts           Ranks, EXP formula, stats, titles, colour palette
+    │   └── game.ts             Ranks, EXP formula, unit types, stats, titles, colours
     │
     ├── database/
-    │   └── Database.ts       All SQLite tables and CRUD operations
+    │   └── Database.ts         All SQLite tables and every CRUD function
+    │
+    ├── utils/
+    │   └── sounds.ts           Sound engine (expo-audio), 10 sound events
     │
     ├── components/
-    │   ├── UIComponents.tsx  SystemPanel, SystemButton, ExpBar, StatRow, etc.
-    │   └── LevelUpModal.tsx  Animated level-up full-screen overlay
+    │   ├── UIComponents.tsx    Shared styled components (SystemPanel, ExpBar, etc.)
+    │   └── LevelUpModal.tsx    Animated level-up full-screen overlay
     │
     └── screens/
         ├── RegistrationScreen.tsx   First-launch 3-step wizard
-        ├── DashboardScreen.tsx      Home — player card, stats, daily quests
-        ├── ExercisesScreen.tsx      Create and manage custom exercises
-        ├── PlansScreen.tsx          Build plans, assign exercises, schedule days
-        ├── SessionScreen.tsx        Active workout — check off exercises, earn EXP
-        └── ProfileScreen.tsx        Full stats, rank, earned titles, history
+        ├── DashboardScreen.tsx      Home — player card, stats, daily quests, penalties
+        ├── ExercisesScreen.tsx      Exercise library — create, edit, delete
+        ├── PlansScreen.tsx          Plan builder — exercises, days, penalty, edit
+        ├── SessionScreen.tsx        Active session — main quests, bonus quests, completion
+        └── ProfileScreen.tsx        Stats, rank, titles, history, reset
 ```
 
 ---
 
-## Database
+## Game Mechanics
 
-All data is stored locally in a SQLite database at:
+### EXP and Levelling
+
+EXP is earned by completing exercises. Each exercise has an **EXP per unit** value that scales with your actual output:
+
 ```
-/data/data/com.sololevelingsystem.app/databases/SoloLeveling.db
+EXP earned = actual_amount × exp_per_unit
 ```
 
-This file is private to the app. It persists through app updates but is
-deleted when the app is uninstalled.
+Examples:
+- Push-ups at 2 EXP/rep: 10 reps = 20 EXP, 50 reps = 100 EXP
+- Running at 5 EXP/km: 3 km = 15 EXP, 10 km = 50 EXP
+- Plank at 1 EXP/min: 5 min = 5 EXP, 30 min = 30 EXP
 
-### Tables
+A **10% bonus** is applied when every exercise in a session is completed.
 
-| Table | Purpose |
+### Levelling Curve
+
+EXP required per level: `100 × level^1.5`
+
+| Level | EXP needed for this level |
 |---|---|
-| `player` | Single-row player profile (level, EXP, all 5 stats, title) |
-| `exercises` | All custom exercises created by the player |
-| `plans` | Workout plans with name and repeat schedule |
-| `plan_exercises` | Join table — which exercises belong to which plan |
-| `sessions` | Daily workout instances generated from active plans |
-| `session_exercises` | Individual exercise rows within a session |
-| `titles` | All earned titles with dates |
+| 1 | 100 |
+| 5 | 559 |
+| 10 | 3,162 |
+| 20 | 8,944 |
+| 50 | 35,355 |
+| 99 | 985,171 |
 
----
+### Rank Progression
 
-## Rank System
+| Rank | Unlocks at Level |
+|---|---|
+| E-Rank Hunter | 1 |
+| D-Rank Hunter | 10 |
+| C-Rank Hunter | 20 |
+| B-Rank Hunter | 35 |
+| A-Rank Hunter | 50 |
+| S-Rank Hunter | 70 |
+| SS-Rank Hunter | 90 |
+| National Level Hunter | 99 |
 
-| Rank | Minimum Level | Colour |
-|---|---|---|
-| E | 1 | Grey |
-| D | 10 | Green |
-| C | 20 | Blue |
-| B | 35 | Purple |
-| A | 50 | Orange |
-| S | 70 | Gold |
-| SS | 90 | Red |
-| National | 99 | Cyan |
+### Stats
 
----
+Five stats are boosted by completing exercises. Each exercise is assigned a stat type and a stat reward value (e.g. Strength +2 per session completed). Stats are displayed in the Status Window on the Profile screen.
 
-## Title System
+| Stat | Boosted by |
+|---|---|
+| Strength ⚔️ | Strength training exercises |
+| Agility 💨 | Agility / speed exercises |
+| Endurance 🛡️ | Cardio exercises |
+| Intelligence 🧠 | Mental / study exercises |
+| Vitality ❤️ | Flexibility exercises |
 
-Titles are awarded automatically when conditions are met. Currently 12 titles:
+### Titles
+
+Titles are awarded automatically when conditions are met. The most recently earned title is displayed on your player card.
 
 | Title | Condition |
 |---|---|
@@ -304,11 +409,76 @@ Titles are awarded automatically when conditions are met. Currently 12 titles:
 | Monarch's Gaze | Reach Level 35 |
 | Shadow Monarch | Reach Level 50 |
 | Absolute Being | Reach Level 70 |
-| Strength Apostle | Strength stat reaches 50 |
-| Wind Dancer | Agility stat reaches 50 |
-| Iron Body | Endurance stat reaches 50 |
-| Brilliant Mind | Intelligence stat reaches 50 |
-| Undying | Vitality stat reaches 50 |
+| Strength Apostle | Strength stat ≥ 50 |
+| Wind Dancer | Agility stat ≥ 50 |
+| Iron Body | Endurance stat ≥ 50 |
+| Brilliant Mind | Intelligence stat ≥ 50 |
+| Undying | Vitality stat ≥ 50 |
+
+### Missed Quest Penalty
+
+Each plan can have a penalty EXP value (default 0). If a daily quest is not completed by the end of the day, the penalty is automatically deducted from your EXP the next time you open the app. A warning alert is shown telling you how much was deducted. Penalty cannot reduce EXP below zero.
+
+### Bonus Exercises
+
+Any session — including already-completed ones — can have bonus exercises added from the session screen. Bonus exercises give EXP if completed but carry no penalty if skipped. This lets you add extra work to a finished session without affecting your official quest record.
+
+---
+
+## Database
+
+All data is stored in a local SQLite database file at:
+```
+/data/data/com.beyond.app/databases/SoloLeveling.db
+```
+
+This file is private to the app and persists through updates. It is deleted only when the app is uninstalled.
+
+### Tables
+
+| Table | Purpose |
+|---|---|
+| `player` | Single-row player profile: level, EXP, all stats, current title |
+| `exercises` | All exercises with unit type, EXP per unit, stat rewards |
+| `plans` | Workout plans with schedule and missed-quest penalty |
+| `plan_exercises` | Join table: which exercises belong to which plan, with sets and target |
+| `sessions` | Daily workout instances generated from active plans |
+| `session_exercises` | Exercise rows inside a session with actual amounts completed |
+| `bonus_exercises` | Optional exercises added to a session for extra EXP |
+| `titles` | All earned titles with dates |
+
+### Schema upgrades without data loss
+
+The app uses a `safeAlter` approach to add new columns to existing tables on each launch:
+```typescript
+const safeAlter = async (sql: string) => {
+  try { await db.execAsync(sql); } catch (_) {}
+};
+await safeAlter(`ALTER TABLE exercises ADD COLUMN unit_type TEXT DEFAULT 'reps'`);
+```
+This means updating the app never erases your existing player data, exercises, plans, or history.
+
+---
+
+## Sound Effects
+
+The sound system uses `expo-audio`. Sounds are loaded once at startup and cached.
+Sound failures are silent — the app continues normally if a sound file is missing.
+
+| Sound event | Trigger |
+|---|---|
+| `boot` | App launches |
+| `navigate` | Switching between tabs |
+| `click` | Button taps on registration screen |
+| `questStart` | Opening an active session |
+| `exerciseDone` | Checking off an exercise |
+| `sessionDone` | Completing a session without levelling up |
+| `levelUp` | Levelling up after a session |
+| `title` | Earning a new title |
+| `penalty` | Missed quest penalty applied |
+| `profile` | Opening the Profile screen |
+
+All sound files live in `assets/sounds/`. To replace a sound, simply swap the file with a new one of the same name and format. Both `.mp3` and `.wav` are supported.
 
 ---
 
@@ -316,129 +486,144 @@ Titles are awarded automatically when conditions are met. Currently 12 titles:
 
 ### `npm install` fails with ERESOLVE
 
-```bash
-rmdir /s /q node_modules     # Windows
-del package-lock.json        # Windows
+```
+rmdir /s /q node_modules
+del package-lock.json
 npm install
 ```
 
-If it still fails, the versions in `package.json` may conflict.
-The key constraint: `react-native-safe-area-context` must be `~5.6.0`
-and `react-native-screens` must be `~4.16.0` for RN 0.81.5 compatibility.
+If it still fails, check that these exact versions are in `package.json`:
+- `react-native-safe-area-context`: `~5.6.0`
+- `react-native-screens`: `~4.16.0`
+
+These are the versions Expo SDK 54 officially requires for RN 0.81.5.
 
 ---
 
 ### "Project is incompatible with this version of Expo Go"
 
-Your installed Expo Go version must match the SDK version in `package.json`.
-This project uses **Expo SDK 54**. Check which SDK your Expo Go supports:
-open Expo Go → tap your profile/settings icon → SDK version is shown.
+Your Expo Go app version must match the SDK version in the project. This project uses **Expo SDK 54**.
 
-If they don't match, either:
-- Update Expo Go via the Play Store, or
-- Download the matching Expo Go from https://expo.dev/go
+Check your Expo Go version: open Expo Go → tap your profile icon → SDK version is listed.
+
+To get the matching Expo Go: https://expo.dev/go → select SDK 54 → download for Android.
 
 ---
 
-### QR code scans but app doesn't load
+### QR code scans but app does not load
 
 Try tunnel mode:
-```bash
+```
 npx expo start --tunnel
 ```
-
-Tunnel bypasses WiFi restrictions by routing through Expo's servers.
 
 ---
 
 ### Red error screen on phone
 
-Shake the phone (or press `r` in the Metro terminal) to reload.
-The full error message is printed in the terminal — that's where to look first.
-
-For a fresh start:
-```bash
-npx expo start --clear
-```
+1. Shake the phone → tap Reload
+2. Check the terminal for the full error message
+3. If it mentions a missing module: `npx expo start --clear`
 
 ---
 
 ### EAS build fails
 
-1. Check the full build logs at https://expo.dev/builds (tap your failed build)
-2. The most common causes and fixes:
+1. Go to https://expo.dev/builds and tap your failed build
+2. Click **"View logs"** — the actual error is near the bottom
 
-| Error | Fix |
+Common causes and fixes:
+
+| Error message | Fix |
 |---|---|
-| `safe-area-context` C++ compile error | Set version to `~5.6.0` in package.json |
-| `react-native-screens` C++ compile error | Set version to `~4.16.0` in package.json |
-| `eas init` not run | Run `eas init` from the project folder |
+| `safe-area-context` C++ compile error | Set `react-native-safe-area-context` to `~5.6.0` in `package.json` |
+| `react-native-screens` C++ compile error | Set `react-native-screens` to `~4.16.0` in `package.json` |
+| `eas init` not run | Run `eas init` inside the project folder |
 | Not logged in | Run `eas login` |
+| `icon.png` not found | Remove `icon`, `splash`, `adaptiveIcon` fields from `app.json` or add the file |
+| Keystore prompt | Answer `y` — EAS generates and stores it securely |
 
 ---
 
-### App data is gone after reinstall
+### App data gone after reinstall
 
-Expected behaviour. The SQLite database is stored in the app's private storage
-and is wiped when the app is uninstalled. After reinstalling, the registration
-screen will appear and you start fresh.
+Expected — the SQLite database is stored in the app's private storage and is wiped on uninstall. After reinstalling, the registration screen appears and you start fresh.
+
+To reset data without uninstalling: Profile screen → scroll to bottom → **Reset All Data & Start Fresh**.
+
+---
+
+### Sound not playing
+
+1. Check that the file exists in `assets/sounds/` with the exact filename used in `sounds.ts`
+2. Check phone volume is not zero
+3. Sounds play even in silent mode (`playsInSilentMode: true` is set)
+4. Sound failures are silent — open Metro logs to see any warnings
 
 ---
 
 ### TypeScript errors in editor
 
-```bash
+```
 npx tsc --noEmit
 ```
 
-This runs the TypeScript compiler without producing output files — it just
-reports errors. All errors must be zero before building.
+This checks all files without producing output. All errors must be zero before building.
 
 ---
 
-## Exact Package Versions (reference)
+## Package Versions
 
-These are the tested, working versions. Do not change them without testing.
+These exact versions are tested and working together. Do not change them without testing.
 
 ```json
-"expo":                            "~54.0.35",
-"expo-sqlite":                     "~16.0.10",
-"expo-status-bar":                 "~3.0.0",
-"expo-asset":                      "~12.0.13",
-"@react-navigation/native":        "~6.1.18",
-"@react-navigation/native-stack":  "~6.11.0",
-"@react-navigation/bottom-tabs":   "~6.6.1",
-"react":                           "19.1.0",
-"react-native":                    "0.81.5",
-"react-native-safe-area-context":  "~5.6.0",
-"react-native-screens":            "~4.16.0",
-"react-native-gesture-handler":    "~2.28.0"
+"expo":                           "~54.0.35",
+"expo-sqlite":                    "~16.0.10",
+"expo-status-bar":                "~3.0.0",
+"expo-asset":                     "~12.0.13",
+"expo-audio":                     "~1.1.1",
+"@react-navigation/native":       "~6.1.18",
+"@react-navigation/native-stack": "~6.11.0",
+"@react-navigation/bottom-tabs":  "~6.6.1",
+"react":                          "19.1.0",
+"react-native":                   "0.81.5",
+"react-native-safe-area-context": "~5.6.0",
+"react-native-screens":           "~4.16.0",
+"react-native-gesture-handler":   "~2.31.2"
 ```
 
 ---
 
-## Contributing / Modifying
+## Quick Reference
 
-### Adding a new exercise category
-Edit `EXERCISE_CATEGORIES` in `src/constants/game.ts`. No other file needs changing.
+```bash
+# Install dependencies (run once after cloning)
+npm install
 
-### Adding a new title
-Edit `TITLE_CONDITIONS` in `src/constants/game.ts`. No other file needs changing.
+# Preview on phone via Expo Go
+npx expo start
 
-### Changing the EXP curve
-Edit `expRequiredForLevel` in `src/constants/game.ts`. Change the `1.5` exponent.
-Lower = easier. Higher = harder.
+# Preview via tunnel (different WiFi / hotspot)
+npx expo start --tunnel
 
-### Adding a new screen
-1. Create the screen file in `src/screens/`
-2. Add it to `RootStackParamList` or `TabParamList` in `App.tsx`
-3. Add a `<Stack.Screen>` or `<Tab.Screen>` entry in `App.tsx`
+# Clear Metro cache
+npx expo start --clear
 
-See `development.md` for detailed step-by-step instructions on all of the above.
+# Install EAS CLI (run once)
+npm install -g eas-cli
 
----
+# Log in to Expo
+eas login
 
-## License
+# Link project to your Expo account (run once)
+eas init
 
-Personal use project. Solo Leveling IP belongs to Chugong / D&C Media / Kakao Entertainment.
-This app is not affiliated with or endorsed by the original creators.
+# Build preview APK (for testing)
+eas build --platform android --profile preview
+
+# Build production APK (for release)
+eas build --platform android --profile production
+
+# Check TypeScript
+npx tsc --noEmit
+```

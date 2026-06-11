@@ -7,7 +7,7 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Alert, TouchableOpacity } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { getPlayer, Player, getTitles, EarnedTitle, getRecentSessions, Session, resetAllData } from '../database/Database';
+import { getPlayer, Player, getTitles, EarnedTitle, getRecentSessions, Session, getSessionSummary, resetAllData } from '../database/Database';
 import { SystemPanel, SectionHeader, StatRow, ExpBar } from '../components/UIComponents';
 import { COLORS, getRankForLevel, STATS } from '../constants/game';
 
@@ -22,6 +22,9 @@ const ProfileScreen: React.FC = () => {
   const [sessions, setSessions] = useState<Session[]>([]);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
+  const [expandedSession, setExpandedSession] = useState<number | null>(null);
+  const [sessionDetails, setSessionDetails] = useState<Record<number, any>>({});
+
   useFocusEffect(useCallback(() => { loadAll(); }, []));
 
   const loadAll = async () => {
@@ -29,7 +32,17 @@ const ProfileScreen: React.FC = () => {
     setPlayer(p);
     setTitles(t);
     setSessions(s);
-    playSound('profile');
+  };
+
+  const toggleSession = async (sessionId: number) => {
+    if (expandedSession === sessionId) {
+      setExpandedSession(null);
+      return;
+    }
+    setExpandedSession(sessionId);
+    // Always re-fetch — bonus exercises can be added after session completion
+    const detail = await getSessionSummary(sessionId);
+    setSessionDetails(prev => ({ ...prev, [sessionId]: detail }));
   };
 
   if (!player) return null;
@@ -126,21 +139,82 @@ const ProfileScreen: React.FC = () => {
         <SectionHeader title="Recent Sessions" subtitle="Last 15" />
         {sessions.length === 0
           ? <Text style={styles.noData}>No sessions yet.</Text>
-          : sessions.map(s => (
-            <View key={s.id} style={styles.sessionRow}>
-              <View style={styles.sessionInfo}>
-                <Text style={styles.sessionPlan}>{s.plan_name}</Text>
-                <Text style={styles.sessionDate}>{s.date}</Text>
+          : sessions.map(s => {
+            const isExpanded = expandedSession === s.id;
+            const detail = sessionDetails[s.id!];
+            return (
+              <View key={s.id}>
+                <TouchableOpacity
+                  style={styles.sessionRow}
+                  onPress={() => toggleSession(s.id!)}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.sessionInfo}>
+                    <Text style={styles.sessionPlan}>{s.plan_name}</Text>
+                    <Text style={styles.sessionDate}>{s.date}</Text>
+                  </View>
+                  <View style={styles.sessionRight}>
+                    {s.total_exp > 0 && <Text style={styles.sessionExp}>+{s.total_exp} EXP</Text>}
+                    <Text style={[styles.sessionStatus,
+                      { color: s.status === 'completed' ? COLORS.accentGreen : COLORS.textMuted }]}>
+                      {s.status.toUpperCase()}
+                    </Text>
+                    <Text style={styles.expandChevron}>{isExpanded ? '▲' : '▼'}</Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* Expanded exercise detail */}
+                {isExpanded && detail && (
+                  <View style={styles.sessionDetail}>
+                    {detail.exercises.map((ex: any, i: number) => (
+                      <View key={i} style={styles.sessionExRow}>
+                        <Text style={styles.sessionExDot}>
+                          {ex.is_completed ? '✓' : '○'}
+                        </Text>
+                        <Text style={[styles.sessionExName,
+                          !ex.is_completed && { color: COLORS.textMuted }]}>
+                          {ex.name}
+                        </Text>
+                        {ex.is_completed && (
+                          <Text style={styles.sessionExAmt}>
+                            {ex.actual_amount} {ex.unit_label ?? 'reps'}  +{ex.exp_reward} EXP
+                          </Text>
+                        )}
+                      </View>
+                    ))}
+                    <View style={styles.sessionExRow}>
+                      <Text style={[styles.sessionExDot, { color: COLORS.accentCyan }]}>Σ</Text>
+                      <Text style={[styles.sessionExName, { color: COLORS.textSecondary }]}>Session Total (incl. bonus)</Text>
+                      <Text style={[styles.sessionExAmt, { color: COLORS.accentCyan }]}>
+                        +{s.total_exp} EXP
+                      </Text>
+                    </View>
+                    {detail.bonuses.length > 0 && (
+                      <>
+                        <Text style={styles.sessionBonusLabel}>BONUS</Text>
+                        {detail.bonuses.map((ex: any, i: number) => (
+                          <View key={i} style={styles.sessionExRow}>
+                            <Text style={[styles.sessionExDot, { color: COLORS.accentGold }]}>
+                              {ex.is_completed ? '★' : '☆'}
+                            </Text>
+                            <Text style={[styles.sessionExName,
+                              !ex.is_completed && { color: COLORS.textMuted }]}>
+                              {ex.name}
+                            </Text>
+                            {ex.is_completed && (
+                              <Text style={styles.sessionExAmt}>
+                                {ex.actual_amount} {ex.unit_label ?? 'reps'}  +{ex.exp_reward} EXP
+                              </Text>
+                            )}
+                          </View>
+                        ))}
+                      </>
+                    )}
+                  </View>
+                )}
               </View>
-              <View style={styles.sessionRight}>
-                {s.total_exp > 0 && <Text style={styles.sessionExp}>+{s.total_exp}</Text>}
-                <Text style={[styles.sessionStatus,
-                  { color: s.status === 'completed' ? COLORS.accentGreen : COLORS.textMuted }]}>
-                  {s.status.toUpperCase()}
-                </Text>
-              </View>
-            </View>
-          ))}
+            );
+          })}
       </SystemPanel>
 
       {/* Reset button */}
@@ -185,6 +259,14 @@ const styles = StyleSheet.create({
   sessionRight: { alignItems: 'flex-end', gap: 2 },
   sessionExp:   { color: COLORS.accentCyan, fontSize: 12, fontWeight: '700' },
   sessionStatus:{ fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
+
+  expandChevron:      { color: COLORS.textMuted, fontSize: 11, marginLeft: 6 },
+  sessionDetail:      { backgroundColor: COLORS.bgTertiary, borderRadius: 8, padding: 10, marginBottom: 6, marginTop: -4 },
+  sessionExRow:       { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, gap: 8 },
+  sessionExDot:       { color: COLORS.accentGreen, fontSize: 12, width: 16 },
+  sessionExName:      { color: COLORS.textSecondary, fontSize: 12, flex: 1 },
+  sessionExAmt:       { color: COLORS.accentCyan, fontSize: 11, fontWeight: '600' },
+  sessionBonusLabel:  { color: COLORS.accentGold, fontSize: 10, fontWeight: '700', letterSpacing: 1, marginTop: 6, marginBottom: 2 },
 
   resetBtn: {
     marginTop: 24,

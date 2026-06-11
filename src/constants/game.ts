@@ -17,7 +17,7 @@ export const RANKS = [
   { rank: 'A',        label: 'A-Rank Hunter',          minLevel: 50, color: '#FF9800' },
   { rank: 'S',        label: 'S-Rank Hunter',          minLevel: 70, color: '#FFD700' },
   { rank: 'SS',       label: 'SS-Rank Hunter',         minLevel: 90, color: '#FF6B6B' },
-  { rank: 'National', label: 'National Level Hunter',  minLevel: 99, color: '#00F5FF' },
+  { rank: 'N', label: 'National Level Hunter',  minLevel: 99, color: '#00F5FF' },
 ] as const;
 
 export const getRankForLevel = (level: number) => {

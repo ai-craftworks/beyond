@@ -14,7 +14,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import {
   createPlan, deletePlan, Plan, getPlans,
   getPlanExercises, getExercises, addExerciseToPlan,
-  removeExerciseFromPlan, updatePlan, Exercise, PlanExercise,
+  removeExerciseFromPlan, updatePlan, Exercise, PlanExercise, cancelTodayPendingSessions
 } from '../database/Database';
 import { SystemButton, SystemInput, SectionHeader, EmptyState } from '../components/UIComponents';
 import { COLORS } from '../constants/game';
@@ -76,7 +76,14 @@ const PlansScreen: React.FC = () => {
   const handleDeletePlan = (plan: Plan) =>
     Alert.alert('Delete Plan', `Remove "${plan.name}"?`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => { await deletePlan(plan.id!); await loadPlans(); } },
+      {
+        text: 'Delete', style: 'destructive',
+        onPress: async () => {
+          await cancelTodayPendingSessions(plan.id!);   // ← add
+          await deletePlan(plan.id!);
+          await loadPlans();
+        },
+      },
     ]);
 
   const openEditPlan = (plan: Plan) => {
@@ -106,6 +113,9 @@ const PlansScreen: React.FC = () => {
 
   const handleToggleActive = async (plan: Plan) => {
     const next = plan.is_active ? 0 : 1;
+    if (next === 0) {
+      await cancelTodayPendingSessions(plan.id!);   // ← add: clean up on deactivate
+    }
     await updatePlan(plan.id!, { is_active: next });
     await loadPlans();
     if (selectedPlan?.id === plan.id) setSelectedPlan({ ...plan, is_active: next });
@@ -221,7 +231,11 @@ const PlansScreen: React.FC = () => {
                     <View style={styles.peInfo}>
                       <Text style={styles.peName}>{pe.exercise_name}</Text>
                       <Text style={styles.peSets}>
-                        {pe.sets} sets × {pe.target} {pe.unit_label ?? 'reps'}  ·  +{((pe.exp_per_unit ?? 2) * pe.target * pe.sets).toFixed(0)} EXP total
+                        {pe.sets} sets × {pe.target} {pe.unit_label ?? 'reps'}  ·  +{(
+                          (pe.target * pe.sets)
+                          / ((pe.exp_unit_count ?? 1) > 0 ? (pe.exp_unit_count ?? 1) : 1)
+                          * (pe.exp_per_unit ?? 2)
+                        ).toFixed(0)} EXP total
                       </Text>
                     </View>
                     <TouchableOpacity onPress={() => handleRemoveExercise(pe.id!)}>
@@ -248,7 +262,9 @@ const PlansScreen: React.FC = () => {
                   <TouchableOpacity key={ex.id} style={[styles.exPickItem, selExId === ex.id && styles.exPickItemOn]}
                     onPress={() => setSelExId(ex.id!)}>
                     <Text style={[styles.exPickTxt, selExId === ex.id && styles.exPickTxtOn]}>{ex.name}</Text>
-                    <Text style={styles.exPickExp}>+{ex.exp_per_unit} EXP/{ex.unit_label}</Text>
+                    <Text style={styles.exPickExp}>
+                      {ex.exp_per_unit} EXP/{ex.exp_unit_count ?? 1} {ex.unit_label}
+                    </Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>

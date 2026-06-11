@@ -28,9 +28,9 @@ import { createAudioPlayer, setAudioModeAsync, AudioPlayer } from 'expo-audio';
 
 const SOUNDS: Record<string, string | number> = {
   // Short deep power-on hum
-  boot:         require("../../assets/sounds/boot.wav"),
+  boot:         require("../../assets/sounds/boot.mp3"),
   // Soft UI blip — tab switches, screen transitions
-  navigate:     require("../../assets/sounds/navigate.wav"),
+  navigate:     require("../../assets/sounds/navigate.mp3"),
   // Crisp click — button taps
   click:        require('../../assets/sounds/click.mp3'),
   // Impact hit — exercise completion
@@ -42,11 +42,11 @@ const SOUNDS: Record<string, string | number> = {
   // Crystal ping — title earned
   title:        require('../../assets/sounds/title.mp3'),
   // Low warning drone — penalty applied
-  penalty:      require('../../assets/sounds/penalty.wav'),
+  penalty:      require('../../assets/sounds/penalty.mp3'),
   // Ambient scan — profile opened
   profile:      require('../../assets/sounds/profile.mp3'),
   // Tension swell — session started
-  questStart:   require('../../assets/sounds/questStart.wav'),
+  questStart:   require('../../assets/sounds/questStart.mp3'),
 };
 
 // Cache of loaded players

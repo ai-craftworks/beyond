@@ -19,6 +19,7 @@ const ExercisesScreen: React.FC = () => {
   const [editDesc, setEditDesc]       = useState('');
   const [editUnitType, setEditUnitType]   = useState('reps');
   const [editExpPerUnit, setEditExpPerUnit] = useState('2');
+  const [editExpUnitCount, setEditExpUnitCount] = useState('1');
   const [editStatType, setEditStatType]   = useState('strength');
   const [editStatReward, setEditStatRew]  = useState('1');
   const [editCategory, setEditCategory]   = useState('strength');
@@ -28,15 +29,19 @@ const ExercisesScreen: React.FC = () => {
   const [desc, setDesc]               = useState('');
   const [unitType, setUnitType]       = useState('reps');
   const [expPerUnit, setExpPerUnit]   = useState('2');
+  const [expUnitCount, setExpUnitCount] = useState('1');
   const [statType, setStatType]       = useState('strength');
   const [statReward, setStatRew]      = useState('1');
   const [category, setCategory]       = useState('strength');
+  const [expPerStatPt, setExpPerStatPt] = useState('20');
 
   useFocusEffect(useCallback(() => { load(); }, []));
   const load = async () => setExercises(await getExercises());
 
   const resetForm = () => {
     setName(''); setDesc(''); setUnitType('reps'); setExpPerUnit('2');
+    setExpUnitCount('1');
+    setExpPerStatPt('20');
     setStatType('strength'); setStatRew('1'); setCategory('strength');
   };
 
@@ -48,14 +53,15 @@ const ExercisesScreen: React.FC = () => {
     setLoading(true);
     try {
       await createExercise({
-        name:         name.trim(),
-        description:  desc.trim(),
-        exp_reward:   Number(expPerUnit),  // kept for compat
-        unit_type:    unitType,
-        exp_per_unit: Number(expPerUnit),
-        unit_label:   unit.suffix,
-        stat_type:    statType,
-        stat_reward:  Number(statReward),
+        name:           name.trim(),
+        description:    desc.trim(),
+        exp_reward:     Number(expPerUnit),
+        unit_type:      unitType,
+        exp_per_unit:   Number(expPerUnit),
+        exp_unit_count: Number(expUnitCount) || 1,
+        unit_label:     unit.suffix,
+        exp_per_stat_point: Number(expPerStatPt) || 20,  
+        stat_type:      statType,
         category,
       });
       resetForm();
@@ -81,8 +87,8 @@ const ExercisesScreen: React.FC = () => {
     setEditDesc(ex.description);
     setEditUnitType(ex.unit_type ?? 'reps');
     setEditExpPerUnit(String(ex.exp_per_unit ?? ex.exp_reward ?? 2));
+    setEditExpUnitCount(String(ex.exp_unit_count ?? 1));   
     setEditStatType(ex.stat_type);
-    setEditStatRew(String(ex.stat_reward));
     setEditCategory(ex.category);
     setEditModal(true);
   };
@@ -99,10 +105,10 @@ const ExercisesScreen: React.FC = () => {
         description:  editDesc.trim(),
         unit_type:    editUnitType,
         exp_per_unit: Number(editExpPerUnit),
+        exp_unit_count: Number(editExpUnitCount) || 1,
         exp_reward:   Number(editExpPerUnit),
         unit_label:   unit.suffix,
         stat_type:    editStatType,
-        stat_reward:  Number(editStatReward),
         category:     editCategory,
       });
       setEditModal(false);
@@ -151,12 +157,12 @@ const ExercisesScreen: React.FC = () => {
             <View style={styles.tags}>
               <View style={styles.tag}>
                 <Text style={styles.tagTxt}>
-                  +{item.exp_per_unit ?? item.exp_reward} EXP/{item.unit_label ?? 'rep'}
+                  {item.exp_per_unit ?? item.exp_reward} EXP / {item.exp_unit_count ?? 1} {item.unit_label ?? 'rep'}
                 </Text>
               </View>
               <View style={[styles.tag, { borderColor: accentForCat(item.category) }]}>
                 <Text style={[styles.tagTxt, { color: accentForCat(item.category) }]}>
-                  {item.stat_type.toUpperCase()} +{item.stat_reward}
+                  {item.stat_type.toUpperCase()}
                 </Text>
               </View>
               <View style={styles.tag}>
@@ -197,16 +203,32 @@ const ExercisesScreen: React.FC = () => {
                 ))}
               </View>
 
-              {/* EXP per unit */}
-              <SystemInput
-                label={`EXP per ${selectedUnit?.suffix ?? 'unit'}`}
-                value={expPerUnit}
-                onChangeText={setExpPerUnit}
-                keyboardType="decimal-pad"
-                placeholder="e.g. 2"
-              />
+              {/* EXP per N units */}
+              <View style={styles.row}>
+                <SystemInput
+                  label="EXP Gained"
+                  value={expPerUnit}
+                  onChangeText={setExpPerUnit}
+                  keyboardType="decimal-pad"
+                  placeholder="e.g. 1"
+                  style={styles.flex1}
+                />
+                <View style={styles.perLabel}>
+                  <Text style={styles.perLabelTxt}>per</Text>
+                </View>
+                <SystemInput
+                  label={`${selectedUnit?.suffix ?? 'units'} done`}
+                  value={expUnitCount}
+                  onChangeText={setExpUnitCount}
+                  keyboardType="decimal-pad"
+                  placeholder="e.g. 10"
+                  style={styles.flex1}
+                />
+              </View>
               <Text style={styles.expHint}>
-                {expPreview} EXP per {selectedUnit?.suffix ?? 'unit'} · 10 {selectedUnit?.suffix ?? 'units'} = {expPreview * 10} EXP
+                {Number(expPerUnit) || 0} EXP per {Number(expUnitCount) || 1} {selectedUnit?.suffix ?? 'units'}.{' '}
+                Example: 50 {selectedUnit?.suffix ?? 'units'} ={'  '}
+                {(((Number(expPerUnit) || 0) / (Number(expUnitCount) || 1)) * 50).toFixed(1)} EXP
               </Text>
 
               {/* Category */}
@@ -234,11 +256,16 @@ const ExercisesScreen: React.FC = () => {
               </View>
 
               <SystemInput
-                label="Stat +Value"
-                value={statReward}
-                onChangeText={setStatRew}
-                keyboardType="numeric"
+                label={`EXP needed for +1 ${statType.toUpperCase()} point`}
+                value={expPerStatPt}
+                onChangeText={setExpPerStatPt}
+                keyboardType="decimal-pad"
+                placeholder="e.g. 20"
               />
+              <Text style={styles.expHint}>
+                Every {expPerStatPt || '20'} EXP from this exercise = +1 {statType.toUpperCase()}.
+                Example: earn {Number(expPerStatPt || 20) * 3} EXP → +3 {statType.toUpperCase()}
+              </Text>
 
               <View style={styles.row}>
                 <SystemButton title="Cancel" variant="ghost" style={styles.flex1}
@@ -277,12 +304,17 @@ const ExercisesScreen: React.FC = () => {
                 ))}
               </View>
 
-              <SystemInput
-                label={`EXP per ${UNIT_TYPES.find(u => u.value === editUnitType)?.suffix ?? 'unit'}`}
-                value={editExpPerUnit}
-                onChangeText={setEditExpPerUnit}
-                keyboardType="decimal-pad"
-              />
+              <View style={styles.row}>
+                <SystemInput label="EXP Gained" value={editExpPerUnit} onChangeText={setEditExpPerUnit}
+                  keyboardType="decimal-pad" style={styles.flex1} />
+                <View style={styles.perLabel}>
+                  <Text style={styles.perLabelTxt}>per</Text>
+                </View>
+                <SystemInput
+                  label={`${UNIT_TYPES.find(u => u.value === editUnitType)?.suffix ?? 'units'} done`}
+                  value={editExpUnitCount} onChangeText={setEditExpUnitCount}
+                  keyboardType="decimal-pad" style={styles.flex1} />
+              </View>
 
               <Text style={styles.selectLbl}>CATEGORY</Text>
               <View style={styles.chips}>
@@ -306,7 +338,17 @@ const ExercisesScreen: React.FC = () => {
                 ))}
               </View>
 
-              <SystemInput label="Stat +Value" value={editStatReward} onChangeText={setEditStatRew} keyboardType="numeric" />
+              <SystemInput
+                label={`EXP needed for +1 ${statType.toUpperCase()} point`}
+                value={expPerStatPt}
+                onChangeText={setExpPerStatPt}
+                keyboardType="decimal-pad"
+                placeholder="e.g. 20"
+              />
+              <Text style={styles.expHint}>
+                Every {expPerStatPt || '20'} EXP from this exercise = +1 {statType.toUpperCase()}.
+                Example: earn {Number(expPerStatPt || 20) * 3} EXP → +3 {statType.toUpperCase()}
+              </Text>
 
               <View style={styles.row}>
                 <SystemButton title="Cancel" variant="ghost" style={styles.flex1}
@@ -354,6 +396,9 @@ const styles = StyleSheet.create({
   cardActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   editBtn:     { padding: 4 },
   editBtnTxt:  { color: COLORS.accentCyan, fontSize: 16, fontWeight: '700' },
+
+  perLabel:    { justifyContent: 'flex-end', paddingBottom: 14, alignItems: 'center', paddingHorizontal: 6 },
+  perLabelTxt: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
 });
 
 export default ExercisesScreen;
