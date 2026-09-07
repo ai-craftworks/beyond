@@ -7,11 +7,6 @@
     "icon": "./assets/images/logo.png",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#0A0E1A",
-    "splash": {
-      "image": "./assets/images/logo.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#0A0E1A"
-    },
     "android": {
       "versionCode": 3,
       "package": "com.beyond.app",
@@ -26,7 +21,10 @@
     },
     "plugins": [
       "expo-sqlite",
-      "expo-audio"
+      "expo-audio",
+      "expo-asset",
+      "expo-status-bar",
+      "expo-font"
     ],
     "owner": "bhaswanth",
     "extra": {

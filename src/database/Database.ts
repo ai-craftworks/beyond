@@ -10,6 +10,7 @@
  */
 
 import * as SQLite from 'expo-sqlite';
+import { calculateLevelFromTotalExp } from '../constants/game';
 
 // ─────────────────────────────────────────────
 // SINGLETON CONNECTION
@@ -164,6 +165,7 @@ export const initDatabase = async (): Promise<void> => {
   await safeAlter(`ALTER TABLE exercises ADD COLUMN exp_per_stat_point REAL DEFAULT 20`);
   await safeAlter(`ALTER TABLE session_exercises ADD COLUMN exp_per_stat_point REAL DEFAULT 20`);
   await safeAlter(`ALTER TABLE bonus_exercises ADD COLUMN exp_per_stat_point REAL DEFAULT 20`);
+  await safeAlter(`ALTER TABLE bonus_exercises ADD COLUMN exp_awarded INTEGER DEFAULT 0`);
 
   // Create bonus_exercises table if it doesn't exist
   await db.execAsync(`
@@ -294,6 +296,7 @@ export interface BonusExercise {
   actual_amount: number;
   is_completed: number;
   exp_reward: number;
+  exp_awarded: number;
   stat_type: string;
 }
 
@@ -310,17 +313,18 @@ export interface EarnedTitle {
 
 export const createPlayer = async (
   name: string, age: number, weight: number, height: number
-): Promise<void> => {
+): Promise<number> => {
   const db = await getDb();
-  await db.runAsync(
+  const result = await db.runAsync(
     `INSERT INTO player (name, age, weight, height) VALUES (?, ?, ?, ?)`,
     [name, age, weight, height]
   );
+  return result.lastInsertRowId;
 };
 
 export const getPlayer = async (): Promise<Player | null> => {
   const db = await getDb();
-  const row = await db.getFirstAsync<Player>(`SELECT * FROM player LIMIT 1`);
+  const row = await db.getFirstAsync<Player>(`SELECT * FROM player ORDER BY id ASC LIMIT 1`);
   return row ?? null;
 };
 
@@ -328,9 +332,18 @@ export const updatePlayer = async (updates: Partial<Player>): Promise<void> => {
   const db = await getDb();
   const keys = Object.keys(updates);
   if (keys.length === 0) return;
-  const fields = keys.map(k => `${k} = ?`).join(', ');
-  const values = [...Object.values(updates)];
-  await db.runAsync(`UPDATE player SET ${fields} WHERE id = 1`, values);
+  const { id, ...fieldsToSet } = updates;
+  let targetId = id;
+  if (targetId == null) {
+    const row = await db.getFirstAsync<{ id: number }>(`SELECT id FROM player ORDER BY id ASC LIMIT 1`);
+    targetId = row?.id;
+  }
+  if (targetId == null) return;
+  const keys2 = Object.keys(fieldsToSet);
+  if (keys2.length === 0) return;
+  const fields = keys2.map(k => `${k} = ?`).join(', ');
+  const values = [...Object.values(fieldsToSet)];
+  await db.runAsync(`UPDATE player SET ${fields} WHERE id = ?`, [...values, targetId]);
 };
 
 // ─────────────────────────────────────────────
@@ -342,7 +355,7 @@ export const createExercise = async (ex: Omit<Exercise, 'id' | 'created_at'>): P
   const result = await db.runAsync(
     `INSERT INTO exercises (name, description, exp_reward, unit_type, exp_per_unit, exp_unit_count, unit_label, exp_per_stat_point, stat_type, stat_reward, category)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [ex.name, ex.description, ex.exp_per_unit, ex.unit_type, ex.exp_per_unit,
+    [ex.name, ex.description, ex.exp_reward, ex.unit_type, ex.exp_per_unit,
      ex.exp_unit_count ?? 1, ex.unit_label, ex.exp_per_stat_point ?? 20,
      ex.stat_type, 0, ex.category]
   );
@@ -572,6 +585,19 @@ export const completeBonusExercise = async (
   );
 };
 
+// Marks bonus exercises as having had their EXP awarded to the player.
+// Used so that "Claim Bonus EXP" on an already-completed session only
+// applies each bonus exercise's reward once.
+export const markBonusExercisesAwarded = async (ids: number[]): Promise<void> => {
+  if (ids.length === 0) return;
+  const db = await getDb();
+  const placeholders = ids.map(() => '?').join(', ');
+  await db.runAsync(
+    `UPDATE bonus_exercises SET exp_awarded = 1 WHERE id IN (${placeholders})`,
+    ids
+  );
+};
+
 export const getMissedSessions = async (): Promise<Session[]> => {
   const db = await getDb();
   const today = new Date().toISOString().split('T')[0];
@@ -590,15 +616,19 @@ export const applyMissedSessionPenalty = async (sessionId: number): Promise<numb
     `SELECT penalty_exp FROM plans WHERE id = ?`, [session.plan_id]
   );
   const penalty = plan?.penalty_exp ?? 0;
-  if (penalty === 0) return 0;
+  // Always move the session out of 'pending' — even a zero-penalty missed quest
+  // must not be reprocessed on every load.
   await db.runAsync(`UPDATE sessions SET status = 'skipped' WHERE id = ?`, [sessionId]);
-  const player = await db.getFirstAsync<{ total_exp: number; exp: number }>(
-    `SELECT total_exp, exp FROM player WHERE id = 1`
+  if (penalty === 0) return 0;
+  const player = await db.getFirstAsync<{ id: number; total_exp: number; exp: number }>(
+    `SELECT id, total_exp, exp FROM player ORDER BY id ASC LIMIT 1`
   );
   if (!player) return 0;
+  const newTotal = Math.max(0, player.total_exp - penalty);
+  const { level, expInCurrentLevel, expToNext } = calculateLevelFromTotalExp(newTotal);
   await db.runAsync(
-    `UPDATE player SET exp = ?, total_exp = ? WHERE id = 1`,
-    [Math.max(0, player.exp - penalty), Math.max(0, player.total_exp - penalty)]
+    `UPDATE player SET exp = ?, total_exp = ?, level = ?, exp_to_next = ? WHERE id = ?`,
+    [expInCurrentLevel, newTotal, level, expToNext, player.id]
   );
   return penalty;
 };

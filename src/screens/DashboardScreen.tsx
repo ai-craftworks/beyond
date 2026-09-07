@@ -55,17 +55,23 @@ const DashboardScreen: React.FC = () => {
   // Finds sessions from previous days still marked 'pending' and applies their penalty
   const checkMissedPenalties = async () => {
     const missed = await getMissedSessions();
+    if (missed.length === 0) return;
+    let totalDeducted = 0;
+    let penalisedCount = 0;
     for (const session of missed) {
       const deducted = await applyMissedSessionPenalty(session.id!);
       if (deducted > 0) {
-        playSound('penalty');
-        // Brief alert so player knows they were penalised
-        Alert.alert(
-          '⚠ Quest Missed',
-          `You missed a quest from ${session.date}.\n-${deducted} EXP penalty applied.`,
-          [{ text: 'Understood', style: 'destructive' }]
-        );
+        totalDeducted += deducted;
+        penalisedCount++;
       }
+    }
+    if (penalisedCount > 0) {
+      playSound('penalty');
+      Alert.alert(
+        '⚠ Quest Missed',
+        `You missed ${penalisedCount} quest${penalisedCount > 1 ? 's' : ''}.\n-${totalDeducted} EXP penalty applied.`,
+        [{ text: 'Understood', style: 'destructive' }]
+      );
     }
   };
 

@@ -21,7 +21,7 @@ const ExercisesScreen: React.FC = () => {
   const [editExpPerUnit, setEditExpPerUnit] = useState('2');
   const [editExpUnitCount, setEditExpUnitCount] = useState('1');
   const [editStatType, setEditStatType]   = useState('strength');
-  const [editStatReward, setEditStatRew]  = useState('1');
+  const [editExpPerStatPt, setEditExpPerStatPt] = useState('20');
   const [editCategory, setEditCategory]   = useState('strength');
   const [editLoading, setEditLoading] = useState(false);
 
@@ -31,7 +31,6 @@ const ExercisesScreen: React.FC = () => {
   const [expPerUnit, setExpPerUnit]   = useState('2');
   const [expUnitCount, setExpUnitCount] = useState('1');
   const [statType, setStatType]       = useState('strength');
-  const [statReward, setStatRew]      = useState('1');
   const [category, setCategory]       = useState('strength');
   const [expPerStatPt, setExpPerStatPt] = useState('20');
 
@@ -42,13 +41,12 @@ const ExercisesScreen: React.FC = () => {
     setName(''); setDesc(''); setUnitType('reps'); setExpPerUnit('2');
     setExpUnitCount('1');
     setExpPerStatPt('20');
-    setStatType('strength'); setStatRew('1'); setCategory('strength');
+    setStatType('strength'); setCategory('strength');
   };
 
   const handleCreate = async () => {
     if (!name.trim())                                    return Alert.alert('System', 'Exercise name required.');
     if (isNaN(Number(expPerUnit)) || Number(expPerUnit) <= 0) return Alert.alert('System', 'Enter a valid EXP per unit (must be greater than 0).');
-    if (isNaN(Number(statReward)))                       return Alert.alert('System', 'Enter a valid stat value.');
     const unit = UNIT_TYPES.find(u => u.value === unitType)!;
     setLoading(true);
     try {
@@ -88,6 +86,7 @@ const ExercisesScreen: React.FC = () => {
     setEditUnitType(ex.unit_type ?? 'reps');
     setEditExpPerUnit(String(ex.exp_per_unit ?? ex.exp_reward ?? 2));
     setEditExpUnitCount(String(ex.exp_unit_count ?? 1));   
+    setEditExpPerStatPt(String(ex.exp_per_stat_point ?? 20));
     setEditStatType(ex.stat_type);
     setEditCategory(ex.category);
     setEditModal(true);
@@ -110,6 +109,7 @@ const ExercisesScreen: React.FC = () => {
         unit_label:   unit.suffix,
         stat_type:    editStatType,
         category:     editCategory,
+        exp_per_stat_point: Number(editExpPerStatPt) || 20,
       });
       setEditModal(false);
       setEditTarget(null);
@@ -339,15 +339,15 @@ const ExercisesScreen: React.FC = () => {
               </View>
 
               <SystemInput
-                label={`EXP needed for +1 ${statType.toUpperCase()} point`}
-                value={expPerStatPt}
-                onChangeText={setExpPerStatPt}
+                label={`EXP needed for +1 ${editStatType.toUpperCase()} point`}
+                value={editExpPerStatPt}
+                onChangeText={setEditExpPerStatPt}
                 keyboardType="decimal-pad"
                 placeholder="e.g. 20"
               />
               <Text style={styles.expHint}>
-                Every {expPerStatPt || '20'} EXP from this exercise = +1 {statType.toUpperCase()}.
-                Example: earn {Number(expPerStatPt || 20) * 3} EXP → +3 {statType.toUpperCase()}
+                Every {editExpPerStatPt || '20'} EXP from this exercise = +1 {editStatType.toUpperCase()}.
+                Example: earn {Number(editExpPerStatPt || 20) * 3} EXP → +3 {editStatType.toUpperCase()}
               </Text>
 
               <View style={styles.row}>

@@ -43,6 +43,7 @@ const LevelUpModal: React.FC<Props> = ({ visible, player, newTitle, onClose }) =
         ).start();
       });
     }
+    return () => pulseAnim.stopAnimation();
   }, [visible]);
 
   const rank = getRankForLevel(player.level);

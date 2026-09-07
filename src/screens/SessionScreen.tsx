@@ -11,7 +11,8 @@ import {
   updateSession, completeSessionExercise,
   SessionExercise, Player, saveTitle,
   getBonusExercises, addBonusExerciseToSession,
-  completeBonusExercise, BonusExercise, getExercises, Exercise, getSession
+  completeBonusExercise, markBonusExercisesAwarded,
+  BonusExercise, getExercises, Exercise, getSession
 } from '../database/Database';
 import { SystemPanel, SystemButton, ExpBar } from '../components/UIComponents';
 import LevelUpModal from '../components/LevelUpModal';
@@ -21,8 +22,6 @@ import { playSound } from '../utils/sounds';
 
 type Route = RouteProp<RootStackParamList, 'Session'>;
 type Nav   = NativeStackNavigationProp<RootStackParamList, 'Session'>;
-
-const db_getSession = getSession;
 
 const SessionScreen: React.FC = () => {
   const route      = useRoute<Route>();
@@ -52,11 +51,16 @@ const SessionScreen: React.FC = () => {
 
   const flashAnim  = useRef(new Animated.Value(0)).current;
   const flashScale = useRef(new Animated.Value(0.8)).current;
+  const finishingRef = useRef(false);
 
   useEffect(() => { loadSession(); }, []);
 
   const loadSession = async () => {
     setLoading(true);
+    const currentSession = await getSession(sessionId);
+    if (currentSession?.status === 'pending') {
+      await updateSession(sessionId, { status: 'in_progress', started_at: new Date().toISOString() });
+    }
     const [exs, bonus, p, all] = await Promise.all([
       getSessionExercises(sessionId),
       getBonusExercises(sessionId),
@@ -67,14 +71,9 @@ const SessionScreen: React.FC = () => {
     setBonusEx(bonus);
     setAllEx(all);
     setPlayer(p);
-    const sessionData = await getSession(sessionId);
-    setAlreadyCompleted(sessionData?.status === 'completed');
+    setAlreadyCompleted(currentSession?.status === 'completed');
+    if (currentSession?.status === 'pending') playSound('questStart');
     setLoading(false);
-    const currentSession = await db_getSession(sessionId);
-    if (currentSession?.status === 'pending') {
-      await updateSession(sessionId, { status: 'in_progress', started_at: new Date().toISOString() });
-      playSound('questStart');
-    }
   };
 
   const triggerFlash = (amount: number) => {
@@ -162,94 +161,160 @@ const SessionScreen: React.FC = () => {
   };
 
   const handleFinishSession = async () => {
-    const doneMain  = exercises.filter(e => e.is_completed);
-    const doneBonus = bonusExercises.filter(e => e.is_completed);
-
-    if (doneMain.length === 0 && doneBonus.length === 0) {
-      Alert.alert('System', 'Complete at least one exercise first, Hunter.');
-      return;
-    }
-
+    if (finishingRef.current) return;
+    finishingRef.current = true;
     setFinishing(true);
     try {
-      const p = await getPlayer();
-      if (!p) return;
+      const currentSession = await getSession(sessionId);
+      if (!currentSession) return;
 
-      // Sum EXP from main + bonus exercises
-      const rawMainExp  = doneMain.reduce((sum, e) => sum + e.exp_reward, 0);
-      const bonusExp    = doneBonus.reduce((sum, e) => sum + e.exp_reward, 0);
-      const allDone     = doneMain.length === exercises.length;
-      // Apply 10% bonus to main exercises only, as a flat addition
-      const bonusAmount = allDone ? Math.floor(rawMainExp * 0.1) : 0;
-      const mainExp     = rawMainExp + bonusAmount;
-      const totalExp    = mainExp + bonusExp;
+      const alreadyCompleted = currentSession.status === 'completed';
 
-      // Stat gain = floor(EXP earned by this exercise / exp_per_stat_point)
-      // e.g. earned 60 EXP, exp_per_stat_point = 20 → +3 stat points
-      const statDeltas: Record<string, number> = {};
-      for (const ex of [...doneMain, ...doneBonus]) {
-        const expPerStatPoint = (ex as any).exp_per_stat_point > 0
-          ? (ex as any).exp_per_stat_point : 20;
-        const statGain = Math.floor(ex.exp_reward / expPerStatPoint);
-        if (statGain > 0) {
-          statDeltas[ex.stat_type] = (statDeltas[ex.stat_type] ?? 0) + statGain;
+      // Newly-completed bonus exercises whose EXP hasn't been awarded yet.
+      // On an already-completed session, only these are claimable.
+      const claimableBonus = bonusExercises.filter(e => e.is_completed && !e.exp_awarded);
+      const claimableBonusIds = claimableBonus.map(b => b.id!);
+
+      if (!alreadyCompleted) {
+        const doneMain = exercises.filter(e => e.is_completed);
+        if (doneMain.length === 0 && claimableBonus.length === 0) {
+          Alert.alert('System', 'Complete at least one exercise first, Hunter.');
+          return;
         }
-      }
 
-      // Level calculation
-      const newTotalExp = p.total_exp + totalExp;
-      let level = 1, remaining = newTotalExp;
-      while (level < 100) {
-        const needed = expRequiredForLevel(level);
-        if (remaining < needed) break;
-        remaining -= needed; level++;
-      }
-      const levelled = level > p.level;
+        // Sum EXP from main + (all) bonus exercises being finished for the first time
+        const rawMainExp  = doneMain.reduce((sum, e) => sum + e.exp_reward, 0);
+        const bonusExp    = claimableBonus.reduce((sum, e) => sum + e.exp_reward, 0);
+        const allDone     = doneMain.length === exercises.length;
+        // Apply 10% bonus to main exercises only, as a flat addition
+        const bonusAmount = allDone ? Math.floor(rawMainExp * 0.1) : 0;
+        const mainExp     = rawMainExp + bonusAmount;
+        const totalExp    = mainExp + bonusExp;
 
-      const updates: Partial<Player> = {
-        level, exp: remaining,
-        exp_to_next: expRequiredForLevel(level),
-        total_exp: newTotalExp,
-        strength:     Math.min((p.strength     + (statDeltas['strength']     ?? 0)), 9999),
-        agility:      Math.min((p.agility      + (statDeltas['agility']      ?? 0)), 9999),
-        endurance:    Math.min((p.endurance    + (statDeltas['endurance']    ?? 0)), 9999),
-        intelligence: Math.min((p.intelligence + (statDeltas['intelligence'] ?? 0)), 9999),
-        vitality:     Math.min((p.vitality     + (statDeltas['vitality']     ?? 0)), 9999),
-      };
-
-      // Title checks
-      const snap = { level, strength: updates.strength!, agility: updates.agility!, endurance: updates.endurance!, intelligence: updates.intelligence!, vitality: updates.vitality! };
-      let awardedTitle: string | undefined;
-      for (const cond of TITLE_CONDITIONS) {
-        if (cond.check(snap)) {
-          const isNew = await saveTitle(cond.title, cond.description);
-          if (isNew && !awardedTitle) { awardedTitle = cond.title; updates.title = cond.title; }
+        const statDeltas: Record<string, number> = {};
+        for (const ex of [...doneMain, ...claimableBonus]) {
+          const expPerStatPoint = (ex as any).exp_per_stat_point > 0
+            ? (ex as any).exp_per_stat_point : 20;
+          const statGain = Math.floor(ex.exp_reward / expPerStatPoint);
+          if (statGain > 0) {
+            statDeltas[ex.stat_type] = (statDeltas[ex.stat_type] ?? 0) + statGain;
+          }
         }
-      }
 
-      await updatePlayer(updates);
-      await updateSession(sessionId, {
-        status: 'completed',
-        total_exp: totalExp,
-        completed_at: new Date().toISOString(),
-      });
+        const levelled = await applyAward(statDeltas, totalExp, claimableBonusIds);
+        setExpGained(0);
+        await updateSession(sessionId, {
+          status: 'completed',
+          total_exp: totalExp,
+          completed_at: new Date().toISOString(),
+        });
+        setAlreadyCompleted(true);
+        setBonusEx(prev => prev.map(b => ({
+          ...b,
+          exp_awarded: claimableBonus.some(cb => cb.id === b.id) ? 1 : b.exp_awarded,
+        })));
 
-      setPlayer({ ...p, ...updates } as Player);
-      setNewTitle(awardedTitle);
-
-      if (awardedTitle) playSound('title');  
-
-      if (levelled) {
-        playSound('levelUp');                  // ← add
-        setLvlUp(true);
+        if (!levelled) navigation.goBack();
       } else {
-        playSound('sessionDone');              // ← add
-        navigation.goBack();
+        // Session already completed — claim only newly-completed bonus EXP
+        if (claimableBonus.length === 0) {
+          Alert.alert('System', 'No new completed bonus quests to claim.');
+          return;
+        }
+
+        const bonusExp = claimableBonus.reduce((sum, e) => sum + e.exp_reward, 0);
+        const statDeltas: Record<string, number> = {};
+        for (const ex of claimableBonus) {
+          const expPerStatPoint = (ex as any).exp_per_stat_point > 0
+            ? (ex as any).exp_per_stat_point : 20;
+          const statGain = Math.floor(ex.exp_reward / expPerStatPoint);
+          if (statGain > 0) {
+            statDeltas[ex.stat_type] = (statDeltas[ex.stat_type] ?? 0) + statGain;
+          }
+        }
+
+        await applyAward(statDeltas, bonusExp, claimableBonusIds);
+        setExpGained(0);
+        await updateSession(sessionId, {
+          total_exp: (currentSession.total_exp ?? 0) + bonusExp,
+        });
+        setBonusEx(prev => prev.map(b => ({
+          ...b,
+          exp_awarded: claimableBonus.some(cb => cb.id === b.id) ? 1 : b.exp_awarded,
+        })));
       }
     } catch (e) {
       console.error(e);
       Alert.alert('Error', 'Something went wrong.');
-    } finally { setFinishing(false); }
+    } finally { setFinishing(false); finishingRef.current = false; }
+  };
+
+  // Applies EXP/stat/level/title rewards for the given deltas and marks the
+  // awarded bonus ids. Shared by first-time completion and bonus claiming.
+  // Returns true if the player levelled up (caller decides whether to navigate away).
+  const applyAward = async (
+    statDeltas: Record<string, number>, totalExp: number, awardedBonusIds: number[]
+  ): Promise<boolean> => {
+    const p = await getPlayer();
+    if (!p) return false;
+
+    // Level calculation
+    const newTotalExp = p.total_exp + totalExp;
+    let level = 1, remaining = newTotalExp;
+    while (level < 100) {
+      const needed = expRequiredForLevel(level);
+      if (remaining < needed) break;
+      remaining -= needed; level++;
+    }
+    const levelled = level > p.level;
+
+    const updates: Partial<Player> = {
+      level, exp: remaining,
+      exp_to_next: expRequiredForLevel(level),
+      total_exp: newTotalExp,
+      strength:     Math.min((p.strength     + (statDeltas['strength']     ?? 0)), 9999),
+      agility:      Math.min((p.agility      + (statDeltas['agility']      ?? 0)), 9999),
+      endurance:    Math.min((p.endurance    + (statDeltas['endurance']    ?? 0)), 9999),
+      intelligence: Math.min((p.intelligence + (statDeltas['intelligence'] ?? 0)), 9999),
+      vitality:     Math.min((p.vitality     + (statDeltas['vitality']     ?? 0)), 9999),
+    };
+
+    // Title checks
+    const snap = { level, strength: updates.strength!, agility: updates.agility!, endurance: updates.endurance!, intelligence: updates.intelligence!, vitality: updates.vitality! };
+    let awardedTitle: string | undefined;
+    for (const cond of TITLE_CONDITIONS) {
+      if (cond.check(snap)) {
+        const isNew = await saveTitle(cond.title, cond.description);
+        if (isNew && !awardedTitle) { awardedTitle = cond.title; updates.title = cond.title; }
+      }
+    }
+
+    await updatePlayer(updates);
+    if (awardedBonusIds.length > 0) {
+      await markBonusExercisesAwarded(awardedBonusIds);
+    }
+
+    setPlayer({ ...p, ...updates } as Player);
+    setNewTitle(awardedTitle);
+
+    if (awardedTitle) playSound('title');
+
+    if (levelled) {
+      playSound('levelUp');
+      setLvlUp(true);
+    } else {
+      playSound('sessionDone');
+    }
+    return levelled;
+  };
+
+  const abandonSession = () => {
+    if (finishingRef.current) return;
+    finishingRef.current = true;
+    setFinishing(true);
+    updateSession(sessionId, { status: 'skipped' })
+      .catch(e => console.error('Abandon failed:', e));
+    navigation.goBack();
   };
 
   if (loading || !player) {
@@ -298,7 +363,7 @@ const SessionScreen: React.FC = () => {
               </View>
             )}
           </View>
-          <ExpBar current={player.exp} max={player.exp_to_next} />
+          <ExpBar current={Math.min(player.exp + expGained, player.exp_to_next)} max={player.exp_to_next} />
         </SystemPanel>
 
         {/* Main quests */}
@@ -326,11 +391,20 @@ const SessionScreen: React.FC = () => {
 
         {/* Actions */}
         {isAlreadyCompleted ? (
-          /* Session already done — show completed banner instead of action buttons */
+          /* Session already done — show completed banner, plus "Claim Bonus EXP"
+             when newly-completed bonus quests have unclaimed rewards. */
           <View style={styles.completedBanner}>
             <Text style={styles.completedBannerIcon}>✓</Text>
             <Text style={styles.completedBannerText}>QUEST COMPLETED</Text>
             <Text style={styles.completedBannerSub}>You can still add bonus exercises above</Text>
+            {bonusExercises.some(b => b.is_completed && !b.exp_awarded) && (
+              <SystemButton
+                title={finishing ? 'Processing...' : '⚑  CLAIM BONUS EXP'}
+                onPress={handleFinishSession}
+                loading={finishing}
+                style={styles.finishBtn}
+              />
+            )}
           </View>
         ) : (
           <>
@@ -341,7 +415,7 @@ const SessionScreen: React.FC = () => {
               disabled={(exercises.filter(e => e.is_completed).length === 0 && bonusExercises.filter(e => e.is_completed).length === 0) || finishing}
               style={styles.finishBtn}
             />
-            <SystemButton title="Abandon Session" variant="ghost" onPress={() => navigation.goBack()} style={styles.abandonBtn} />
+            <SystemButton title="Abandon Session" variant="ghost" onPress={abandonSession} disabled={finishing} style={styles.abandonBtn} />
           </>
         )}
       </ScrollView>
