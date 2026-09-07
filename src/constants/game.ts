@@ -58,11 +58,11 @@ export const calculateLevelFromTotalExp = (totalExp: number) => {
 // ─────────────────────────────────────────────
 
 export const STATS = [
-  { key: 'strength',     label: 'Strength',     icon: '⚔️',  color: '#FF6B6B' },
-  { key: 'agility',      label: 'Agility',      icon: '💨',  color: '#00BCD4' },
-  { key: 'endurance',    label: 'Endurance',    icon: '🛡️',  color: '#4CAF50' },
-  { key: 'intelligence', label: 'Intelligence', icon: '🧠',  color: '#AB47BC' },
-  { key: 'vitality',     label: 'Vitality',     icon: '❤️',  color: '#FF9800' },
+  { key: 'strength',     label: 'Strength',     icon: 'fitness',      color: '#FF6B6B' },
+  { key: 'agility',      label: 'Agility',      icon: 'speedometer',  color: '#00BCD4' },
+  { key: 'endurance',    label: 'Endurance',    icon: 'shield',       color: '#4CAF50' },
+  { key: 'intelligence', label: 'Intelligence', icon: 'bulb',        color: '#AB47BC' },
+  { key: 'vitality',     label: 'Vitality',     icon: 'heart',        color: '#FF9800' },
 ] as const;
 
 export type StatKey = typeof STATS[number]['key'];

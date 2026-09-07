@@ -6,27 +6,33 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   getSessionExercises, getPlayer, updatePlayer,
   updateSession, completeSessionExercise,
   SessionExercise, Player, saveTitle,
   getBonusExercises, addBonusExerciseToSession,
-  completeBonusExercise, BonusExercise, getExercises, Exercise, getSession
+  completeBonusExercise, markBonusExercisesAwarded,
+  BonusExercise, getExercises, Exercise, getSession
 } from '../database/Database';
 import { SystemPanel, SystemButton, ExpBar } from '../components/UIComponents';
+import { Ionicons } from '@expo/vector-icons';
 import LevelUpModal from '../components/LevelUpModal';
-import { COLORS, expRequiredForLevel, TITLE_CONDITIONS } from '../constants/game';
+import { COLORS, TITLE_CONDITIONS } from '../constants/game';
+import {
+  expForAmount, expForTargetSets, statDeltasFromItems, cappedStat,
+  fullClearBonus, calculateLevelFromTotalExp,
+} from '../constants/formulas';
 import { RootStackParamList } from '../../App';
 import { playSound } from '../utils/sounds';
 
 type Route = RouteProp<RootStackParamList, 'Session'>;
 type Nav   = NativeStackNavigationProp<RootStackParamList, 'Session'>;
 
-const db_getSession = getSession;
-
 const SessionScreen: React.FC = () => {
   const route      = useRoute<Route>();
   const navigation = useNavigation<Nav>();
+  const insets     = useSafeAreaInsets();
   const { sessionId } = route.params;
 
   const [exercises, setExercises]       = useState<SessionExercise[]>([]);
@@ -52,11 +58,16 @@ const SessionScreen: React.FC = () => {
 
   const flashAnim  = useRef(new Animated.Value(0)).current;
   const flashScale = useRef(new Animated.Value(0.8)).current;
+  const finishingRef = useRef(false);
 
   useEffect(() => { loadSession(); }, []);
 
   const loadSession = async () => {
     setLoading(true);
+    const currentSession = await getSession(sessionId);
+    if (currentSession?.status === 'pending') {
+      await updateSession(sessionId, { status: 'in_progress', started_at: new Date().toISOString() });
+    }
     const [exs, bonus, p, all] = await Promise.all([
       getSessionExercises(sessionId),
       getBonusExercises(sessionId),
@@ -67,14 +78,9 @@ const SessionScreen: React.FC = () => {
     setBonusEx(bonus);
     setAllEx(all);
     setPlayer(p);
-    const sessionData = await getSession(sessionId);
-    setAlreadyCompleted(sessionData?.status === 'completed');
+    setAlreadyCompleted(currentSession?.status === 'completed');
+    if (currentSession?.status === 'pending') playSound('questStart');
     setLoading(false);
-    const currentSession = await db_getSession(sessionId);
-    if (currentSession?.status === 'pending') {
-      await updateSession(sessionId, { status: 'in_progress', started_at: new Date().toISOString() });
-      playSound('questStart');
-    }
   };
 
   const triggerFlash = (amount: number) => {
@@ -132,7 +138,7 @@ const SessionScreen: React.FC = () => {
   };
 
   const finalizeExercise = async (ex: SessionExercise, actualAmount: number) => {
-    const expEarned = Math.floor((actualAmount / (ex.exp_unit_count || 1)) * ex.exp_per_unit);
+    const expEarned = expForAmount(actualAmount, ex.exp_per_unit, ex.exp_unit_count);
     setExercises(prev =>
       prev.map(e => e.id === ex.id ? { ...e, is_completed: 1, actual_amount: actualAmount, exp_reward: expEarned } : e)
     );
@@ -142,7 +148,7 @@ const SessionScreen: React.FC = () => {
   };
 
   const finalizeBonusExercise = async (ex: BonusExercise, actualAmount: number) => {
-    const expEarned = Math.floor((actualAmount / (ex.exp_unit_count > 0 ? ex.exp_unit_count : 1)) * ex.exp_per_unit);
+    const expEarned = expForAmount(actualAmount, ex.exp_per_unit, ex.exp_unit_count);
     setBonusEx(prev =>
       prev.map(e => e.id === ex.id ? { ...e, is_completed: 1, actual_amount: actualAmount, exp_reward: expEarned } : e)
     );
@@ -162,94 +168,139 @@ const SessionScreen: React.FC = () => {
   };
 
   const handleFinishSession = async () => {
-    const doneMain  = exercises.filter(e => e.is_completed);
-    const doneBonus = bonusExercises.filter(e => e.is_completed);
-
-    if (doneMain.length === 0 && doneBonus.length === 0) {
-      Alert.alert('System', 'Complete at least one exercise first, Hunter.');
-      return;
-    }
-
+    if (finishingRef.current) return;
+    finishingRef.current = true;
     setFinishing(true);
     try {
-      const p = await getPlayer();
-      if (!p) return;
+      const currentSession = await getSession(sessionId);
+      if (!currentSession) return;
 
-      // Sum EXP from main + bonus exercises
-      const rawMainExp  = doneMain.reduce((sum, e) => sum + e.exp_reward, 0);
-      const bonusExp    = doneBonus.reduce((sum, e) => sum + e.exp_reward, 0);
-      const allDone     = doneMain.length === exercises.length;
-      // Apply 10% bonus to main exercises only, as a flat addition
-      const bonusAmount = allDone ? Math.floor(rawMainExp * 0.1) : 0;
-      const mainExp     = rawMainExp + bonusAmount;
-      const totalExp    = mainExp + bonusExp;
+      const alreadyCompleted = currentSession.status === 'completed';
 
-      // Stat gain = floor(EXP earned by this exercise / exp_per_stat_point)
-      // e.g. earned 60 EXP, exp_per_stat_point = 20 → +3 stat points
-      const statDeltas: Record<string, number> = {};
-      for (const ex of [...doneMain, ...doneBonus]) {
-        const expPerStatPoint = (ex as any).exp_per_stat_point > 0
-          ? (ex as any).exp_per_stat_point : 20;
-        const statGain = Math.floor(ex.exp_reward / expPerStatPoint);
-        if (statGain > 0) {
-          statDeltas[ex.stat_type] = (statDeltas[ex.stat_type] ?? 0) + statGain;
+      // Newly-completed bonus exercises whose EXP hasn't been awarded yet.
+      // On an already-completed session, only these are claimable.
+      const claimableBonus = bonusExercises.filter(e => e.is_completed && !e.exp_awarded);
+      const claimableBonusIds = claimableBonus.map(b => b.id!);
+
+      if (!alreadyCompleted) {
+        const doneMain = exercises.filter(e => e.is_completed);
+        if (doneMain.length === 0 && claimableBonus.length === 0) {
+          Alert.alert('System', 'Complete at least one exercise first, Hunter.');
+          return;
         }
-      }
 
-      // Level calculation
-      const newTotalExp = p.total_exp + totalExp;
-      let level = 1, remaining = newTotalExp;
-      while (level < 100) {
-        const needed = expRequiredForLevel(level);
-        if (remaining < needed) break;
-        remaining -= needed; level++;
-      }
-      const levelled = level > p.level;
+        // Sum EXP from main + (all) bonus exercises being finished for the first time
+        const rawMainExp  = doneMain.reduce((sum, e) => sum + e.exp_reward, 0);
+        const bonusExp    = claimableBonus.reduce((sum, e) => sum + e.exp_reward, 0);
+        const allDone     = doneMain.length === exercises.length;
+        // Apply 10% bonus to main exercises only, as a flat addition
+        const bonusAmount = allDone ? fullClearBonus(rawMainExp) : 0;
+        const mainExp     = rawMainExp + bonusAmount;
+        const totalExp    = mainExp + bonusExp;
 
-      const updates: Partial<Player> = {
-        level, exp: remaining,
-        exp_to_next: expRequiredForLevel(level),
-        total_exp: newTotalExp,
-        strength:     Math.min((p.strength     + (statDeltas['strength']     ?? 0)), 9999),
-        agility:      Math.min((p.agility      + (statDeltas['agility']      ?? 0)), 9999),
-        endurance:    Math.min((p.endurance    + (statDeltas['endurance']    ?? 0)), 9999),
-        intelligence: Math.min((p.intelligence + (statDeltas['intelligence'] ?? 0)), 9999),
-        vitality:     Math.min((p.vitality     + (statDeltas['vitality']     ?? 0)), 9999),
-      };
+        const statDeltas = statDeltasFromItems([...doneMain, ...claimableBonus]);
 
-      // Title checks
-      const snap = { level, strength: updates.strength!, agility: updates.agility!, endurance: updates.endurance!, intelligence: updates.intelligence!, vitality: updates.vitality! };
-      let awardedTitle: string | undefined;
-      for (const cond of TITLE_CONDITIONS) {
-        if (cond.check(snap)) {
-          const isNew = await saveTitle(cond.title, cond.description);
-          if (isNew && !awardedTitle) { awardedTitle = cond.title; updates.title = cond.title; }
-        }
-      }
+        const levelled = await applyAward(statDeltas, totalExp, claimableBonusIds);
+        setExpGained(0);
+        await updateSession(sessionId, {
+          status: 'completed',
+          total_exp: totalExp,
+          completed_at: new Date().toISOString(),
+        });
+        setAlreadyCompleted(true);
+        setBonusEx(prev => prev.map(b => ({
+          ...b,
+          exp_awarded: claimableBonus.some(cb => cb.id === b.id) ? 1 : b.exp_awarded,
+        })));
 
-      await updatePlayer(updates);
-      await updateSession(sessionId, {
-        status: 'completed',
-        total_exp: totalExp,
-        completed_at: new Date().toISOString(),
-      });
-
-      setPlayer({ ...p, ...updates } as Player);
-      setNewTitle(awardedTitle);
-
-      if (awardedTitle) playSound('title');  
-
-      if (levelled) {
-        playSound('levelUp');                  // ← add
-        setLvlUp(true);
+        if (!levelled) navigation.goBack();
       } else {
-        playSound('sessionDone');              // ← add
-        navigation.goBack();
+        // Session already completed — claim only newly-completed bonus EXP
+        if (claimableBonus.length === 0) {
+          Alert.alert('System', 'No new completed bonus quests to claim.');
+          return;
+        }
+
+        const bonusExp = claimableBonus.reduce((sum, e) => sum + e.exp_reward, 0);
+        const statDeltas = statDeltasFromItems(claimableBonus);
+
+        await applyAward(statDeltas, bonusExp, claimableBonusIds);
+        setExpGained(0);
+        await updateSession(sessionId, {
+          total_exp: (currentSession.total_exp ?? 0) + bonusExp,
+        });
+        setBonusEx(prev => prev.map(b => ({
+          ...b,
+          exp_awarded: claimableBonus.some(cb => cb.id === b.id) ? 1 : b.exp_awarded,
+        })));
       }
     } catch (e) {
       console.error(e);
       Alert.alert('Error', 'Something went wrong.');
-    } finally { setFinishing(false); }
+    } finally { setFinishing(false); finishingRef.current = false; }
+  };
+
+  // Applies EXP/stat/level/title rewards for the given deltas and marks the
+  // awarded bonus ids. Shared by first-time completion and bonus claiming.
+  // Returns true if the player levelled up (caller decides whether to navigate away).
+  const applyAward = async (
+    statDeltas: Record<string, number>, totalExp: number, awardedBonusIds: number[]
+  ): Promise<boolean> => {
+    const p = await getPlayer();
+    if (!p) return false;
+
+    // Level calculation
+    const newTotalExp = p.total_exp + totalExp;
+    const { level, expInCurrentLevel, expToNext } = calculateLevelFromTotalExp(newTotalExp);
+    const levelled = level > p.level;
+
+    const updates: Partial<Player> = {
+      level, exp: expInCurrentLevel,
+      exp_to_next: expToNext,
+      total_exp: newTotalExp,
+      strength:     cappedStat(p.strength,     statDeltas['strength']     ?? 0),
+      agility:      cappedStat(p.agility,      statDeltas['agility']      ?? 0),
+      endurance:    cappedStat(p.endurance,    statDeltas['endurance']    ?? 0),
+      intelligence: cappedStat(p.intelligence, statDeltas['intelligence'] ?? 0),
+      vitality:     cappedStat(p.vitality,     statDeltas['vitality']     ?? 0),
+    };
+
+    // Title checks
+    const snap = { level, strength: updates.strength!, agility: updates.agility!, endurance: updates.endurance!, intelligence: updates.intelligence!, vitality: updates.vitality! };
+    let awardedTitle: string | undefined;
+    for (const cond of TITLE_CONDITIONS) {
+      if (cond.check(snap)) {
+        const isNew = await saveTitle(cond.title, cond.description);
+        if (isNew && !awardedTitle) { awardedTitle = cond.title; updates.title = cond.title; }
+      }
+    }
+
+    await updatePlayer(updates);
+    if (awardedBonusIds.length > 0) {
+      await markBonusExercisesAwarded(awardedBonusIds);
+    }
+
+    setPlayer({ ...p, ...updates } as Player);
+    setNewTitle(awardedTitle);
+
+    if (awardedTitle) playSound('title');
+
+    if (levelled) {
+      playSound('levelUp');
+      setLvlUp(true);
+    } else {
+      playSound('sessionDone');
+    }
+    return levelled;
+  };
+
+  const abandonSession = () => {
+    if (finishingRef.current) return;
+    finishingRef.current = true;
+    setFinishing(true);
+    updateSession(sessionId, { status: 'skipped' })
+      .catch(e => console.error('Abandon failed:', e));
+    navigation.goBack();
   };
 
   if (loading || !player) {
@@ -273,7 +324,7 @@ const SessionScreen: React.FC = () => {
         </Animated.Text>
       </Animated.View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 60 + insets.bottom }]} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.sessionHdr}>
           <Text style={styles.sessionTag}>◆ DAILY QUEST</Text>
@@ -298,7 +349,7 @@ const SessionScreen: React.FC = () => {
               </View>
             )}
           </View>
-          <ExpBar current={player.exp} max={player.exp_to_next} />
+          <ExpBar current={Math.min(player.exp + expGained, player.exp_to_next)} max={player.exp_to_next} />
         </SystemPanel>
 
         {/* Main quests */}
@@ -326,22 +377,33 @@ const SessionScreen: React.FC = () => {
 
         {/* Actions */}
         {isAlreadyCompleted ? (
-          /* Session already done — show completed banner instead of action buttons */
+          /* Session already done — show completed banner, plus "Claim Bonus EXP"
+             when newly-completed bonus quests have unclaimed rewards. */
           <View style={styles.completedBanner}>
-            <Text style={styles.completedBannerIcon}>✓</Text>
+            <Ionicons name="checkmark-circle" size={28} color={COLORS.accentGreen} />
             <Text style={styles.completedBannerText}>QUEST COMPLETED</Text>
             <Text style={styles.completedBannerSub}>You can still add bonus exercises above</Text>
+            {bonusExercises.some(b => b.is_completed && !b.exp_awarded) && (
+              <SystemButton
+                title={finishing ? 'Processing...' : 'CLAIM BONUS EXP'}
+                icon="flag"
+                onPress={handleFinishSession}
+                loading={finishing}
+                style={styles.finishBtn}
+              />
+            )}
           </View>
         ) : (
           <>
             <SystemButton
-              title={finishing ? 'Processing...' : '⚔  COMPLETE SESSION'}
+              title={finishing ? 'Processing...' : 'COMPLETE SESSION'}
+              icon="fitness"
               onPress={handleFinishSession}
               loading={finishing}
               disabled={(exercises.filter(e => e.is_completed).length === 0 && bonusExercises.filter(e => e.is_completed).length === 0) || finishing}
               style={styles.finishBtn}
             />
-            <SystemButton title="Abandon Session" variant="ghost" onPress={() => navigation.goBack()} style={styles.abandonBtn} />
+            <SystemButton title="Abandon Session" variant="ghost" onPress={abandonSession} disabled={finishing} style={styles.abandonBtn} />
           </>
         )}
       </ScrollView>
@@ -355,7 +417,7 @@ const SessionScreen: React.FC = () => {
       {/* Amount input modal (for distance/time exercises) */}
       <Modal visible={amountModal} transparent animationType="fade" onRequestClose={() => setAmountModal(false)}>
         <KeyboardAvoidingView style={styles.amountOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={styles.amountSheet}>
+          <View style={[styles.amountSheet, { paddingBottom: 24 + insets.bottom }]}>
             <Text style={styles.amountTitle}>
               {pendingExercise?.exercise_name ?? pendingBonus?.exercise_name}
             </Text>
@@ -376,9 +438,10 @@ const SessionScreen: React.FC = () => {
               </Text>
             </View>
             <Text style={styles.amountExpPreview}>
-              ≈ {Math.floor(
-                  (Number(inputAmount || 0) / ((pendingExercise?.exp_unit_count || pendingBonus?.exp_unit_count || 1)))
-                  * (pendingExercise?.exp_per_unit ?? pendingBonus?.exp_per_unit ?? 0)
+              ≈ {expForAmount(
+                  Number(inputAmount || 0),
+                  pendingExercise?.exp_per_unit ?? pendingBonus?.exp_per_unit ?? 0,
+                  pendingExercise?.exp_unit_count || pendingBonus?.exp_unit_count || 1
                 )} EXP
             </Text>
             <View style={styles.amountBtnRow}>
@@ -393,7 +456,7 @@ const SessionScreen: React.FC = () => {
       {/* Add bonus exercise modal */}
       <Modal visible={bonusModal} transparent animationType="slide" onRequestClose={() => setBonusModal(false)}>
         <KeyboardAvoidingView style={styles.amountOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={[styles.amountSheet, { maxHeight: '80%' }]}>
+          <View style={[styles.amountSheet, { maxHeight: '80%', paddingBottom: 24 + insets.bottom }]}>
             <Text style={styles.amountTitle}>◆ ADD BONUS QUEST</Text>
             <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 260 }} nestedScrollEnabled>
               {allExercises.map(ex => (
@@ -445,7 +508,7 @@ const ExerciseItem: React.FC<{ exercise: SessionExercise; index: number; onTap: 
   return (
     <TouchableOpacity style={[styles.questItem, done && styles.questItemDone]} onPress={handlePress} disabled={done} activeOpacity={0.75}>
       <Animated.View style={[styles.indicator, done && styles.indicatorDone, { transform: [{ scale }] }]}>
-        {done ? <Text style={styles.checkMark}>✓</Text> : <Text style={styles.indexNum}>{index + 1}</Text>}
+        {done ? <Ionicons name="checkmark" size={16} color={COLORS.accentGreen} /> : <Text style={styles.indexNum}>{index + 1}</Text>}
       </Animated.View>
       <View style={styles.questBody}>
         <Text style={[styles.questName, done && styles.questNameDone]}>{exercise.exercise_name}</Text>
@@ -463,11 +526,7 @@ const ExerciseItem: React.FC<{ exercise: SessionExercise; index: number; onTap: 
         <Text style={[styles.expBadgeTxt, done && styles.expBadgeTxtDone]}>
           {done
             ? `+${exercise.exp_reward}`
-            : `~${Math.floor(
-                (exercise.target * exercise.sets_total)
-                / (exercise.exp_unit_count > 0 ? exercise.exp_unit_count : 1)
-                * exercise.exp_per_unit
-              )}`
+            : `~${expForTargetSets(exercise.target, exercise.sets_total, exercise.exp_per_unit, exercise.exp_unit_count)}`
           }
         </Text>
         <Text style={[styles.expBadgeLbl, done && styles.expBadgeTxtDone]}>EXP</Text>
@@ -483,7 +542,7 @@ const BonusItem: React.FC<{ exercise: BonusExercise; index: number; onTap: () =>
   return (
     <TouchableOpacity style={[styles.questItem, styles.bonusItem, done && styles.questItemDone]} onPress={onTap} disabled={done} activeOpacity={0.75}>
       <View style={[styles.indicator, styles.bonusIndicator, done && styles.indicatorDone]}>
-        {done ? <Text style={styles.checkMark}>✓</Text> : <Text style={styles.bonusStar}>★</Text>}
+        {done ? <Ionicons name="checkmark" size={16} color={COLORS.accentGreen} /> : <Ionicons name="star" size={14} color={COLORS.accentGold} />}
       </View>
       <View style={styles.questBody}>
         <Text style={[styles.questName, done && styles.questNameDone]}>{exercise.exercise_name}</Text>
@@ -493,11 +552,7 @@ const BonusItem: React.FC<{ exercise: BonusExercise; index: number; onTap: () =>
         <Text style={[styles.expBadgeTxt, done && styles.expBadgeTxtDone]}>
           {done
             ? `+${exercise.exp_reward}`
-            : `~${Math.floor(
-                exercise.target
-                / (exercise.exp_unit_count > 0 ? exercise.exp_unit_count : 1)
-                * exercise.exp_per_unit
-              )}`
+            : `~${expForAmount(exercise.target, exercise.exp_per_unit, exercise.exp_unit_count)}`
           }
         </Text>
         <Text style={[styles.expBadgeLbl, done && styles.expBadgeTxtDone]}>EXP</Text>
@@ -545,9 +600,7 @@ const styles = StyleSheet.create({
   indicator:     { width: 38, height: 38, borderRadius: 19, borderWidth: 2, borderColor: COLORS.accentCyan, alignItems: 'center', justifyContent: 'center' },
   indicatorDone: { borderColor: COLORS.accentGreen, backgroundColor: `${COLORS.accentGreen}18` },
   bonusIndicator:{ borderColor: COLORS.accentGold },
-  checkMark:     { color: COLORS.accentGreen, fontSize: 17, fontWeight: '700' },
   indexNum:      { color: COLORS.accentCyan, fontSize: 14, fontWeight: '700' },
-  bonusStar:     { color: COLORS.accentGold, fontSize: 16 },
 
   questBody:     { flex: 1 },
   questName:     { color: COLORS.textPrimary, fontSize: 14, fontWeight: '600', marginBottom: 2 },
@@ -584,7 +637,6 @@ const styles = StyleSheet.create({
   exPickSub:     { color: COLORS.textMuted, fontSize: 11 },
 
   completedBanner:     { marginTop: 24, marginBottom: 8, backgroundColor: `${COLORS.accentGreen}12`, borderWidth: 1, borderColor: COLORS.accentGreen, borderRadius: 10, padding: 20, alignItems: 'center', gap: 6 },
-  completedBannerIcon: { color: COLORS.accentGreen, fontSize: 28 },
   completedBannerText: { color: COLORS.accentGreen, fontSize: 16, fontWeight: '800', letterSpacing: 2 },
   completedBannerSub:  { color: COLORS.textSecondary, fontSize: 12, textAlign: 'center' },
 });

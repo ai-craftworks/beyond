@@ -14,6 +14,8 @@ import {
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { createPlayer } from '../database/Database';
 import { SystemInput, SystemButton } from '../components/UIComponents';
+import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../constants/game';
 import { RootStackParamList } from '../../App';
 import { playSound } from '../utils/sounds';
@@ -21,6 +23,7 @@ import { playSound } from '../utils/sounds';
 type Props = { navigation: NativeStackNavigationProp<RootStackParamList, 'Registration'> };
 
 const RegistrationScreen: React.FC<Props> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [step, setStep]     = useState(0);
   const [name, setName]     = useState('');
   const [age, setAge]       = useState('');
@@ -32,24 +35,29 @@ const RegistrationScreen: React.FC<Props> = ({ navigation }) => {
   const scanAnim = useRef(new Animated.Value(0.3)).current;
 
   useEffect(() => {
-    Animated.timing(fadeAnim, { toValue: 1, duration: 700, useNativeDriver: true }).start();
-    Animated.loop(
+    const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(scanAnim, { toValue: 1,   duration: 1500, useNativeDriver: true }),
         Animated.timing(scanAnim, { toValue: 0.3, duration: 1500, useNativeDriver: true }),
       ])
-    ).start();
+    );
+    Animated.timing(fadeAnim, { toValue: 1, duration: 700, useNativeDriver: true }).start();
+    loop.start();
+    return () => loop.stop();
   }, []);
 
   const handleNext = () => {
     playSound('click'); 
     if (step === 0) {
       if (!name.trim())              return Alert.alert('System', 'Enter your name, Hunter.');
-      if (!age || isNaN(Number(age))) return Alert.alert('System', 'Enter a valid age.');
+      const a = Number(age);
+      if (!age || isNaN(a) || a <= 0 || a > 130) return Alert.alert('System', 'Enter a valid age.');
       setStep(1);
     } else if (step === 1) {
-      if (!weight || isNaN(Number(weight))) return Alert.alert('System', 'Enter a valid weight.');
-      if (!height || isNaN(Number(height))) return Alert.alert('System', 'Enter a valid height.');
+      const w = Number(weight);
+      const h = Number(height);
+      if (!weight || isNaN(w) || w <= 0 || w > 500) return Alert.alert('System', 'Enter a valid weight.');
+      if (!height || isNaN(h) || h <= 0 || h > 300) return Alert.alert('System', 'Enter a valid height.');
       setStep(2);
     }
   };
@@ -58,7 +66,9 @@ const RegistrationScreen: React.FC<Props> = ({ navigation }) => {
     playSound('click'); 
     setLoading(true);
     try {
-      await createPlayer(name.trim(), Number(age), Number(weight), Number(height));
+      const playerId = await createPlayer(name.trim(), Number(age), Number(weight), Number(height));
+      // player id is captured for future multi-row-safe updates (single-player today)
+      void playerId;
       navigation.replace('Main');
     } catch (e) {
       Alert.alert('Error', 'Registration failed. Try again.');
@@ -74,7 +84,7 @@ const RegistrationScreen: React.FC<Props> = ({ navigation }) => {
       style={styles.root}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: 50 + insets.bottom }]} keyboardShouldPersistTaps="handled">
         <Animated.View style={{ opacity: fadeAnim }}>
 
           {/* Header */}
@@ -106,7 +116,7 @@ const RegistrationScreen: React.FC<Props> = ({ navigation }) => {
               <Text style={styles.cardTitle}>◆ IDENTITY PROTOCOL</Text>
               <SystemInput label="Hunter Name" value={name} onChangeText={setName} placeholder="Enter your name" />
               <SystemInput label="Age" value={age} onChangeText={setAge} placeholder="Years" keyboardType="numeric" />
-              <SystemButton title="NEXT →" onPress={handleNext} />
+              <SystemButton title="NEXT" icon="arrow-forward" onPress={handleNext} />
             </View>
           )}
 
@@ -118,9 +128,12 @@ const RegistrationScreen: React.FC<Props> = ({ navigation }) => {
               <SystemInput label="Height (cm)" value={height} onChangeText={setHeight} keyboardType="decimal-pad" />
               <View style={styles.row}>
                 <TouchableOpacity style={styles.backBtn} onPress={() => setStep(0)}>
-                  <Text style={styles.backTxt}>← BACK</Text>
+                  <View style={styles.backRow}>
+                    <Ionicons name="arrow-back" size={14} color={COLORS.accentCyan} />
+                    <Text style={styles.backTxt}>BACK</Text>
+                  </View>
                 </TouchableOpacity>
-                <SystemButton title="NEXT →" onPress={handleNext} style={styles.flex1} />
+                <SystemButton title="NEXT" icon="arrow-forward" onPress={handleNext} style={styles.flex1} />
               </View>
             </View>
           )}
@@ -140,7 +153,10 @@ const RegistrationScreen: React.FC<Props> = ({ navigation }) => {
               </View>
               <View style={styles.row}>
                 <TouchableOpacity style={styles.backBtn} onPress={() => setStep(1)}>
-                  <Text style={styles.backTxt}>← BACK</Text>
+                  <View style={styles.backRow}>
+                    <Ionicons name="arrow-back" size={14} color={COLORS.accentCyan} />
+                    <Text style={styles.backTxt}>BACK</Text>
+                  </View>
                 </TouchableOpacity>
                 <SystemButton title="REGISTER" onPress={handleRegister} loading={loading} style={styles.flex1} />
               </View>
@@ -174,6 +190,7 @@ const styles = StyleSheet.create({
   row:         { flexDirection: 'row', gap: 12 },
   flex1:       { flex: 1 },
   backBtn:     { borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 8, paddingVertical: 14, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center' },
+  backRow:     { flexDirection: 'row', alignItems: 'center', gap: 6 },
   backTxt:     { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600', letterSpacing: 1 },
   summaryRow:  { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: COLORS.borderDim },
   summaryLbl:  { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },

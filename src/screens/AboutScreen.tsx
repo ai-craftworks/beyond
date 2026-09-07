@@ -13,7 +13,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { getPlayer, Player, getTitles, EarnedTitle } from '../database/Database';
 import { SystemPanel, SectionHeader, ExpBar } from '../components/UIComponents';
-import { COLORS, RANKS, TITLE_CONDITIONS, expRequiredForLevel, getRankForLevel } from '../constants/game';
+import { COLORS, RANKS, TITLE_CONDITIONS, getRankForLevel } from '../constants/game';
+import { expRequiredForLevel } from '../constants/formulas';
 
 const AboutScreen: React.FC = () => {
   const [player, setPlayer]   = useState<Player | null>(null);
@@ -66,7 +67,7 @@ const AboutScreen: React.FC = () => {
         <Text style={styles.subHeading}>Completing a Full Session</Text>
         <Text style={styles.bodyText}>
           If you complete every exercise in a session without skipping any, you receive a{' '}
-          <Text style={styles.highlight}>10% bonus EXP</Text> on the entire session.
+          <Text style={styles.highlight}>10% bonus EXP</Text> on the main exercises.
           Partial completion still earns EXP — just no bonus.
         </Text>
 
@@ -93,10 +94,6 @@ const AboutScreen: React.FC = () => {
             const isCurrentRank = player ? getRankForLevel(player.level).rank === rank.rank : false;
             const isUnlocked    = player ? player.level >= rank.minLevel : false;
             const nextRank      = RANKS[i + 1];
-            const expNeeded     = rank.minLevel > 1
-              ? Array.from({ length: rank.minLevel - 1 }, (_, lvl) => expRequiredForLevel(lvl + 1))
-                    .reduce((a, b) => a + b, 0)
-              : 0;
 
             return (
               <View key={rank.rank}

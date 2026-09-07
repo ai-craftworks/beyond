@@ -4,11 +4,14 @@ import {
   Modal, ScrollView, Alert, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createExercise, deleteExercise, updateExercise, Exercise, getExercises } from '../database/Database';
 import { SystemButton, SystemInput, SectionHeader, EmptyState } from '../components/UIComponents';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS, EXERCISE_CATEGORIES, STATS, UNIT_TYPES } from '../constants/game';
 
 const ExercisesScreen: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [modal, setModal]         = useState(false);
   const [loading, setLoading]     = useState(false);
@@ -21,7 +24,7 @@ const ExercisesScreen: React.FC = () => {
   const [editExpPerUnit, setEditExpPerUnit] = useState('2');
   const [editExpUnitCount, setEditExpUnitCount] = useState('1');
   const [editStatType, setEditStatType]   = useState('strength');
-  const [editStatReward, setEditStatRew]  = useState('1');
+  const [editExpPerStatPt, setEditExpPerStatPt] = useState('20');
   const [editCategory, setEditCategory]   = useState('strength');
   const [editLoading, setEditLoading] = useState(false);
 
@@ -31,7 +34,6 @@ const ExercisesScreen: React.FC = () => {
   const [expPerUnit, setExpPerUnit]   = useState('2');
   const [expUnitCount, setExpUnitCount] = useState('1');
   const [statType, setStatType]       = useState('strength');
-  const [statReward, setStatRew]      = useState('1');
   const [category, setCategory]       = useState('strength');
   const [expPerStatPt, setExpPerStatPt] = useState('20');
 
@@ -42,13 +44,12 @@ const ExercisesScreen: React.FC = () => {
     setName(''); setDesc(''); setUnitType('reps'); setExpPerUnit('2');
     setExpUnitCount('1');
     setExpPerStatPt('20');
-    setStatType('strength'); setStatRew('1'); setCategory('strength');
+    setStatType('strength'); setCategory('strength');
   };
 
   const handleCreate = async () => {
     if (!name.trim())                                    return Alert.alert('System', 'Exercise name required.');
     if (isNaN(Number(expPerUnit)) || Number(expPerUnit) <= 0) return Alert.alert('System', 'Enter a valid EXP per unit (must be greater than 0).');
-    if (isNaN(Number(statReward)))                       return Alert.alert('System', 'Enter a valid stat value.');
     const unit = UNIT_TYPES.find(u => u.value === unitType)!;
     setLoading(true);
     try {
@@ -88,6 +89,7 @@ const ExercisesScreen: React.FC = () => {
     setEditUnitType(ex.unit_type ?? 'reps');
     setEditExpPerUnit(String(ex.exp_per_unit ?? ex.exp_reward ?? 2));
     setEditExpUnitCount(String(ex.exp_unit_count ?? 1));   
+    setEditExpPerStatPt(String(ex.exp_per_stat_point ?? 20));
     setEditStatType(ex.stat_type);
     setEditCategory(ex.category);
     setEditModal(true);
@@ -110,6 +112,7 @@ const ExercisesScreen: React.FC = () => {
         unit_label:   unit.suffix,
         stat_type:    editStatType,
         category:     editCategory,
+        exp_per_stat_point: Number(editExpPerStatPt) || 20,
       });
       setEditModal(false);
       setEditTarget(null);
@@ -139,17 +142,17 @@ const ExercisesScreen: React.FC = () => {
           <SectionHeader title="Exercise Library" subtitle={`${exercises.length} exercises`}
             action={{ label: '+ Create', onPress: () => setModal(true) }} />
         }
-        ListEmptyComponent={<EmptyState icon="🏋️" title="No exercises yet" subtitle="Create your first exercise." />}
+        ListEmptyComponent={<EmptyState icon="barbell" title="No exercises yet" subtitle="Create your first exercise." />}
         renderItem={({ item }) => (
           <View style={[styles.card, { borderLeftColor: accentForCat(item.category) }]}>
             <View style={styles.cardTop}>
               <Text style={styles.cardName}>{item.name}</Text>
               <View style={styles.cardActions}>
                 <TouchableOpacity onPress={() => openEdit(item)} style={styles.editBtn}>
-                  <Text style={styles.editBtnTxt}>✎</Text>
+                  <Ionicons name="create" size={16} color={COLORS.accentCyan} />
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => handleDelete(item)}>
-                  <Text style={styles.deleteBtn}>✕</Text>
+                  <Ionicons name="close" size={18} color={COLORS.accentRed} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -179,7 +182,7 @@ const ExercisesScreen: React.FC = () => {
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
           keyboardVerticalOffset={0}
         >
-          <View style={styles.sheet}>
+          <View style={[styles.sheet, { paddingBottom: 20 + insets.bottom }]}>
             <View style={styles.handle} />
             <Text style={styles.sheetTitle}>◆ NEW EXERCISE</Text>
             <ScrollView
@@ -250,7 +253,10 @@ const ExercisesScreen: React.FC = () => {
                   <TouchableOpacity key={s.key}
                     style={[styles.chip, statType === s.key && styles.chipOn]}
                     onPress={() => setStatType(s.key)}>
-                    <Text style={[styles.chipTxt, statType === s.key && styles.chipTxtOn]}>{s.icon} {s.label}</Text>
+                    <View style={styles.chipRow}>
+                      <Ionicons name={s.icon} size={12} color={s.color} />
+                      <Text style={[styles.chipTxt, statType === s.key && styles.chipTxtOn]}>{s.label}</Text>
+                    </View>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -284,7 +290,7 @@ const ExercisesScreen: React.FC = () => {
           style={styles.overlay}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         >
-          <View style={styles.sheet}>
+          <View style={[styles.sheet, { paddingBottom: 20 + insets.bottom }]}>
             <View style={styles.handle} />
             <Text style={styles.sheetTitle}>◆ EDIT EXERCISE</Text>
             <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
@@ -333,21 +339,24 @@ const ExercisesScreen: React.FC = () => {
                   <TouchableOpacity key={s.key}
                     style={[styles.chip, editStatType === s.key && styles.chipOn]}
                     onPress={() => setEditStatType(s.key)}>
-                    <Text style={[styles.chipTxt, editStatType === s.key && styles.chipTxtOn]}>{s.icon} {s.label}</Text>
+                    <View style={styles.chipRow}>
+                      <Ionicons name={s.icon} size={12} color={s.color} />
+                      <Text style={[styles.chipTxt, editStatType === s.key && styles.chipTxtOn]}>{s.label}</Text>
+                    </View>
                   </TouchableOpacity>
                 ))}
               </View>
 
               <SystemInput
-                label={`EXP needed for +1 ${statType.toUpperCase()} point`}
-                value={expPerStatPt}
-                onChangeText={setExpPerStatPt}
+                label={`EXP needed for +1 ${editStatType.toUpperCase()} point`}
+                value={editExpPerStatPt}
+                onChangeText={setEditExpPerStatPt}
                 keyboardType="decimal-pad"
                 placeholder="e.g. 20"
               />
               <Text style={styles.expHint}>
-                Every {expPerStatPt || '20'} EXP from this exercise = +1 {statType.toUpperCase()}.
-                Example: earn {Number(expPerStatPt || 20) * 3} EXP → +3 {statType.toUpperCase()}
+                Every {editExpPerStatPt || '20'} EXP from this exercise = +1 {editStatType.toUpperCase()}.
+                Example: earn {Number(editExpPerStatPt || 20) * 3} EXP → +3 {editStatType.toUpperCase()}
               </Text>
 
               <View style={styles.row}>
@@ -374,7 +383,6 @@ const styles = StyleSheet.create({
   tags:       { flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 6 },
   tag:        { borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 2 },
   tagTxt:     { color: COLORS.accentCyan, fontSize: 10, fontWeight: '700' },
-  deleteBtn:  { color: COLORS.accentRed, fontSize: 16, fontWeight: '700', paddingLeft: 8 },
 
   overlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' },
   sheet:      { backgroundColor: COLORS.bgPanel, borderTopLeftRadius: 20, borderTopRightRadius: 20, borderTopWidth: 1, borderColor: COLORS.accentCyan, padding: 20, maxHeight: '95%' },
@@ -384,6 +392,7 @@ const styles = StyleSheet.create({
   selectLbl:  { color: COLORS.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 8, textTransform: 'uppercase' },
   chips:      { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginBottom: 14 },
   chip:       { borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 6 },
+  chipRow:    { flexDirection: 'row', alignItems: 'center', gap: 5 },
   chipOn:     { borderColor: COLORS.accentCyan, backgroundColor: `${COLORS.accentCyan}18` },
   chipTxt:    { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' },
   chipTxtOn:  { color: COLORS.accentCyan },
@@ -395,7 +404,6 @@ const styles = StyleSheet.create({
 
   cardActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   editBtn:     { padding: 4 },
-  editBtnTxt:  { color: COLORS.accentCyan, fontSize: 16, fontWeight: '700' },
 
   perLabel:    { justifyContent: 'flex-end', paddingBottom: 14, alignItems: 'center', paddingHorizontal: 6 },
   perLabelTxt: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },

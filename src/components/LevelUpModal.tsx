@@ -10,6 +10,7 @@ import {
   View, Text, Modal, StyleSheet,
   Animated, TouchableOpacity, Dimensions,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS, getRankForLevel, STATS } from '../constants/game';
 import { Player } from '../database/Database';
 
@@ -43,6 +44,7 @@ const LevelUpModal: React.FC<Props> = ({ visible, player, newTitle, onClose }) =
         ).start();
       });
     }
+    return () => pulseAnim.stopAnimation();
   }, [visible]);
 
   const rank = getRankForLevel(player.level);
@@ -77,7 +79,7 @@ const LevelUpModal: React.FC<Props> = ({ visible, player, newTitle, onClose }) =
           <View style={styles.statsGrid}>
             {STATS.map(s => (
               <View key={s.key} style={styles.statItem}>
-                <Text style={styles.statIcon}>{s.icon}</Text>
+                <Ionicons name={s.icon} size={15} color={s.color} />
                 <Text style={styles.statLbl}>{s.label}</Text>
                 <Text style={[styles.statVal, { color: s.color }]}>{(player as any)[s.key]}</Text>
               </View>
@@ -93,7 +95,10 @@ const LevelUpModal: React.FC<Props> = ({ visible, player, newTitle, onClose }) =
           )}
 
           <TouchableOpacity style={styles.continueBtn} onPress={onClose}>
-            <Text style={styles.continueTxt}>CONTINUE ▶</Text>
+            <View style={styles.continueRow}>
+              <Text style={styles.continueTxt}>CONTINUE</Text>
+              <Ionicons name="arrow-forward" size={16} color={COLORS.accentCyan} />
+            </View>
           </TouchableOpacity>
         </Animated.View>
       </View>
@@ -119,13 +124,13 @@ const styles = StyleSheet.create({
   statsHdr:    { color: COLORS.textMuted, fontSize: 10, letterSpacing: 2, fontWeight: '600', marginBottom: 10 },
   statsGrid:   { width: '100%', gap: 6, marginBottom: 14 },
   statItem:    { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 3 },
-  statIcon:    { fontSize: 15, width: 22 },
   statLbl:     { color: COLORS.textSecondary, fontSize: 12, flex: 1, textTransform: 'uppercase', letterSpacing: 0.4 },
   statVal:     { fontSize: 14, fontWeight: '700' },
   titleBox:    { width: '100%', backgroundColor: `${COLORS.accentGold}15`, borderWidth: 1, borderColor: COLORS.accentGold, borderRadius: 8, padding: 12, alignItems: 'center', marginBottom: 14 },
   titleBoxLbl: { color: COLORS.accentGold, fontSize: 9, letterSpacing: 2, fontWeight: '700', marginBottom: 4 },
   titleBoxText:{ color: COLORS.accentGold, fontSize: 15, fontWeight: '700' },
   continueBtn: { borderWidth: 1, borderColor: COLORS.accentCyan, borderRadius: 8, paddingVertical: 11, paddingHorizontal: 40 },
+  continueRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   continueTxt: { color: COLORS.accentCyan, fontSize: 13, fontWeight: '700', letterSpacing: 3 },
 });
 

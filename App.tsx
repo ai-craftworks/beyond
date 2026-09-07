@@ -36,15 +36,6 @@ export type TabParamList = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab   = createBottomTabNavigator<TabParamList>();
 
-// ── Tab icon component ───────────────────────
-// A simple wrapper that renders an emoji as the tab icon.
-// `focused` controls whether it uses the active or inactive colour.
-const TabIcon = ({ emoji, focused }: { emoji: string; focused: boolean }) => (
-  <Text style={{ fontSize: 20, color: focused ? COLORS.accentCyan : COLORS.textMuted }}>
-    {emoji}
-  </Text>
-);
-
 // ── Main tab navigator ───────────────────────
 const MainTabs: React.FC = () => {
   const insets = useSafeAreaInsets(); // ← reads the phone's gesture nav bar height
@@ -161,7 +152,8 @@ const MainTabs: React.FC = () => {
 
 // ── Root app ─────────────────────────────────
 const App: React.FC = () => {
-  const [appState, setAppState] = useState<'loading' | 'register' | 'main'>('loading');
+  const [appState, setAppState] = useState<'loading' | 'register' | 'main' | 'error'>('loading');
+  const [bootstrapError, setBootstrapError] = useState<string>('');
 
   useEffect(() => { bootstrap(); }, []);
 
@@ -174,7 +166,8 @@ const App: React.FC = () => {
       setAppState(player ? 'main' : 'register');
     } catch (e) {
       console.error('Bootstrap error:', e);
-      setAppState('register');
+      setBootstrapError(e instanceof Error ? e.message : String(e));
+      setAppState('error');
     }
   };
 
@@ -183,6 +176,19 @@ const App: React.FC = () => {
       <View style={styles.splash}>
         <StatusBar style="light" />
         <ActivityIndicator color={COLORS.accentCyan} size="large" />
+      </View>
+    );
+  }
+
+  if (appState === 'error') {
+    return (
+      <View style={styles.splash}>
+        <StatusBar style="light" />
+        <Text style={styles.errorTitle}>SYSTEM FAILURE</Text>
+        <Text style={styles.errorMsg}>
+          The System failed to initialise. Please restart the app or reinstall if the problem persists.
+        </Text>
+        {!!bootstrapError && <Text style={styles.errorDetail}>{bootstrapError}</Text>}
       </View>
     );
   }
@@ -223,6 +229,18 @@ const styles = StyleSheet.create({
   splash: {
     flex: 1, backgroundColor: COLORS.bgPrimary,
     alignItems: 'center', justifyContent: 'center',
+  },
+  errorTitle: {
+    color: COLORS.accentRed, fontSize: 18, fontWeight: '800', letterSpacing: 2,
+    marginBottom: 12,
+  },
+  errorMsg: {
+    color: COLORS.textSecondary, fontSize: 14, textAlign: 'center',
+    paddingHorizontal: 40, lineHeight: 20, marginBottom: 8,
+  },
+  errorDetail: {
+    color: COLORS.textMuted, fontSize: 12, textAlign: 'center',
+    paddingHorizontal: 40,
   },
   header: {
     backgroundColor: COLORS.bgSecondary,

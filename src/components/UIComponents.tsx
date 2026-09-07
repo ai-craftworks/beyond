@@ -9,7 +9,11 @@ import {
   View, Text, TouchableOpacity, TextInput,
   ActivityIndicator, StyleSheet, ViewStyle, TextStyle,
 } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/game';
+import { percentOf } from '../constants/formulas';
+
+export type IonName = React.ComponentProps<typeof Ionicons>['name'];
 
 // ── SystemPanel ───────────────────────────────
 
@@ -25,11 +29,12 @@ interface BtnProps {
   title: string; onPress: () => void;
   variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
   disabled?: boolean; loading?: boolean;
+  icon?: IonName;
   style?: ViewStyle; textStyle?: TextStyle;
 }
 
 export const SystemButton: React.FC<BtnProps> = ({
-  title, onPress, variant = 'primary', disabled, loading, style, textStyle,
+  title, onPress, variant = 'primary', disabled, loading, icon, style, textStyle,
 }) => {
   const bg   = { primary: COLORS.accentCyan, secondary: COLORS.accentBlue, danger: COLORS.accentRed, ghost: 'transparent' }[variant];
   const clr  = variant === 'ghost' ? COLORS.accentCyan : '#0A0E1A';
@@ -40,7 +45,12 @@ export const SystemButton: React.FC<BtnProps> = ({
     >
       {loading
         ? <ActivityIndicator color={clr} size="small" />
-        : <Text style={[styles.btnText, { color: clr }, textStyle]}>{title}</Text>}
+        : (
+          <View style={styles.btnRow}>
+            {icon && <Ionicons name={icon} size={16} color={clr} />}
+            <Text style={[styles.btnText, { color: clr }, textStyle]}>{title}</Text>
+          </View>
+        )}
     </TouchableOpacity>
   );
 };
@@ -91,18 +101,18 @@ export const SectionHeader: React.FC<SecHdrProps> = ({ title, subtitle, action }
 // ── StatRow ──────────────────────────────────
 
 interface StatRowProps {
-  icon: string; label: string; value: number; color: string;
+  icon: IonName; label: string; value: number; color: string;
   showBar?: boolean; maxValue?: number;
 }
 
 export const StatRow: React.FC<StatRowProps> = ({ icon, label, value, color, showBar, maxValue = 100 }) => (
   <View style={styles.statRow}>
-    <Text style={styles.statIcon}>{icon}</Text>
+    <Ionicons name={icon} size={16} color={color} style={styles.statIcon} />
     <Text style={styles.statLabel}>{label}</Text>
     <View style={styles.statRight}>
       {showBar && (
         <View style={styles.statBarBg}>
-          <View style={[styles.statBarFill, { width: `${Math.min((value / maxValue) * 100, 100)}%` as any, backgroundColor: color }]} />
+          <View style={[styles.statBarFill, { width: `${percentOf(value, maxValue)}%` as any, backgroundColor: color }]} />
         </View>
       )}
       <Text style={[styles.statVal, { color }]}>{value}</Text>
@@ -115,7 +125,7 @@ export const StatRow: React.FC<StatRowProps> = ({ icon, label, value, color, sho
 interface ExpBarProps { current: number; max: number; }
 
 export const ExpBar: React.FC<ExpBarProps> = ({ current, max }) => {
-  const pct = Math.min(max > 0 ? (current / max) * 100 : 0, 100);
+  const pct = percentOf(current, max);
   return (
     <View style={styles.expWrap}>
       <View style={styles.expRow}>
@@ -139,9 +149,9 @@ export const RankBadge: React.FC<{ rank: string; color: string; small?: boolean 
 
 // ── EmptyState ───────────────────────────────
 
-export const EmptyState: React.FC<{ icon?: string; title: string; subtitle?: string }> = ({ icon = '📭', title, subtitle }) => (
+export const EmptyState: React.FC<{ icon?: IonName; title: string; subtitle?: string }> = ({ icon = 'mail-unread', title, subtitle }) => (
   <View style={styles.empty}>
-    <Text style={styles.emptyIcon}>{icon}</Text>
+    <Ionicons name={icon} size={38} color={COLORS.textMuted} style={{ marginBottom: 10 }} />
     <Text style={styles.emptyTitle}>{title}</Text>
     {subtitle && <Text style={styles.emptySub}>{subtitle}</Text>}
   </View>
@@ -154,6 +164,7 @@ const styles = StyleSheet.create({
   panelGlow:    { borderColor: COLORS.accentCyan, shadowColor: COLORS.accentCyan, shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.35, shadowRadius: 10, elevation: 10 },
 
   btn:          { borderRadius: 8, paddingVertical: 14, paddingHorizontal: 24, alignItems: 'center', minHeight: 50, justifyContent: 'center' },
+  btnRow:       { flexDirection: 'row', alignItems: 'center', gap: 8 },
   btnGhost:     { borderWidth: 1, borderColor: COLORS.accentCyan },
   btnDisabled:  { opacity: 0.4 },
   btnText:      { fontSize: 14, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase' },
@@ -169,7 +180,7 @@ const styles = StyleSheet.create({
   secAction:    { color: COLORS.accentCyan, fontSize: 13, fontWeight: '600' },
 
   statRow:      { flexDirection: 'row', alignItems: 'center', paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: COLORS.borderDim },
-  statIcon:     { fontSize: 16, width: 26 },
+  statIcon:     { width: 26, textAlign: 'center' },
   statLabel:    { color: COLORS.textSecondary, fontSize: 12, flex: 1, textTransform: 'uppercase', letterSpacing: 0.5 },
   statRight:    { flexDirection: 'row', alignItems: 'center', gap: 8 },
   statBarBg:    { width: 72, height: 4, backgroundColor: COLORS.borderMain, borderRadius: 2, overflow: 'hidden' },
@@ -189,7 +200,6 @@ const styles = StyleSheet.create({
   badgeTextSmall: { fontSize: 10 },
 
   empty:        { alignItems: 'center', paddingVertical: 40 },
-  emptyIcon:    { fontSize: 38, marginBottom: 10 },
   emptyTitle:   { color: COLORS.textSecondary, fontSize: 15, fontWeight: '600', textAlign: 'center' },
   emptySub:     { color: COLORS.textMuted, fontSize: 12, marginTop: 6, textAlign: 'center' },
 });
