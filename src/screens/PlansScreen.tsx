@@ -17,6 +17,7 @@ import {
   removeExerciseFromPlan, updatePlan, Exercise, PlanExercise, cancelTodayPendingSessions
 } from '../database/Database';
 import { SystemButton, SystemInput, SectionHeader, EmptyState } from '../components/UIComponents';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/game';
 import { expForTargetSets } from '../constants/formulas';
 
@@ -151,7 +152,7 @@ const PlansScreen: React.FC = () => {
             subtitle={`${plans.filter(p => p.is_active).length} active`}
             action={{ label: '+ Create', onPress: () => setCreateModal(true) }} />
         }
-        ListEmptyComponent={<EmptyState icon="📋" title="No plans yet" subtitle="Create a plan and assign exercises." />}
+        ListEmptyComponent={<EmptyState icon="clipboard" title="No plans yet" subtitle="Create a plan and assign exercises." />}
         renderItem={({ item }) => (
           <PlanCard plan={item}
             onManage={() => openManage(item)}
@@ -204,7 +205,7 @@ const PlansScreen: React.FC = () => {
             <View style={styles.manageHdr}>
               <Text style={styles.sheetTitle}>◆ {selectedPlan?.name?.toUpperCase()}</Text>
               <TouchableOpacity onPress={() => setManageModal(false)}>
-                <Text style={styles.closeBtn}>✕</Text>
+                <Ionicons name="close" size={20} color={COLORS.textMuted} />
               </TouchableOpacity>
             </View>
             <ScrollView showsVerticalScrollIndicator={false}>
@@ -238,7 +239,7 @@ const PlansScreen: React.FC = () => {
                       </Text>
                     </View>
                     <TouchableOpacity onPress={() => handleRemoveExercise(pe.id!)}>
-                      <Text style={styles.peDelete}>✕</Text>
+                      <Ionicons name="close" size={18} color={COLORS.accentRed} />
                     </TouchableOpacity>
                   </View>
                 ))
@@ -355,7 +356,10 @@ const PlanCard: React.FC<{ plan: Plan; onManage: () => void; onToggle: () => voi
           </View>
           {/* Penalty indicator */}
           {plan.penalty_exp > 0 && (
-            <Text style={styles.penaltyTxt}>⚠ -{plan.penalty_exp} EXP if missed</Text>
+            <View style={styles.penaltyRow}>
+              <Ionicons name="warning" size={12} color={COLORS.accentRed} />
+              <Text style={styles.penaltyTxt}>-{plan.penalty_exp} EXP if missed</Text>
+            </View>
           )}
         </TouchableOpacity>
         <View style={styles.planActions}>
@@ -401,7 +405,6 @@ const styles = StyleSheet.create({
   handle:       { width: 40, height: 4, backgroundColor: COLORS.borderMain, borderRadius: 2, alignSelf: 'center', marginBottom: 14 },
   sheetTitle:   { color: COLORS.accentCyan, fontSize: 13, fontWeight: '700', letterSpacing: 2, marginBottom: 18 },
   manageHdr:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 },
-  closeBtn:     { color: COLORS.textMuted, fontSize: 18, fontWeight: '700' },
 
   selectLbl:    { color: COLORS.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 8, textTransform: 'uppercase' },
   dayRow:       { flexDirection: 'row', gap: 6, marginBottom: 6, flexWrap: 'wrap' },
@@ -421,7 +424,6 @@ const styles = StyleSheet.create({
   peInfo:       { flex: 1 },
   peName:       { color: COLORS.textPrimary, fontSize: 14, fontWeight: '600' },
   peSets:       { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
-  peDelete:     { color: COLORS.accentRed, fontSize: 16, fontWeight: '700', paddingLeft: 12 },
 
   exPickList:   { maxHeight: 180, marginBottom: 14 },
   exPickItem:   { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, paddingHorizontal: 12, borderWidth: 1, borderColor: COLORS.borderDim, borderRadius: 8, marginBottom: 5 },
@@ -429,7 +431,8 @@ const styles = StyleSheet.create({
   exPickTxt:    { color: COLORS.textSecondary, fontSize: 14, flex: 1 },
   exPickTxtOn:  { color: COLORS.accentCyan },
   exPickExp:    { color: COLORS.textMuted, fontSize: 12 },
-  penaltyTxt: { color: COLORS.accentRed, fontSize: 11, fontWeight: '600', marginTop: 5 },
+  penaltyRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 },
+  penaltyTxt: { color: COLORS.accentRed, fontSize: 11, fontWeight: '600' },
 });
 
 export default PlansScreen;

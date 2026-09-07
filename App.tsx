@@ -36,15 +36,6 @@ export type TabParamList = {
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab   = createBottomTabNavigator<TabParamList>();
 
-// ── Tab icon component ───────────────────────
-// A simple wrapper that renders an emoji as the tab icon.
-// `focused` controls whether it uses the active or inactive colour.
-const TabIcon = ({ emoji, focused }: { emoji: string; focused: boolean }) => (
-  <Text style={{ fontSize: 20, color: focused ? COLORS.accentCyan : COLORS.textMuted }}>
-    {emoji}
-  </Text>
-);
-
 // ── Main tab navigator ───────────────────────
 const MainTabs: React.FC = () => {
   const insets = useSafeAreaInsets(); // ← reads the phone's gesture nav bar height

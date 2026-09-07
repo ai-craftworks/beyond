@@ -15,6 +15,7 @@ import {
   BonusExercise, getExercises, Exercise, getSession
 } from '../database/Database';
 import { SystemPanel, SystemButton, ExpBar } from '../components/UIComponents';
+import { Ionicons } from '@expo/vector-icons';
 import LevelUpModal from '../components/LevelUpModal';
 import { COLORS, TITLE_CONDITIONS } from '../constants/game';
 import {
@@ -377,12 +378,13 @@ const SessionScreen: React.FC = () => {
           /* Session already done — show completed banner, plus "Claim Bonus EXP"
              when newly-completed bonus quests have unclaimed rewards. */
           <View style={styles.completedBanner}>
-            <Text style={styles.completedBannerIcon}>✓</Text>
+            <Ionicons name="checkmark-circle" size={28} color={COLORS.accentGreen} />
             <Text style={styles.completedBannerText}>QUEST COMPLETED</Text>
             <Text style={styles.completedBannerSub}>You can still add bonus exercises above</Text>
             {bonusExercises.some(b => b.is_completed && !b.exp_awarded) && (
               <SystemButton
-                title={finishing ? 'Processing...' : '⚑  CLAIM BONUS EXP'}
+                title={finishing ? 'Processing...' : 'CLAIM BONUS EXP'}
+                icon="flag"
                 onPress={handleFinishSession}
                 loading={finishing}
                 style={styles.finishBtn}
@@ -392,7 +394,8 @@ const SessionScreen: React.FC = () => {
         ) : (
           <>
             <SystemButton
-              title={finishing ? 'Processing...' : '⚔  COMPLETE SESSION'}
+              title={finishing ? 'Processing...' : 'COMPLETE SESSION'}
+              icon="fitness"
               onPress={handleFinishSession}
               loading={finishing}
               disabled={(exercises.filter(e => e.is_completed).length === 0 && bonusExercises.filter(e => e.is_completed).length === 0) || finishing}
@@ -503,7 +506,7 @@ const ExerciseItem: React.FC<{ exercise: SessionExercise; index: number; onTap: 
   return (
     <TouchableOpacity style={[styles.questItem, done && styles.questItemDone]} onPress={handlePress} disabled={done} activeOpacity={0.75}>
       <Animated.View style={[styles.indicator, done && styles.indicatorDone, { transform: [{ scale }] }]}>
-        {done ? <Text style={styles.checkMark}>✓</Text> : <Text style={styles.indexNum}>{index + 1}</Text>}
+        {done ? <Ionicons name="checkmark" size={16} color={COLORS.accentGreen} /> : <Text style={styles.indexNum}>{index + 1}</Text>}
       </Animated.View>
       <View style={styles.questBody}>
         <Text style={[styles.questName, done && styles.questNameDone]}>{exercise.exercise_name}</Text>
@@ -537,7 +540,7 @@ const BonusItem: React.FC<{ exercise: BonusExercise; index: number; onTap: () =>
   return (
     <TouchableOpacity style={[styles.questItem, styles.bonusItem, done && styles.questItemDone]} onPress={onTap} disabled={done} activeOpacity={0.75}>
       <View style={[styles.indicator, styles.bonusIndicator, done && styles.indicatorDone]}>
-        {done ? <Text style={styles.checkMark}>✓</Text> : <Text style={styles.bonusStar}>★</Text>}
+        {done ? <Ionicons name="checkmark" size={16} color={COLORS.accentGreen} /> : <Ionicons name="star" size={14} color={COLORS.accentGold} />}
       </View>
       <View style={styles.questBody}>
         <Text style={[styles.questName, done && styles.questNameDone]}>{exercise.exercise_name}</Text>
@@ -595,9 +598,7 @@ const styles = StyleSheet.create({
   indicator:     { width: 38, height: 38, borderRadius: 19, borderWidth: 2, borderColor: COLORS.accentCyan, alignItems: 'center', justifyContent: 'center' },
   indicatorDone: { borderColor: COLORS.accentGreen, backgroundColor: `${COLORS.accentGreen}18` },
   bonusIndicator:{ borderColor: COLORS.accentGold },
-  checkMark:     { color: COLORS.accentGreen, fontSize: 17, fontWeight: '700' },
   indexNum:      { color: COLORS.accentCyan, fontSize: 14, fontWeight: '700' },
-  bonusStar:     { color: COLORS.accentGold, fontSize: 16 },
 
   questBody:     { flex: 1 },
   questName:     { color: COLORS.textPrimary, fontSize: 14, fontWeight: '600', marginBottom: 2 },
@@ -634,7 +635,6 @@ const styles = StyleSheet.create({
   exPickSub:     { color: COLORS.textMuted, fontSize: 11 },
 
   completedBanner:     { marginTop: 24, marginBottom: 8, backgroundColor: `${COLORS.accentGreen}12`, borderWidth: 1, borderColor: COLORS.accentGreen, borderRadius: 10, padding: 20, alignItems: 'center', gap: 6 },
-  completedBannerIcon: { color: COLORS.accentGreen, fontSize: 28 },
   completedBannerText: { color: COLORS.accentGreen, fontSize: 16, fontWeight: '800', letterSpacing: 2 },
   completedBannerSub:  { color: COLORS.textSecondary, fontSize: 12, textAlign: 'center' },
 });

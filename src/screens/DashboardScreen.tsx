@@ -16,7 +16,8 @@ import {
   getPlans, createSession, populateSessionExercises,
   getMissedSessions, applyMissedSessionPenalty,   // ← add these two
 } from '../database/Database';
-import { SystemPanel, SectionHeader, StatRow, ExpBar, RankBadge, EmptyState } from '../components/UIComponents';
+import { SystemPanel, SectionHeader, StatRow, ExpBar, RankBadge, EmptyState, IonName } from '../components/UIComponents';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS, getRankForLevel, STATS } from '../constants/game';
 import { RootStackParamList, TabParamList } from '../../App';
 import { playSound } from '../utils/sounds';
@@ -160,7 +161,7 @@ const DashboardScreen: React.FC = () => {
           action={{ label: '+ New Plan', onPress: () => navigation.navigate('Plans') }}
         />
         {sessions.length === 0 ? (
-          <EmptyState icon="🗡️" title="No quests today"
+          <EmptyState icon="diamond" title="No quests today"
             subtitle="Activate a plan to begin." />
         ) : (
           sessions.map(s => (
@@ -175,13 +176,13 @@ const DashboardScreen: React.FC = () => {
       {/* Quick nav */}
       <View style={styles.quickNav}>
         {([
-          { icon: '🏋️', label: 'Exercises', screen: 'Exercises' as const },
-          { icon: '📋', label: 'Plans',     screen: 'Plans'     as const },
-          { icon: '🏆', label: 'Profile',   screen: 'Profile'   as const },
+          { icon: 'barbell', label: 'Exercises', screen: 'Exercises' as const },
+          { icon: 'list',    label: 'Plans',     screen: 'Plans'     as const },
+          { icon: 'person',  label: 'Profile',   screen: 'Profile'   as const },
         ] as const).map(item => (
           <TouchableOpacity key={item.label} style={styles.quickBtn}
             onPress={() => navigation.navigate(item.screen)}>
-            <Text style={styles.quickIcon}>{item.icon}</Text>
+            <Ionicons name={item.icon} size={22} color={COLORS.accentCyan} />
             <Text style={styles.quickLabel}>{item.label}</Text>
           </TouchableOpacity>
         ))}
@@ -194,17 +195,22 @@ const DashboardScreen: React.FC = () => {
 
 const QuestCard: React.FC<{ session: Session; onPress: () => void }> = ({ session, onPress }) => {
   const col = { pending: COLORS.textSecondary, in_progress: COLORS.accentCyan, completed: COLORS.accentGreen, skipped: COLORS.textMuted }[session.status];
-  const lbl = { pending: '○ PENDING', in_progress: '◉ IN PROGRESS', completed: '✓ COMPLETED', skipped: '✗ SKIPPED' }[session.status];
+  const statusIcons: Record<string, IonName> = { pending: 'ellipse', in_progress: 'radio-button-on', completed: 'checkmark-circle', skipped: 'close-circle' };
+  const statusIcon = statusIcons[session.status];
+  const lbl = { pending: 'PENDING', in_progress: 'IN PROGRESS', completed: 'COMPLETED', skipped: 'SKIPPED' }[session.status];
   const done = session.status === 'skipped';
   return (
     <TouchableOpacity style={styles.questCard} onPress={onPress} disabled={done} activeOpacity={0.8}>
       <View style={styles.questLeft}>
         <Text style={styles.questName}>{session.plan_name}</Text>
-        <Text style={[styles.questStatus, { color: col }]}>{lbl}</Text>
+        <View style={styles.questStatusRow}>
+          <Ionicons name={statusIcon} size={12} color={col} />
+          <Text style={[styles.questStatus, { color: col }]}>{lbl}</Text>
+        </View>
       </View>
       {done
         ? <Text style={styles.questExp}>+{session.total_exp} EXP</Text>
-        : <Text style={styles.questArrow}>▶</Text>}
+        : <Ionicons name="chevron-forward" size={18} color={COLORS.textSecondary} />}
     </TouchableOpacity>
   );
 };
@@ -232,13 +238,12 @@ const styles = StyleSheet.create({
   questCard:   { flexDirection: 'row', alignItems: 'center', paddingVertical: 13, paddingHorizontal: 2, borderBottomWidth: 1, borderBottomColor: COLORS.borderDim },
   questLeft:   { flex: 1 },
   questName:   { color: COLORS.textPrimary, fontSize: 14, fontWeight: '600', marginBottom: 2 },
-  questStatus: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
+  questStatus: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginLeft: 4 },
+  questStatusRow: { flexDirection: 'row', alignItems: 'center' },
   questExp:    { color: COLORS.accentGreen, fontSize: 13, fontWeight: '700' },
-  questArrow:  { color: COLORS.accentCyan, fontSize: 18 },
 
   quickNav:    { flexDirection: 'row', gap: 10 },
   quickBtn:    { flex: 1, backgroundColor: COLORS.bgSecondary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 10, paddingVertical: 14, alignItems: 'center', gap: 5 },
-  quickIcon:   { fontSize: 22 },
   quickLabel:  { color: COLORS.textSecondary, fontSize: 11, fontWeight: '600' },
 });
 

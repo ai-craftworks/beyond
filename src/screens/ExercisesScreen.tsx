@@ -6,6 +6,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { createExercise, deleteExercise, updateExercise, Exercise, getExercises } from '../database/Database';
 import { SystemButton, SystemInput, SectionHeader, EmptyState } from '../components/UIComponents';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS, EXERCISE_CATEGORIES, STATS, UNIT_TYPES } from '../constants/game';
 
 const ExercisesScreen: React.FC = () => {
@@ -139,17 +140,17 @@ const ExercisesScreen: React.FC = () => {
           <SectionHeader title="Exercise Library" subtitle={`${exercises.length} exercises`}
             action={{ label: '+ Create', onPress: () => setModal(true) }} />
         }
-        ListEmptyComponent={<EmptyState icon="🏋️" title="No exercises yet" subtitle="Create your first exercise." />}
+        ListEmptyComponent={<EmptyState icon="barbell" title="No exercises yet" subtitle="Create your first exercise." />}
         renderItem={({ item }) => (
           <View style={[styles.card, { borderLeftColor: accentForCat(item.category) }]}>
             <View style={styles.cardTop}>
               <Text style={styles.cardName}>{item.name}</Text>
               <View style={styles.cardActions}>
                 <TouchableOpacity onPress={() => openEdit(item)} style={styles.editBtn}>
-                  <Text style={styles.editBtnTxt}>✎</Text>
+                  <Ionicons name="create" size={16} color={COLORS.accentCyan} />
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => handleDelete(item)}>
-                  <Text style={styles.deleteBtn}>✕</Text>
+                  <Ionicons name="close" size={18} color={COLORS.accentRed} />
                 </TouchableOpacity>
               </View>
             </View>
@@ -250,7 +251,10 @@ const ExercisesScreen: React.FC = () => {
                   <TouchableOpacity key={s.key}
                     style={[styles.chip, statType === s.key && styles.chipOn]}
                     onPress={() => setStatType(s.key)}>
-                    <Text style={[styles.chipTxt, statType === s.key && styles.chipTxtOn]}>{s.icon} {s.label}</Text>
+                    <View style={styles.chipRow}>
+                      <Ionicons name={s.icon} size={12} color={s.color} />
+                      <Text style={[styles.chipTxt, statType === s.key && styles.chipTxtOn]}>{s.label}</Text>
+                    </View>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -333,7 +337,10 @@ const ExercisesScreen: React.FC = () => {
                   <TouchableOpacity key={s.key}
                     style={[styles.chip, editStatType === s.key && styles.chipOn]}
                     onPress={() => setEditStatType(s.key)}>
-                    <Text style={[styles.chipTxt, editStatType === s.key && styles.chipTxtOn]}>{s.icon} {s.label}</Text>
+                    <View style={styles.chipRow}>
+                      <Ionicons name={s.icon} size={12} color={s.color} />
+                      <Text style={[styles.chipTxt, editStatType === s.key && styles.chipTxtOn]}>{s.label}</Text>
+                    </View>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -374,7 +381,6 @@ const styles = StyleSheet.create({
   tags:       { flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 6 },
   tag:        { borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 2 },
   tagTxt:     { color: COLORS.accentCyan, fontSize: 10, fontWeight: '700' },
-  deleteBtn:  { color: COLORS.accentRed, fontSize: 16, fontWeight: '700', paddingLeft: 8 },
 
   overlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' },
   sheet:      { backgroundColor: COLORS.bgPanel, borderTopLeftRadius: 20, borderTopRightRadius: 20, borderTopWidth: 1, borderColor: COLORS.accentCyan, padding: 20, maxHeight: '95%' },
@@ -384,6 +390,7 @@ const styles = StyleSheet.create({
   selectLbl:  { color: COLORS.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 8, textTransform: 'uppercase' },
   chips:      { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginBottom: 14 },
   chip:       { borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 6 },
+  chipRow:    { flexDirection: 'row', alignItems: 'center', gap: 5 },
   chipOn:     { borderColor: COLORS.accentCyan, backgroundColor: `${COLORS.accentCyan}18` },
   chipTxt:    { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' },
   chipTxtOn:  { color: COLORS.accentCyan },
@@ -395,7 +402,6 @@ const styles = StyleSheet.create({
 
   cardActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   editBtn:     { padding: 4 },
-  editBtnTxt:  { color: COLORS.accentCyan, fontSize: 16, fontWeight: '700' },
 
   perLabel:    { justifyContent: 'flex-end', paddingBottom: 14, alignItems: 'center', paddingHorizontal: 6 },
   perLabelTxt: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },

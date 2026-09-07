@@ -14,6 +14,7 @@ import {
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { createPlayer } from '../database/Database';
 import { SystemInput, SystemButton } from '../components/UIComponents';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/game';
 import { RootStackParamList } from '../../App';
 import { playSound } from '../utils/sounds';
@@ -113,7 +114,7 @@ const RegistrationScreen: React.FC<Props> = ({ navigation }) => {
               <Text style={styles.cardTitle}>◆ IDENTITY PROTOCOL</Text>
               <SystemInput label="Hunter Name" value={name} onChangeText={setName} placeholder="Enter your name" />
               <SystemInput label="Age" value={age} onChangeText={setAge} placeholder="Years" keyboardType="numeric" />
-              <SystemButton title="NEXT →" onPress={handleNext} />
+              <SystemButton title="NEXT" icon="arrow-forward" onPress={handleNext} />
             </View>
           )}
 
@@ -125,9 +126,12 @@ const RegistrationScreen: React.FC<Props> = ({ navigation }) => {
               <SystemInput label="Height (cm)" value={height} onChangeText={setHeight} keyboardType="decimal-pad" />
               <View style={styles.row}>
                 <TouchableOpacity style={styles.backBtn} onPress={() => setStep(0)}>
-                  <Text style={styles.backTxt}>← BACK</Text>
+                  <View style={styles.backRow}>
+                    <Ionicons name="arrow-back" size={14} color={COLORS.accentCyan} />
+                    <Text style={styles.backTxt}>BACK</Text>
+                  </View>
                 </TouchableOpacity>
-                <SystemButton title="NEXT →" onPress={handleNext} style={styles.flex1} />
+                <SystemButton title="NEXT" icon="arrow-forward" onPress={handleNext} style={styles.flex1} />
               </View>
             </View>
           )}
@@ -147,7 +151,10 @@ const RegistrationScreen: React.FC<Props> = ({ navigation }) => {
               </View>
               <View style={styles.row}>
                 <TouchableOpacity style={styles.backBtn} onPress={() => setStep(1)}>
-                  <Text style={styles.backTxt}>← BACK</Text>
+                  <View style={styles.backRow}>
+                    <Ionicons name="arrow-back" size={14} color={COLORS.accentCyan} />
+                    <Text style={styles.backTxt}>BACK</Text>
+                  </View>
                 </TouchableOpacity>
                 <SystemButton title="REGISTER" onPress={handleRegister} loading={loading} style={styles.flex1} />
               </View>
@@ -181,6 +188,7 @@ const styles = StyleSheet.create({
   row:         { flexDirection: 'row', gap: 12 },
   flex1:       { flex: 1 },
   backBtn:     { borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 8, paddingVertical: 14, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center' },
+  backRow:     { flexDirection: 'row', alignItems: 'center', gap: 6 },
   backTxt:     { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600', letterSpacing: 1 },
   summaryRow:  { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: COLORS.borderDim },
   summaryLbl:  { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },

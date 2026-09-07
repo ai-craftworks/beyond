@@ -9,6 +9,7 @@ import { View, Text, ScrollView, StyleSheet, Alert, TouchableOpacity } from 'rea
 import { useFocusEffect } from '@react-navigation/native';
 import { getPlayer, Player, getTitles, EarnedTitle, getRecentSessions, Session, getSessionSummary, resetAllData } from '../database/Database';
 import { SystemPanel, SectionHeader, StatRow, ExpBar } from '../components/UIComponents';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS, getRankForLevel, STATS } from '../constants/game';
 import { sumExp, expToNextRemaining } from '../constants/formulas';
 
@@ -159,7 +160,7 @@ const ProfileScreen: React.FC = () => {
                       { color: s.status === 'completed' ? COLORS.accentGreen : COLORS.textMuted }]}>
                       {s.status.toUpperCase()}
                     </Text>
-                    <Text style={styles.expandChevron}>{isExpanded ? '▲' : '▼'}</Text>
+                    <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.textMuted} />
                   </View>
                 </TouchableOpacity>
 
@@ -168,9 +169,11 @@ const ProfileScreen: React.FC = () => {
                   <View style={styles.sessionDetail}>
                     {detail.exercises.map((ex: any, i: number) => (
                       <View key={i} style={styles.sessionExRow}>
-                        <Text style={styles.sessionExDot}>
-                          {ex.is_completed ? '✓' : '○'}
-                        </Text>
+                        <View style={styles.sessionExDot}>
+                          {ex.is_completed
+                            ? <Ionicons name="checkmark" size={12} color={COLORS.accentGreen} />
+                            : <Ionicons name="ellipse" size={12} color={COLORS.textMuted} />}
+                        </View>
                         <Text style={[styles.sessionExName,
                           !ex.is_completed && { color: COLORS.textMuted }]}>
                           {ex.name}
@@ -194,9 +197,11 @@ const ProfileScreen: React.FC = () => {
                         <Text style={styles.sessionBonusLabel}>BONUS</Text>
                         {detail.bonuses.map((ex: any, i: number) => (
                           <View key={i} style={styles.sessionExRow}>
-                            <Text style={[styles.sessionExDot, { color: COLORS.accentGold }]}>
-                              {ex.is_completed ? '★' : '☆'}
-                            </Text>
+                            <View style={styles.sessionExDot}>
+                              {ex.is_completed
+                                ? <Ionicons name="star" size={12} color={COLORS.accentGold} />
+                                : <Ionicons name="star-outline" size={12} color={COLORS.textMuted} />}
+                            </View>
                             <Text style={[styles.sessionExName,
                               !ex.is_completed && { color: COLORS.textMuted }]}>
                               {ex.name}
@@ -219,7 +224,8 @@ const ProfileScreen: React.FC = () => {
 
       {/* Reset button */}
       <TouchableOpacity style={styles.resetBtn} onPress={handleReset}>
-        <Text style={styles.resetBtnText}>⚠ Reset All Data & Start Fresh</Text>
+        <Ionicons name="warning" size={16} color={COLORS.accentRed} />
+        <Text style={styles.resetBtnText}>Reset All Data & Start Fresh</Text>
       </TouchableOpacity>
     </ScrollView>
   );
@@ -260,10 +266,9 @@ const styles = StyleSheet.create({
   sessionExp:   { color: COLORS.accentCyan, fontSize: 12, fontWeight: '700' },
   sessionStatus:{ fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
 
-  expandChevron:      { color: COLORS.textMuted, fontSize: 11, marginLeft: 6 },
   sessionDetail:      { backgroundColor: COLORS.bgTertiary, borderRadius: 8, padding: 10, marginBottom: 6, marginTop: -4 },
   sessionExRow:       { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, gap: 8 },
-  sessionExDot:       { color: COLORS.accentGreen, fontSize: 12, width: 16 },
+  sessionExDot:       { width: 16, alignItems: 'center' },
   sessionExName:      { color: COLORS.textSecondary, fontSize: 12, flex: 1 },
   sessionExAmt:       { color: COLORS.accentCyan, fontSize: 11, fontWeight: '600' },
   sessionBonusLabel:  { color: COLORS.accentGold, fontSize: 10, fontWeight: '700', letterSpacing: 1, marginTop: 6, marginBottom: 2 },
@@ -276,6 +281,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     paddingVertical: 14,
     alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
   },
   resetBtnText: {
     color: COLORS.accentRed,
