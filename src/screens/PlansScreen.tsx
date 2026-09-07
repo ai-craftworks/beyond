@@ -11,6 +11,7 @@ import {
   Platform, Switch,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   createPlan, deletePlan, Plan, getPlans,
   getPlanExercises, getExercises, addExerciseToPlan,
@@ -24,6 +25,7 @@ import { expForTargetSets } from '../constants/formulas';
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 const PlansScreen: React.FC = () => {
+  const insets = useSafeAreaInsets();
   const [plans, setPlans]                     = useState<Plan[]>([]);
   const [createModal, setCreateModal]         = useState(false);
   const [manageModal, setManageModal]         = useState(false);
@@ -165,7 +167,7 @@ const PlansScreen: React.FC = () => {
       {/* ── Create Plan Modal ── */}
       <Modal visible={createModal} animationType="slide" transparent onRequestClose={() => setCreateModal(false)}>
         <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={styles.sheet}>
+          <View style={[styles.sheet, { paddingBottom: 20 + insets.bottom }]}>
             <View style={styles.handle} />
             <Text style={styles.sheetTitle}>◆ NEW PLAN</Text>
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
@@ -200,7 +202,7 @@ const PlansScreen: React.FC = () => {
       {/* ── Manage Plan Modal ── */}
       <Modal visible={manageModal} animationType="slide" transparent onRequestClose={() => setManageModal(false)}>
         <View style={styles.overlay}>
-          <View style={[styles.sheet, { maxHeight: '92%' }]}>
+          <View style={[styles.sheet, { maxHeight: '92%', paddingBottom: 20 + insets.bottom }]}>
             <View style={styles.handle} />
             <View style={styles.manageHdr}>
               <Text style={styles.sheetTitle}>◆ {selectedPlan?.name?.toUpperCase()}</Text>
@@ -252,7 +254,7 @@ const PlansScreen: React.FC = () => {
       {/* ── Add Exercise Modal ── */}
       <Modal visible={addExModal} animationType="fade" transparent onRequestClose={() => setAddExModal(false)}>
         <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={styles.sheet}>
+          <View style={[styles.sheet, { paddingBottom: 20 + insets.bottom }]}>
             <View style={styles.handle} />
             <Text style={styles.sheetTitle}>◆ ADD EXERCISE</Text>
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
@@ -292,7 +294,7 @@ const PlansScreen: React.FC = () => {
       {/* ── EDIT PLAN MODAL ── */}
       <Modal visible={editPlanModal} animationType="slide" transparent onRequestClose={() => setEditPlanModal(false)}>
         <KeyboardAvoidingView style={styles.overlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={styles.sheet}>
+          <View style={[styles.sheet, { paddingBottom: 20 + insets.bottom }]}>
             <View style={styles.handle} />
             <Text style={styles.sheetTitle}>◆ EDIT PLAN</Text>
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>

@@ -15,6 +15,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { createPlayer } from '../database/Database';
 import { SystemInput, SystemButton } from '../components/UIComponents';
 import { Ionicons } from '@expo/vector-icons';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../constants/game';
 import { RootStackParamList } from '../../App';
 import { playSound } from '../utils/sounds';
@@ -22,6 +23,7 @@ import { playSound } from '../utils/sounds';
 type Props = { navigation: NativeStackNavigationProp<RootStackParamList, 'Registration'> };
 
 const RegistrationScreen: React.FC<Props> = ({ navigation }) => {
+  const insets = useSafeAreaInsets();
   const [step, setStep]     = useState(0);
   const [name, setName]     = useState('');
   const [age, setAge]       = useState('');
@@ -82,7 +84,7 @@ const RegistrationScreen: React.FC<Props> = ({ navigation }) => {
       style={styles.root}
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
     >
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
+      <ScrollView contentContainerStyle={[styles.scroll, { paddingBottom: 50 + insets.bottom }]} keyboardShouldPersistTaps="handled">
         <Animated.View style={{ opacity: fadeAnim }}>
 
           {/* Header */}

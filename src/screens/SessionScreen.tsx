@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   getSessionExercises, getPlayer, updatePlayer,
   updateSession, completeSessionExercise,
@@ -31,6 +32,7 @@ type Nav   = NativeStackNavigationProp<RootStackParamList, 'Session'>;
 const SessionScreen: React.FC = () => {
   const route      = useRoute<Route>();
   const navigation = useNavigation<Nav>();
+  const insets     = useSafeAreaInsets();
   const { sessionId } = route.params;
 
   const [exercises, setExercises]       = useState<SessionExercise[]>([]);
@@ -322,7 +324,7 @@ const SessionScreen: React.FC = () => {
         </Animated.Text>
       </Animated.View>
 
-      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 60 + insets.bottom }]} showsVerticalScrollIndicator={false}>
         {/* Header */}
         <View style={styles.sessionHdr}>
           <Text style={styles.sessionTag}>◆ DAILY QUEST</Text>
@@ -415,7 +417,7 @@ const SessionScreen: React.FC = () => {
       {/* Amount input modal (for distance/time exercises) */}
       <Modal visible={amountModal} transparent animationType="fade" onRequestClose={() => setAmountModal(false)}>
         <KeyboardAvoidingView style={styles.amountOverlay} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-          <View style={styles.amountSheet}>
+          <View style={[styles.amountSheet, { paddingBottom: 24 + insets.bottom }]}>
             <Text style={styles.amountTitle}>
               {pendingExercise?.exercise_name ?? pendingBonus?.exercise_name}
             </Text>
@@ -454,7 +456,7 @@ const SessionScreen: React.FC = () => {
       {/* Add bonus exercise modal */}
       <Modal visible={bonusModal} transparent animationType="slide" onRequestClose={() => setBonusModal(false)}>
         <KeyboardAvoidingView style={styles.amountOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={[styles.amountSheet, { maxHeight: '80%' }]}>
+          <View style={[styles.amountSheet, { maxHeight: '80%', paddingBottom: 24 + insets.bottom }]}>
             <Text style={styles.amountTitle}>◆ ADD BONUS QUEST</Text>
             <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 260 }} nestedScrollEnabled>
               {allExercises.map(ex => (
