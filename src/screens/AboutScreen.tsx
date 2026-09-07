@@ -13,7 +13,8 @@ import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { getPlayer, Player, getTitles, EarnedTitle } from '../database/Database';
 import { SystemPanel, SectionHeader, ExpBar } from '../components/UIComponents';
-import { COLORS, RANKS, TITLE_CONDITIONS, expRequiredForLevel, getRankForLevel } from '../constants/game';
+import { COLORS, RANKS, TITLE_CONDITIONS, getRankForLevel } from '../constants/game';
+import { expRequiredForLevel } from '../constants/formulas';
 
 const AboutScreen: React.FC = () => {
   const [player, setPlayer]   = useState<Player | null>(null);

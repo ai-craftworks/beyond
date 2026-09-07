@@ -10,6 +10,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { getPlayer, Player, getTitles, EarnedTitle, getRecentSessions, Session, getSessionSummary, resetAllData } from '../database/Database';
 import { SystemPanel, SectionHeader, StatRow, ExpBar } from '../components/UIComponents';
 import { COLORS, getRankForLevel, STATS } from '../constants/game';
+import { sumExp, expToNextRemaining } from '../constants/formulas';
 
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -48,7 +49,7 @@ const ProfileScreen: React.FC = () => {
 
   const rank       = getRankForLevel(player.level);
   const completed  = sessions.filter(s => s.status === 'completed').length;
-  const totalExp   = sessions.reduce((sum, s) => sum + (s.total_exp || 0), 0);
+  const totalExp   = sumExp(sessions);
 
   const handleReset = () => {
     Alert.alert(
@@ -85,7 +86,7 @@ const ProfileScreen: React.FC = () => {
       {/* EXP bar */}
       <SystemPanel>
         <ExpBar current={player.exp} max={player.exp_to_next} />
-        <Text style={styles.expHint}>{player.exp_to_next - player.exp} EXP to Level {player.level + 1}</Text>
+        <Text style={styles.expHint}>{expToNextRemaining(player.exp, player.exp_to_next)} EXP to Level {player.level + 1}</Text>
       </SystemPanel>
 
       {/* Stats */}

@@ -10,7 +10,7 @@
  */
 
 import * as SQLite from 'expo-sqlite';
-import { calculateLevelFromTotalExp } from '../constants/game';
+import { calculateLevelFromTotalExp } from '../constants/formulas';
 
 // ─────────────────────────────────────────────
 // SINGLETON CONNECTION

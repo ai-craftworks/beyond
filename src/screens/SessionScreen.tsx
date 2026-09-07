@@ -16,7 +16,11 @@ import {
 } from '../database/Database';
 import { SystemPanel, SystemButton, ExpBar } from '../components/UIComponents';
 import LevelUpModal from '../components/LevelUpModal';
-import { COLORS, expRequiredForLevel, TITLE_CONDITIONS } from '../constants/game';
+import { COLORS, TITLE_CONDITIONS } from '../constants/game';
+import {
+  expForAmount, expForTargetSets, statDeltasFromItems, cappedStat,
+  fullClearBonus, calculateLevelFromTotalExp,
+} from '../constants/formulas';
 import { RootStackParamList } from '../../App';
 import { playSound } from '../utils/sounds';
 
@@ -131,7 +135,7 @@ const SessionScreen: React.FC = () => {
   };
 
   const finalizeExercise = async (ex: SessionExercise, actualAmount: number) => {
-    const expEarned = Math.floor((actualAmount / (ex.exp_unit_count || 1)) * ex.exp_per_unit);
+    const expEarned = expForAmount(actualAmount, ex.exp_per_unit, ex.exp_unit_count);
     setExercises(prev =>
       prev.map(e => e.id === ex.id ? { ...e, is_completed: 1, actual_amount: actualAmount, exp_reward: expEarned } : e)
     );
@@ -141,7 +145,7 @@ const SessionScreen: React.FC = () => {
   };
 
   const finalizeBonusExercise = async (ex: BonusExercise, actualAmount: number) => {
-    const expEarned = Math.floor((actualAmount / (ex.exp_unit_count > 0 ? ex.exp_unit_count : 1)) * ex.exp_per_unit);
+    const expEarned = expForAmount(actualAmount, ex.exp_per_unit, ex.exp_unit_count);
     setBonusEx(prev =>
       prev.map(e => e.id === ex.id ? { ...e, is_completed: 1, actual_amount: actualAmount, exp_reward: expEarned } : e)
     );
@@ -187,19 +191,11 @@ const SessionScreen: React.FC = () => {
         const bonusExp    = claimableBonus.reduce((sum, e) => sum + e.exp_reward, 0);
         const allDone     = doneMain.length === exercises.length;
         // Apply 10% bonus to main exercises only, as a flat addition
-        const bonusAmount = allDone ? Math.floor(rawMainExp * 0.1) : 0;
+        const bonusAmount = allDone ? fullClearBonus(rawMainExp) : 0;
         const mainExp     = rawMainExp + bonusAmount;
         const totalExp    = mainExp + bonusExp;
 
-        const statDeltas: Record<string, number> = {};
-        for (const ex of [...doneMain, ...claimableBonus]) {
-          const expPerStatPoint = (ex as any).exp_per_stat_point > 0
-            ? (ex as any).exp_per_stat_point : 20;
-          const statGain = Math.floor(ex.exp_reward / expPerStatPoint);
-          if (statGain > 0) {
-            statDeltas[ex.stat_type] = (statDeltas[ex.stat_type] ?? 0) + statGain;
-          }
-        }
+        const statDeltas = statDeltasFromItems([...doneMain, ...claimableBonus]);
 
         const levelled = await applyAward(statDeltas, totalExp, claimableBonusIds);
         setExpGained(0);
@@ -223,15 +219,7 @@ const SessionScreen: React.FC = () => {
         }
 
         const bonusExp = claimableBonus.reduce((sum, e) => sum + e.exp_reward, 0);
-        const statDeltas: Record<string, number> = {};
-        for (const ex of claimableBonus) {
-          const expPerStatPoint = (ex as any).exp_per_stat_point > 0
-            ? (ex as any).exp_per_stat_point : 20;
-          const statGain = Math.floor(ex.exp_reward / expPerStatPoint);
-          if (statGain > 0) {
-            statDeltas[ex.stat_type] = (statDeltas[ex.stat_type] ?? 0) + statGain;
-          }
-        }
+        const statDeltas = statDeltasFromItems(claimableBonus);
 
         await applyAward(statDeltas, bonusExp, claimableBonusIds);
         setExpGained(0);
@@ -260,23 +248,18 @@ const SessionScreen: React.FC = () => {
 
     // Level calculation
     const newTotalExp = p.total_exp + totalExp;
-    let level = 1, remaining = newTotalExp;
-    while (level < 100) {
-      const needed = expRequiredForLevel(level);
-      if (remaining < needed) break;
-      remaining -= needed; level++;
-    }
+    const { level, expInCurrentLevel, expToNext } = calculateLevelFromTotalExp(newTotalExp);
     const levelled = level > p.level;
 
     const updates: Partial<Player> = {
-      level, exp: remaining,
-      exp_to_next: expRequiredForLevel(level),
+      level, exp: expInCurrentLevel,
+      exp_to_next: expToNext,
       total_exp: newTotalExp,
-      strength:     Math.min((p.strength     + (statDeltas['strength']     ?? 0)), 9999),
-      agility:      Math.min((p.agility      + (statDeltas['agility']      ?? 0)), 9999),
-      endurance:    Math.min((p.endurance    + (statDeltas['endurance']    ?? 0)), 9999),
-      intelligence: Math.min((p.intelligence + (statDeltas['intelligence'] ?? 0)), 9999),
-      vitality:     Math.min((p.vitality     + (statDeltas['vitality']     ?? 0)), 9999),
+      strength:     cappedStat(p.strength,     statDeltas['strength']     ?? 0),
+      agility:      cappedStat(p.agility,      statDeltas['agility']      ?? 0),
+      endurance:    cappedStat(p.endurance,    statDeltas['endurance']    ?? 0),
+      intelligence: cappedStat(p.intelligence, statDeltas['intelligence'] ?? 0),
+      vitality:     cappedStat(p.vitality,     statDeltas['vitality']     ?? 0),
     };
 
     // Title checks
@@ -450,9 +433,10 @@ const SessionScreen: React.FC = () => {
               </Text>
             </View>
             <Text style={styles.amountExpPreview}>
-              ≈ {Math.floor(
-                  (Number(inputAmount || 0) / ((pendingExercise?.exp_unit_count || pendingBonus?.exp_unit_count || 1)))
-                  * (pendingExercise?.exp_per_unit ?? pendingBonus?.exp_per_unit ?? 0)
+              ≈ {expForAmount(
+                  Number(inputAmount || 0),
+                  pendingExercise?.exp_per_unit ?? pendingBonus?.exp_per_unit ?? 0,
+                  pendingExercise?.exp_unit_count || pendingBonus?.exp_unit_count || 1
                 )} EXP
             </Text>
             <View style={styles.amountBtnRow}>
@@ -537,11 +521,7 @@ const ExerciseItem: React.FC<{ exercise: SessionExercise; index: number; onTap: 
         <Text style={[styles.expBadgeTxt, done && styles.expBadgeTxtDone]}>
           {done
             ? `+${exercise.exp_reward}`
-            : `~${Math.floor(
-                (exercise.target * exercise.sets_total)
-                / (exercise.exp_unit_count > 0 ? exercise.exp_unit_count : 1)
-                * exercise.exp_per_unit
-              )}`
+            : `~${expForTargetSets(exercise.target, exercise.sets_total, exercise.exp_per_unit, exercise.exp_unit_count)}`
           }
         </Text>
         <Text style={[styles.expBadgeLbl, done && styles.expBadgeTxtDone]}>EXP</Text>
@@ -567,11 +547,7 @@ const BonusItem: React.FC<{ exercise: BonusExercise; index: number; onTap: () =>
         <Text style={[styles.expBadgeTxt, done && styles.expBadgeTxtDone]}>
           {done
             ? `+${exercise.exp_reward}`
-            : `~${Math.floor(
-                exercise.target
-                / (exercise.exp_unit_count > 0 ? exercise.exp_unit_count : 1)
-                * exercise.exp_per_unit
-              )}`
+            : `~${expForAmount(exercise.target, exercise.exp_per_unit, exercise.exp_unit_count)}`
           }
         </Text>
         <Text style={[styles.expBadgeLbl, done && styles.expBadgeTxtDone]}>EXP</Text>

@@ -10,6 +10,7 @@ import {
   ActivityIndicator, StyleSheet, ViewStyle, TextStyle,
 } from 'react-native';
 import { COLORS } from '../constants/game';
+import { percentOf } from '../constants/formulas';
 
 // ── SystemPanel ───────────────────────────────
 
@@ -102,7 +103,7 @@ export const StatRow: React.FC<StatRowProps> = ({ icon, label, value, color, sho
     <View style={styles.statRight}>
       {showBar && (
         <View style={styles.statBarBg}>
-          <View style={[styles.statBarFill, { width: `${Math.min((value / maxValue) * 100, 100)}%` as any, backgroundColor: color }]} />
+          <View style={[styles.statBarFill, { width: `${percentOf(value, maxValue)}%` as any, backgroundColor: color }]} />
         </View>
       )}
       <Text style={[styles.statVal, { color }]}>{value}</Text>
@@ -115,7 +116,7 @@ export const StatRow: React.FC<StatRowProps> = ({ icon, label, value, color, sho
 interface ExpBarProps { current: number; max: number; }
 
 export const ExpBar: React.FC<ExpBarProps> = ({ current, max }) => {
-  const pct = Math.min(max > 0 ? (current / max) * 100 : 0, 100);
+  const pct = percentOf(current, max);
   return (
     <View style={styles.expWrap}>
       <View style={styles.expRow}>

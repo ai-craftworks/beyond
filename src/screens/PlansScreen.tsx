@@ -18,6 +18,7 @@ import {
 } from '../database/Database';
 import { SystemButton, SystemInput, SectionHeader, EmptyState } from '../components/UIComponents';
 import { COLORS } from '../constants/game';
+import { expForTargetSets } from '../constants/formulas';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -232,9 +233,7 @@ const PlansScreen: React.FC = () => {
                       <Text style={styles.peName}>{pe.exercise_name}</Text>
                       <Text style={styles.peSets}>
                         {pe.sets} sets × {pe.target} {pe.unit_label ?? 'reps'}  ·  +{(
-                          (pe.target * pe.sets)
-                          / ((pe.exp_unit_count ?? 1) > 0 ? (pe.exp_unit_count ?? 1) : 1)
-                          * (pe.exp_per_unit ?? 2)
+                          expForTargetSets(pe.target, pe.sets, pe.exp_per_unit ?? 2, pe.exp_unit_count ?? 1)
                         ).toFixed(0)} EXP total
                       </Text>
                     </View>
