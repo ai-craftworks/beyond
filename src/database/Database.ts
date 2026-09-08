@@ -67,6 +67,14 @@ export const initDatabase = async (): Promise<void> => {
       created_at  TEXT    DEFAULT (datetime('now'))
     );
 
+    CREATE TABLE IF NOT EXISTS exercise_body_parts (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      exercise_id INTEGER NOT NULL,
+      body_part   TEXT    NOT NULL,
+      UNIQUE (exercise_id, body_part),
+      FOREIGN KEY (exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS plans (
       id              INTEGER PRIMARY KEY AUTOINCREMENT,
       name            TEXT    NOT NULL,
@@ -223,6 +231,7 @@ export interface Exercise {
   exp_per_stat_point: number; 
   stat_type: string;
   category: string;
+  body_parts?: string;   // JSON array, populated by getExercises (join table, not a column)
   created_at?: string;
 }
 
@@ -350,21 +359,44 @@ export const updatePlayer = async (updates: Partial<Player>): Promise<void> => {
 // EXERCISES
 // ─────────────────────────────────────────────
 
-export const createExercise = async (ex: Omit<Exercise, 'id' | 'created_at'>): Promise<number> => {
+export const createExercise = async (
+  ex: Omit<Exercise, 'id' | 'created_at' | 'body_parts'>,
+  bodyParts: string[] = []
+): Promise<number> => {
   const db = await getDb();
-  const result = await db.runAsync(
-    `INSERT INTO exercises (name, description, exp_reward, unit_type, exp_per_unit, exp_unit_count, unit_label, exp_per_stat_point, stat_type, stat_reward, category)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [ex.name, ex.description, ex.exp_reward, ex.unit_type, ex.exp_per_unit,
-     ex.exp_unit_count ?? 1, ex.unit_label, ex.exp_per_stat_point ?? 20,
-     ex.stat_type, 0, ex.category]
-  );
-  return result.lastInsertRowId;
+  let id: number | undefined;
+  await db.withTransactionAsync(async () => {
+    const result = await db.runAsync(
+      `INSERT INTO exercises (name, description, exp_reward, unit_type, exp_per_unit, exp_unit_count, unit_label, exp_per_stat_point, stat_type, stat_reward, category)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [ex.name, ex.description, ex.exp_reward, ex.unit_type, ex.exp_per_unit,
+       ex.exp_unit_count ?? 1, ex.unit_label, ex.exp_per_stat_point ?? 20,
+       ex.stat_type, 0, ex.category]
+    );
+    id = result.lastInsertRowId;
+    for (const bp of bodyParts) {
+      await db.runAsync(
+        `INSERT INTO exercise_body_parts (exercise_id, body_part) VALUES (?, ?)`,
+        [id, bp]
+      );
+    }
+  });
+  return id!;
 };
 
 export const getExercises = async (): Promise<Exercise[]> => {
   const db = await getDb();
-  return db.getAllAsync<Exercise>(`SELECT * FROM exercises ORDER BY created_at DESC`);
+  const exercises = await db.getAllAsync<Exercise>(`SELECT * FROM exercises ORDER BY created_at DESC`);
+  const parts = await db.getAllAsync<{ exercise_id: number; body_part: string }>(
+    `SELECT exercise_id, body_part FROM exercise_body_parts`
+  );
+  const byExercise = new Map<number, string[]>();
+  for (const p of parts) {
+    const arr = byExercise.get(p.exercise_id) ?? [];
+    arr.push(p.body_part);
+    byExercise.set(p.exercise_id, arr);
+  }
+  return exercises.map(ex => ({ ...ex, body_parts: JSON.stringify(byExercise.get(ex.id!) ?? []) }));
 };
 
 export const deleteExercise = async (id: number): Promise<void> => {
@@ -372,12 +404,30 @@ export const deleteExercise = async (id: number): Promise<void> => {
   await db.runAsync(`DELETE FROM exercises WHERE id = ?`, [id]);
 };
 
-export const updateExercise = async (id: number, updates: Partial<Exercise>): Promise<void> => {
+export const updateExercise = async (
+  id: number,
+  updates: Partial<Exercise>,
+  bodyParts?: string[]
+): Promise<void> => {
   const db = await getDb();
-  const keys = Object.keys(updates);
-  if (keys.length === 0) return;
-  const fields = keys.map(k => `${k} = ?`).join(', ');
-  await db.runAsync(`UPDATE exercises SET ${fields} WHERE id = ?`, [...Object.values(updates), id]);
+  const { body_parts, ...fields } = updates;
+  const keys = Object.keys(fields);
+  if (keys.length === 0 && bodyParts === undefined) return;
+  await db.withTransactionAsync(async () => {
+    if (keys.length > 0) {
+      const setClause = keys.map(k => `${k} = ?`).join(', ');
+      await db.runAsync(`UPDATE exercises SET ${setClause} WHERE id = ?`, [...Object.values(fields), id]);
+    }
+    if (bodyParts !== undefined) {
+      await db.runAsync(`DELETE FROM exercise_body_parts WHERE exercise_id = ?`, [id]);
+      for (const bp of bodyParts) {
+        await db.runAsync(
+          `INSERT INTO exercise_body_parts (exercise_id, body_part) VALUES (?, ?)`,
+          [id, bp]
+        );
+      }
+    }
+  });
 };
 
 // ─────────────────────────────────────────────
@@ -645,13 +695,14 @@ export const resetAllData = async (): Promise<void> => {
     DELETE FROM sessions;
     DELETE FROM plan_exercises;
     DELETE FROM plans;
+    DELETE FROM exercise_body_parts;
     DELETE FROM exercises;
     DELETE FROM titles;
     DELETE FROM player;
   `);
   await db.execAsync(`
     DELETE FROM sqlite_sequence WHERE name IN
-      ('player','exercises','plans','plan_exercises','sessions','session_exercises','titles','bonus_exercises');
+      ('player','exercises','exercise_body_parts','plans','plan_exercises','sessions','session_exercises','titles','bonus_exercises');
   `);
 };
 

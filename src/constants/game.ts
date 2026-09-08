@@ -86,6 +86,44 @@ export const EXERCISE_CATEGORIES = [
 ];
 
 // ─────────────────────────────────────────────
+// BODY PARTS  (muscle groups an exercise can hit)
+// ─────────────────────────────────────────────
+
+export const BODY_PARTS = [
+  { value: 'chest',      label: 'Chest' },
+  { value: 'back',       label: 'Back' },
+  { value: 'shoulders',  label: 'Shoulders' },
+  { value: 'biceps',     label: 'Biceps' },
+  { value: 'triceps',    label: 'Triceps' },
+  { value: 'forearms',   label: 'Forearms' },
+  { value: 'abs',        label: 'Abs' },
+  { value: 'obliques',   label: 'Obliques' },
+  { value: 'quads',      label: 'Quads' },
+  { value: 'hamstrings', label: 'Hamstrings' },
+  { value: 'glutes',     label: 'Glutes' },
+  { value: 'calves',     label: 'Calves' },
+  { value: 'traps',      label: 'Traps' },
+  { value: 'neck',       label: 'Neck' },
+  { value: 'full_body',  label: 'Full Body' },
+] as const;
+
+export type BodyPartKey = typeof BODY_PARTS[number]['value'];
+
+/** Parse a stored JSON body-part array (e.g. from Exercise.body_parts). Safe, always returns an array. */
+export const parseBodyParts = (json: string | null | undefined): string[] => {
+  try {
+    const arr = JSON.parse(json || '[]');
+    return Array.isArray(arr) ? arr.filter(p => typeof p === 'string') : [];
+  } catch {
+    return [];
+  }
+};
+
+/** Body-part value → display label, falling back to the raw value for unknown entries. */
+export const bodyPartLabel = (value: string): string =>
+  BODY_PARTS.find(b => b.value === value)?.label ?? value;
+
+// ─────────────────────────────────────────────
 // TITLE CONDITIONS
 // ─────────────────────────────────────────────
 

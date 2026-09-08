@@ -8,7 +8,7 @@ import React, { useCallback, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
   Modal, ScrollView, Alert, KeyboardAvoidingView,
-  Platform, Switch,
+  Platform, Switch, TextInput,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -19,8 +19,9 @@ import {
 } from '../database/Database';
 import { SystemButton, SystemInput, SectionHeader, EmptyState } from '../components/UIComponents';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../constants/game';
+import { COLORS, EXERCISE_CATEGORIES, BODY_PARTS, parseBodyParts, bodyPartLabel } from '../constants/game';
 import { expForTargetSets } from '../constants/formulas';
+import { filterExercises } from '../utils/filterExercises';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
@@ -44,6 +45,11 @@ const PlansScreen: React.FC = () => {
   const [selExId, setSelExId] = useState<number | null>(null);
   const [sets, setSets]       = useState('3');
   const [reps, setReps]       = useState('10');
+
+  // Add-exercise list search / filters
+  const [exSearch, setExSearch] = useState('');
+  const [exCat, setExCat]       = useState('all');
+  const [exParts, setExParts]   = useState<string[]>([]);
 
   const [editPlanModal, setEditPlanModal]   = useState(false);
   const [editPlanTarget, setEditPlanTarget] = useState<Plan | null>(null);
@@ -142,6 +148,11 @@ const PlansScreen: React.FC = () => {
 
   const toggleDay = (day: string) =>
     setRepeatDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]);
+
+  const toggleExPart = (value: string) =>
+    setExParts(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]);
+
+  const exShown = filterExercises(allExercises, { search: exSearch, category: exCat, bodyParts: exParts });
 
   return (
     <View style={styles.root}>
@@ -258,18 +269,57 @@ const PlansScreen: React.FC = () => {
             <View style={styles.handle} />
             <Text style={styles.sheetTitle}>◆ ADD EXERCISE</Text>
             <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
-              <Text style={styles.selectLbl}>SELECT EXERCISE</Text>
-              <ScrollView style={styles.exPickList} nestedScrollEnabled>
-                {allExercises.map(ex => (
-                  <TouchableOpacity key={ex.id} style={[styles.exPickItem, selExId === ex.id && styles.exPickItemOn]}
-                    onPress={() => setSelExId(ex.id!)}>
+<Text style={styles.selectLbl}>SEARCH</Text>
+            <View style={styles.searchRow}>
+              <Ionicons name="search" size={16} color={COLORS.textMuted} />
+              <TextInput style={styles.searchInput} value={exSearch} onChangeText={setExSearch}
+                placeholder="Search exercises" placeholderTextColor={COLORS.textMuted} />
+            </View>
+
+            <Text style={styles.selectLbl}>CATEGORY</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+              <TouchableOpacity style={[styles.chip, exCat === 'all' && styles.chipOn]}
+                onPress={() => setExCat('all')}>
+                <Text style={[styles.chipTxt, exCat === 'all' && styles.chipTxtOn]}>All</Text>
+              </TouchableOpacity>
+              {EXERCISE_CATEGORIES.map(c => (
+                <TouchableOpacity key={c.value} style={[styles.chip, exCat === c.value && styles.chipOn]}
+                  onPress={() => setExCat(c.value)}>
+                  <Text style={[styles.chipTxt, exCat === c.value && styles.chipTxtOn]}>{c.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <Text style={styles.selectLbl}>BODY PARTS</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+              {BODY_PARTS.map(bp => (
+                <TouchableOpacity key={bp.value} style={[styles.chip, exParts.includes(bp.value) && styles.chipOn]}
+                  onPress={() => toggleExPart(bp.value)}>
+                  <Text style={[styles.chipTxt, exParts.includes(bp.value) && styles.chipTxtOn]}>{bp.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+
+            <Text style={styles.selectLbl}>SELECT EXERCISE</Text>
+            <ScrollView style={styles.exPickList} nestedScrollEnabled>
+              {exShown.map(ex => (
+                <TouchableOpacity key={ex.id} style={[styles.exPickItem, selExId === ex.id && styles.exPickItemOn]}
+                  onPress={() => setSelExId(ex.id!)}>
+                  <View style={styles.exPickInfo}>
                     <Text style={[styles.exPickTxt, selExId === ex.id && styles.exPickTxtOn]}>{ex.name}</Text>
-                    <Text style={styles.exPickExp}>
-                      {ex.exp_per_unit} EXP/{ex.exp_unit_count ?? 1} {ex.unit_label}
-                    </Text>
-                  </TouchableOpacity>
-                ))}
-              </ScrollView>
+                    {parseBodyParts(ex.body_parts).length > 0 && (
+                      <Text style={styles.exPickParts}>
+                        {parseBodyParts(ex.body_parts).map(p => bodyPartLabel(p)).join(' · ')}
+                      </Text>
+                    )}
+                  </View>
+                  <Text style={styles.exPickExp}>
+                    {ex.exp_per_unit} EXP/{ex.exp_unit_count ?? 1} {ex.unit_label}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+              {exShown.length === 0 && <Text style={styles.noEx}>No exercises match.</Text>}
+            </ScrollView>
               <View style={styles.row}>
                 <SystemInput label="Sets" value={sets} onChangeText={setSets} keyboardType="numeric" style={styles.flex1} />
                 <SystemInput
@@ -409,6 +459,13 @@ const styles = StyleSheet.create({
   manageHdr:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 },
 
   selectLbl:    { color: COLORS.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 8, textTransform: 'uppercase' },
+  chipRow:      { flexDirection: 'row', gap: 7, paddingBottom: 14 },
+  chip:         { borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 6 },
+  chipOn:       { borderColor: COLORS.accentCyan, backgroundColor: `${COLORS.accentCyan}18` },
+  chipTxt:      { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' },
+  chipTxtOn:    { color: COLORS.accentCyan },
+  searchRow:    { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bgTertiary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 8, paddingHorizontal: 12, marginBottom: 14, gap: 8 },
+  searchInput:  { flex: 1, color: COLORS.textPrimary, fontSize: 14, paddingVertical: 11 },
   dayRow:       { flexDirection: 'row', gap: 6, marginBottom: 6, flexWrap: 'wrap' },
   dayChip:      { borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 7, minWidth: 42, alignItems: 'center' },
   dayChipOn:    { borderColor: COLORS.accentCyan, backgroundColor: `${COLORS.accentCyan}18` },
@@ -427,11 +484,13 @@ const styles = StyleSheet.create({
   peName:       { color: COLORS.textPrimary, fontSize: 14, fontWeight: '600' },
   peSets:       { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
 
-  exPickList:   { maxHeight: 180, marginBottom: 14 },
-  exPickItem:   { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 10, paddingHorizontal: 12, borderWidth: 1, borderColor: COLORS.borderDim, borderRadius: 8, marginBottom: 5 },
+  exPickList:   { maxHeight: 200, marginBottom: 14 },
+  exPickItem:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, borderWidth: 1, borderColor: COLORS.borderDim, borderRadius: 8, marginBottom: 5 },
   exPickItemOn: { borderColor: COLORS.accentCyan, backgroundColor: `${COLORS.accentCyan}12` },
+  exPickInfo:   { flex: 1, paddingRight: 8 },
   exPickTxt:    { color: COLORS.textSecondary, fontSize: 14, flex: 1 },
   exPickTxtOn:  { color: COLORS.accentCyan },
+  exPickParts:  { color: COLORS.textMuted, fontSize: 10, marginTop: 2 },
   exPickExp:    { color: COLORS.textMuted, fontSize: 12 },
   penaltyRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 },
   penaltyTxt: { color: COLORS.accentRed, fontSize: 11, fontWeight: '600' },
