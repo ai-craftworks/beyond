@@ -96,27 +96,18 @@ const SessionScreen: React.FC = () => {
   // Called when player taps a session exercise
   const handleTapExercise = (ex: SessionExercise) => {
     if (ex.is_completed) return;
-    if (ex.unit_type === 'reps') {
-      // For reps: complete immediately with the full target amount
-      finalizeExercise(ex, ex.target * ex.sets_total);
-    } else {
-      // For distance/time: ask how much they actually did
-      setPending(ex);
-      setInputAmount(String(ex.target * ex.sets_total));
-      setAmountModal(true);
-    }
+    // Ask how much they actually did (prefilled with the full target amount)
+    setPending(ex);
+    setInputAmount(String(ex.target * ex.sets_total));
+    setAmountModal(true);
   };
 
   // Called when player taps a bonus exercise
   const handleTapBonus = (ex: BonusExercise) => {
     if (ex.is_completed) return;
-    if (ex.unit_type === 'reps') {
-      finalizeBonusExercise(ex, ex.target);
-    } else {
-      setPendingBonus(ex);
-      setInputAmount(String(ex.target));
-      setAmountModal(true);
-    }
+    setPendingBonus(ex);
+    setInputAmount(String(ex.target));
+    setAmountModal(true);
   };
 
   // Confirm amount from modal
@@ -503,7 +494,6 @@ const ExerciseItem: React.FC<{ exercise: SessionExercise; index: number; onTap: 
     onTap();
   };
   const scale = checkAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1.3, 1] });
-  const isReps = exercise.unit_type === 'reps';
 
   return (
     <TouchableOpacity style={[styles.questItem, done && styles.questItemDone]} onPress={handlePress} disabled={done} activeOpacity={0.75}>
@@ -518,7 +508,7 @@ const ExerciseItem: React.FC<{ exercise: SessionExercise; index: number; onTap: 
             ? ` · actual: ${exercise.actual_amount} ${exercise.unit_label}`
             : ''}
         </Text>
-        {!isReps && !done && (
+        {!done && (
           <Text style={styles.tapHint}>Tap to log your amount</Text>
         )}
       </View>
