@@ -6,15 +6,17 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, RefreshControl, TouchableOpacity, Animated, Alert } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, RefreshControl, TouchableOpacity, Animated, Alert, Modal } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   getPlayer, Player, getTodaySessions, Session,
   getPlans, createSession, populateSessionExercises,
-  getMissedSessions, applyMissedSessionPenalty,   // ← add these two
+  getMissedSessions, applyMissedSessionPenalty,
+  Plan, getPlanExerciseCounts, hasSessionToday,
 } from '../database/Database';
 import { SystemPanel, SectionHeader, StatRow, ExpBar, RankBadge, EmptyState, IonName } from '../components/UIComponents';
 import { Ionicons } from '@expo/vector-icons';
@@ -29,11 +31,16 @@ type Nav = CompositeNavigationProp<
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
+interface PickerPlan { plan: Plan; count: number; added: boolean; }
+
 const DashboardScreen: React.FC = () => {
   const navigation                  = useNavigation<Nav>();
+  const insets                      = useSafeAreaInsets();
   const [player, setPlayer]         = useState<Player | null>(null);
   const [sessions, setSessions]     = useState<Session[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [pickerPlans, setPickerPlans]     = useState<PickerPlan[]>([]);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   useEffect(() => {
@@ -85,14 +92,41 @@ const DashboardScreen: React.FC = () => {
     for (const plan of plans) {
       if (!plan.is_active) continue;
       const days: string[] = JSON.parse(plan.repeat_days || '[]');
-      // skip if today not in schedule (empty = every day)
-      if (days.length > 0 && !days.includes(todayDay)) continue;
+      // No days = manual-only plan; never auto-generate (add via "+ Add Plan").
+      if (days.length === 0) continue;
+      // skip if today not in schedule
+      if (!days.includes(todayDay)) continue;
       // skip if session already exists today for this plan
       if (existing.some(s => s.plan_id === plan.id && s.date === today)) continue;
 
       const sessionId = await createSession(plan);
       await populateSessionExercises(sessionId, plan.id!);
     }
+  };
+
+  const openPlanPicker = async () => {
+    const [plans, counts, todaySessions] = await Promise.all([
+      getPlans(), getPlanExerciseCounts(), getTodaySessions(),
+    ]);
+    setPickerPlans(plans.map(p => ({
+      plan: p,
+      count: counts[p.id!] ?? 0,
+      added: todaySessions.some(s => s.plan_id === p.id),
+    })));
+    setPickerVisible(true);
+  };
+
+  const addPlanToToday = async (plan: Plan) => {
+    if (await hasSessionToday(plan.id!)) {
+      Alert.alert('System', 'This plan is already in today\u2019s quests.');
+      setPickerVisible(false);
+      return;
+    }
+    const sessionId = await createSession(plan, true);
+    await populateSessionExercises(sessionId, plan.id!);
+    setPickerVisible(false);
+    setSessions(await getTodaySessions());
+    playSound('questStart');
   };
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
@@ -158,11 +192,11 @@ const DashboardScreen: React.FC = () => {
         <SectionHeader
           title="Today's Quests"
           subtitle={`${doneCount}/${sessions.length} completed`}
-          action={{ label: '+ New Plan', onPress: () => navigation.navigate('Plans') }}
+          action={{ label: '+ Add Plan', onPress: openPlanPicker }}
         />
         {sessions.length === 0 ? (
           <EmptyState icon="diamond" title="No quests today"
-            subtitle="Activate a plan to begin." />
+            subtitle="Tap + Add Plan to begin." />
         ) : (
           sessions.map(s => (
             <QuestCard
@@ -187,6 +221,61 @@ const DashboardScreen: React.FC = () => {
           </TouchableOpacity>
         ))}
       </View>
+
+      {/* Add Plan to today modal */}
+      <Modal visible={pickerVisible} transparent animationType="slide" onRequestClose={() => setPickerVisible(false)}>
+        <View style={styles.overlay}>
+          <View style={[styles.sheet, { paddingBottom: 20 + insets.bottom }]}>
+            <View style={styles.handle} />
+            <View style={styles.sheetHdr}>
+              <Text style={styles.sheetTitle}>◆ ADD PLAN TO TODAY</Text>
+              <TouchableOpacity onPress={() => setPickerVisible(false)}>
+                <Ionicons name="close" size={20} color={COLORS.textMuted} />
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.sheetSub}>Add any plan for today only — no schedule needed.</Text>
+            <ScrollView style={{ maxHeight: 360 }} showsVerticalScrollIndicator={false}>
+              {pickerPlans.length === 0 ? (
+                <Text style={styles.pickerEmpty}>No plans yet. Create one from the Plans tab.</Text>
+              ) : (
+                pickerPlans.map(({ plan, count, added }) => {
+                  const noEx = count === 0;
+                  const disabled = added || noEx;
+                  return (
+                    <TouchableOpacity
+                      key={plan.id}
+                      style={[styles.pickerRow, disabled && styles.pickerRowDisabled]}
+                      disabled={disabled}
+                      activeOpacity={0.75}
+                      onPress={() => addPlanToToday(plan)}
+                    >
+                      <View style={styles.pickerInfo}>
+                        <Text style={styles.pickerName}>{plan.name}</Text>
+                        <Text style={styles.pickerMeta}>
+                          {count} exercise{count === 1 ? '' : 's'}
+                          {plan.is_active ? '  ·  ACTIVE' : '  ·  MANUAL'}
+                        </Text>
+                      </View>
+                      {added
+                        ? <Text style={styles.pickerAdded}>ADDED</Text>
+                        : noEx
+                          ? <Text style={styles.pickerNoEx}>NO EXERCISES</Text>
+                          : <Ionicons name="add-circle" size={22} color={COLORS.accentCyan} />}
+                    </TouchableOpacity>
+                  );
+                })
+              )}
+            </ScrollView>
+            <TouchableOpacity
+              style={styles.pickerFooter}
+              onPress={() => { setPickerVisible(false); navigation.navigate('Plans'); }}
+            >
+              <Ionicons name="create-outline" size={16} color={COLORS.accentCyan} />
+              <Text style={styles.pickerFooterTxt}>Create New Plan</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </ScrollView>
   );
 };
@@ -206,6 +295,7 @@ const QuestCard: React.FC<{ session: Session; onPress: () => void }> = ({ sessio
         <View style={styles.questStatusRow}>
           <Ionicons name={statusIcon} size={12} color={col} />
           <Text style={[styles.questStatus, { color: col }]}>{lbl}</Text>
+          {!!session.is_manual && <Text style={styles.questManual}>· MANUAL</Text>}
         </View>
       </View>
       {done
@@ -245,6 +335,25 @@ const styles = StyleSheet.create({
   quickNav:    { flexDirection: 'row', gap: 10 },
   quickBtn:    { flex: 1, backgroundColor: COLORS.bgSecondary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 10, paddingVertical: 14, alignItems: 'center', gap: 5 },
   quickLabel:  { color: COLORS.textSecondary, fontSize: 11, fontWeight: '600' },
+
+  questManual: { color: COLORS.accentGold, fontSize: 10, fontWeight: '700', letterSpacing: 0.5, marginLeft: 5 },
+
+  overlay:     { flex: 1, backgroundColor: 'rgba(0,0,0,0.78)', justifyContent: 'flex-end' },
+  sheet:       { backgroundColor: COLORS.bgPanel, borderTopLeftRadius: 20, borderTopRightRadius: 20, borderTopWidth: 1, borderColor: COLORS.accentCyan, padding: 20, maxHeight: '85%' },
+  handle:      { width: 40, height: 4, backgroundColor: COLORS.borderMain, borderRadius: 2, alignSelf: 'center', marginBottom: 14 },
+  sheetHdr:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  sheetTitle:  { color: COLORS.accentCyan, fontSize: 13, fontWeight: '700', letterSpacing: 2 },
+  sheetSub:    { color: COLORS.textMuted, fontSize: 11, marginTop: 6, marginBottom: 12, fontStyle: 'italic' },
+  pickerEmpty: { color: COLORS.textMuted, fontSize: 13, fontStyle: 'italic', textAlign: 'center', paddingVertical: 24 },
+  pickerRow:   { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, paddingHorizontal: 2, borderBottomWidth: 1, borderBottomColor: COLORS.borderDim, gap: 10 },
+  pickerRowDisabled: { opacity: 0.5 },
+  pickerInfo:  { flex: 1 },
+  pickerName:  { color: COLORS.textPrimary, fontSize: 14, fontWeight: '600' },
+  pickerMeta:  { color: COLORS.textMuted, fontSize: 11, marginTop: 2 },
+  pickerAdded: { color: COLORS.accentGreen, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
+  pickerNoEx:  { color: COLORS.textMuted, fontSize: 11, fontWeight: '700', letterSpacing: 0.5 },
+  pickerFooter: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 14, paddingVertical: 12, borderWidth: 1, borderColor: COLORS.accentCyan, borderRadius: 8 },
+  pickerFooterTxt: { color: COLORS.accentCyan, fontSize: 13, fontWeight: '700', letterSpacing: 1 },
 });
 
 export default DashboardScreen;

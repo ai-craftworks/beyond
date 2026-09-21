@@ -27,3 +27,10 @@
 
 - Fixed plan screen issues.
 - Converted sounds from wav to mp3.
+
+### 21 Sep, 2026
+
+- Added more units for workouts.
+- Added affected body parts for workouts.
+- Added manual plans.
+- Modified exp calculation based on all units.

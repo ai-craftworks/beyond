@@ -10,8 +10,11 @@ import { useFocusEffect } from '@react-navigation/native';
 import { getPlayer, Player, getTitles, EarnedTitle, getRecentSessions, Session, getSessionSummary, resetAllData } from '../database/Database';
 import { SystemPanel, SectionHeader, StatRow, ExpBar } from '../components/UIComponents';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, getRankForLevel, STATS } from '../constants/game';
-import { sumExp, expToNextRemaining } from '../constants/formulas';
+import { COLORS, getRankForLevel, STATS, parseUnitValues, formatUnitValues } from '../constants/game';
+import { sumExp, expToNextRemaining } from '../utils/math';
+
+const amountLabel = (ex: any): string =>
+  formatUnitValues(parseUnitValues(ex.actual_units)) || `${ex.actual_amount} ${ex.unit_label ?? 'reps'}`;
 
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -180,7 +183,7 @@ const ProfileScreen: React.FC = () => {
                         </Text>
                         {ex.is_completed && (
                           <Text style={styles.sessionExAmt}>
-                            {ex.actual_amount} {ex.unit_label ?? 'reps'}  +{ex.exp_reward} EXP
+                            {amountLabel(ex)}  +{ex.exp_reward} EXP
                           </Text>
                         )}
                       </View>
@@ -208,7 +211,7 @@ const ProfileScreen: React.FC = () => {
                             </Text>
                             {ex.is_completed && (
                               <Text style={styles.sessionExAmt}>
-                                {ex.actual_amount} {ex.unit_label ?? 'reps'}  +{ex.exp_reward} EXP
+                                {amountLabel(ex)}  +{ex.exp_reward} EXP
                               </Text>
                             )}
                           </View>

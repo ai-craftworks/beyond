@@ -1,14 +1,17 @@
 import React, { useCallback, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
-  Modal, ScrollView, Alert, KeyboardAvoidingView, Platform,
+  Modal, ScrollView, Alert, KeyboardAvoidingView, Platform, TextInput,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createExercise, deleteExercise, updateExercise, Exercise, getExercises } from '../database/Database';
-import { SystemButton, SystemInput, SectionHeader, EmptyState } from '../components/UIComponents';
+import { SystemButton, SystemInput, SectionHeader, EmptyState, SystemDropdown, SystemMultiDropdown } from '../components/UIComponents';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, EXERCISE_CATEGORIES, STATS, UNIT_TYPES } from '../constants/game';
+import { COLORS, EXERCISE_CATEGORIES, STATS, UNIT_TYPES, BODY_PARTS, bodyPartLabel, parseBodyParts, parseUnits, unitSuffix } from '../constants/game';
+import { filterExercises } from '../utils/filterExercises';
+
+const emptyDefaults = (): Record<string, string> => ({ reps: '10' });
 
 const ExercisesScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
@@ -20,51 +23,94 @@ const ExercisesScreen: React.FC = () => {
   const [editTarget, setEditTarget]   = useState<Exercise | null>(null);
   const [editName, setEditName]       = useState('');
   const [editDesc, setEditDesc]       = useState('');
-  const [editUnitType, setEditUnitType]   = useState('reps');
+  const [editUnits, setEditUnits]         = useState<string[]>(['reps']);
+  const [editUnitDefaults, setEditUnitDefaults] = useState<Record<string, string>>(emptyDefaults());
+  const [editPrimary, setEditPrimary]     = useState('reps');
   const [editExpPerUnit, setEditExpPerUnit] = useState('2');
   const [editExpUnitCount, setEditExpUnitCount] = useState('1');
   const [editStatType, setEditStatType]   = useState('strength');
   const [editExpPerStatPt, setEditExpPerStatPt] = useState('20');
   const [editCategory, setEditCategory]   = useState('strength');
+  const [editBodyParts, setEditBodyParts] = useState<string[]>([]);
   const [editLoading, setEditLoading] = useState(false);
 
   const [name, setName]               = useState('');
   const [desc, setDesc]               = useState('');
-  const [unitType, setUnitType]       = useState('reps');
+  const [units, setUnits]             = useState<string[]>(['reps']);
+  const [unitDefaults, setUnitDefaults] = useState<Record<string, string>>(emptyDefaults());
+  const [primaryUnit, setPrimaryUnit] = useState('reps');
   const [expPerUnit, setExpPerUnit]   = useState('2');
   const [expUnitCount, setExpUnitCount] = useState('1');
   const [statType, setStatType]       = useState('strength');
   const [category, setCategory]       = useState('strength');
+  const [bodyParts, setBodyParts]     = useState<string[]>([]);
   const [expPerStatPt, setExpPerStatPt] = useState('20');
+
+  // List search / filters
+  const [search, setSearch]         = useState('');
+  const [catFilter, setCatFilter]   = useState('all');
+  const [partFilter, setPartFilter] = useState<string[]>([]);
 
   useFocusEffect(useCallback(() => { load(); }, []));
   const load = async () => setExercises(await getExercises());
 
   const resetForm = () => {
-    setName(''); setDesc(''); setUnitType('reps'); setExpPerUnit('2');
-    setExpUnitCount('1');
+    setName(''); setDesc(''); setUnits(['reps']); setUnitDefaults(emptyDefaults());
+    setPrimaryUnit('reps'); setExpPerUnit('2'); setExpUnitCount('1');
     setExpPerStatPt('20');
-    setStatType('strength'); setCategory('strength');
+    setStatType('strength'); setCategory('strength'); setBodyParts([]);
   };
+
+  const toggleUnit = (
+    type: string,
+    list: string[],
+    setList: (v: string[]) => void,
+    defaults: Record<string, string>,
+    setDefaults: (v: Record<string, string>) => void,
+    primary: string,
+    setPrimary: (v: string) => void,
+  ) => {
+    if (list.includes(type)) {
+      const next = list.filter(t => t !== type);
+      if (next.length === 0) return; // always keep at least one unit
+      setList(next);
+      if (primary === type) setPrimary(next[0]);
+    } else {
+      setList([...list, type]);
+      if (defaults[type] === undefined) {
+        setDefaults({ ...defaults, [type]: type === 'reps' ? '10' : '' });
+      }
+    }
+  };
+
+  const buildUnitsJson = (list: string[], defaults: Record<string, string>): string =>
+    JSON.stringify(list.map(type => ({
+      type,
+      label: unitSuffix(type),
+      default: Number(defaults[type]) || 0,
+    })));
 
   const handleCreate = async () => {
     if (!name.trim())                                    return Alert.alert('System', 'Exercise name required.');
     if (isNaN(Number(expPerUnit)) || Number(expPerUnit) <= 0) return Alert.alert('System', 'Enter a valid EXP per unit (must be greater than 0).');
-    const unit = UNIT_TYPES.find(u => u.value === unitType)!;
+    const primary = units.includes(primaryUnit) ? primaryUnit : units[0];
+    const unit = UNIT_TYPES.find(u => u.value === primary)!;
     setLoading(true);
     try {
       await createExercise({
         name:           name.trim(),
         description:    desc.trim(),
         exp_reward:     Number(expPerUnit),
-        unit_type:      unitType,
+        unit_type:      primary,
         exp_per_unit:   Number(expPerUnit),
         exp_unit_count: Number(expUnitCount) || 1,
         unit_label:     unit.suffix,
+        units:          buildUnitsJson(units, unitDefaults),
+        primary_unit:   primary,
         exp_per_stat_point: Number(expPerStatPt) || 20,  
         stat_type:      statType,
         category,
-      });
+      }, bodyParts);
       resetForm();
       setModal(false);
       await load();
@@ -86,12 +132,21 @@ const ExercisesScreen: React.FC = () => {
     setEditTarget(ex);
     setEditName(ex.name);
     setEditDesc(ex.description);
-    setEditUnitType(ex.unit_type ?? 'reps');
+    const parsed = parseUnits(ex.units);
+    const fallbackType = ex.unit_type ?? 'reps';
+    const list = parsed.length > 0 ? parsed : [{ type: fallbackType, label: unitSuffix(fallbackType), default: 0 }];
+    const defaults: Record<string, string> = {};
+    for (const u of list) defaults[u.type] = String(u.default);
+    const primary = ex.primary_unit && list.some(u => u.type === ex.primary_unit) ? ex.primary_unit : list[0].type;
+    setEditUnits(list.map(u => u.type));
+    setEditUnitDefaults(defaults);
+    setEditPrimary(primary);
     setEditExpPerUnit(String(ex.exp_per_unit ?? ex.exp_reward ?? 2));
     setEditExpUnitCount(String(ex.exp_unit_count ?? 1));   
     setEditExpPerStatPt(String(ex.exp_per_stat_point ?? 20));
     setEditStatType(ex.stat_type);
     setEditCategory(ex.category);
+    setEditBodyParts(parseBodyParts(ex.body_parts));
     setEditModal(true);
   };
 
@@ -99,21 +154,24 @@ const ExercisesScreen: React.FC = () => {
     if (!editName.trim()) return Alert.alert('System', 'Exercise name required.');
     if (isNaN(Number(editExpPerUnit)) || Number(editExpPerUnit) <= 0)
       return Alert.alert('System', 'Enter a valid EXP per unit.');
-    const unit = UNIT_TYPES.find(u => u.value === editUnitType)!;
+    const primary = editUnits.includes(editPrimary) ? editPrimary : editUnits[0];
+    const unit = UNIT_TYPES.find(u => u.value === primary)!;
     setEditLoading(true);
     try {
       await updateExercise(editTarget!.id!, {
         name:         editName.trim(),
         description:  editDesc.trim(),
-        unit_type:    editUnitType,
+        unit_type:    primary,
         exp_per_unit: Number(editExpPerUnit),
         exp_unit_count: Number(editExpUnitCount) || 1,
         exp_reward:   Number(editExpPerUnit),
         unit_label:   unit.suffix,
+        units:        buildUnitsJson(editUnits, editUnitDefaults),
+        primary_unit: primary,
         stat_type:    editStatType,
         category:     editCategory,
         exp_per_stat_point: Number(editExpPerStatPt) || 20,
-      });
+      }, editBodyParts);
       setEditModal(false);
       setEditTarget(null);
       await load();
@@ -129,20 +187,56 @@ const ExercisesScreen: React.FC = () => {
     return STATS.find(s => s.key === stat)?.color ?? COLORS.textSecondary;
   };
 
-  const selectedUnit = UNIT_TYPES.find(u => u.value === unitType);
-  const expPreview = Number(expPerUnit || 0);
+  const selectedUnit = UNIT_TYPES.find(u => u.value === primaryUnit);
+  const partsOf = (ex: Exercise) => parseBodyParts(ex.body_parts);
+  const cardUnits = (ex: Exercise) => {
+    const parsed = parseUnits(ex.units);
+    if (parsed.length > 0) return parsed;
+    return [{ type: ex.unit_type ?? 'reps', label: ex.unit_label ?? 'reps', default: 0 }];
+  };
+  const filtersActive = search.trim() !== '' || catFilter !== 'all' || partFilter.length > 0;
+  const shown = filterExercises(exercises, { search, category: catFilter, bodyParts: partFilter });
 
   return (
     <View style={styles.root}>
       <FlatList
-        data={exercises}
+        data={shown}
         keyExtractor={item => String(item.id)}
         contentContainerStyle={styles.list}
         ListHeaderComponent={
-          <SectionHeader title="Exercise Library" subtitle={`${exercises.length} exercises`}
-            action={{ label: '+ Create', onPress: () => setModal(true) }} />
+          <>
+            <SectionHeader title="Exercise Library"
+              subtitle={filtersActive ? `${shown.length} / ${exercises.length} shown` : `${exercises.length} exercises`}
+              action={{ label: '+ Create', onPress: () => setModal(true) }} />
+
+            <View style={styles.searchRow}>
+              <Ionicons name="search" size={16} color={COLORS.textMuted} />
+              <TextInput style={styles.searchInput} value={search} onChangeText={setSearch}
+                placeholder="Search name or description" placeholderTextColor={COLORS.textMuted} />
+            </View>
+
+            <View style={styles.dropRow}>
+              <SystemDropdown
+                label="Category"
+                options={[{ value: 'all', label: 'All' }, ...EXERCISE_CATEGORIES]}
+                value={catFilter}
+                onChange={setCatFilter}
+                style={styles.flex1}
+              />
+
+              <SystemMultiDropdown
+                label="Body Parts"
+                options={BODY_PARTS}
+                values={partFilter}
+                onChange={setPartFilter}
+                style={styles.flex1}
+              />
+            </View>
+          </>
         }
-        ListEmptyComponent={<EmptyState icon="barbell" title="No exercises yet" subtitle="Create your first exercise." />}
+        ListEmptyComponent={<EmptyState icon="barbell"
+          title={filtersActive ? 'No matching exercises' : 'No exercises yet'}
+          subtitle={filtersActive ? 'Try a different search or filter.' : 'Create your first exercise.'} />}
         renderItem={({ item }) => (
           <View style={[styles.card, { borderLeftColor: accentForCat(item.category) }]}>
             <View style={styles.cardTop}>
@@ -160,7 +254,7 @@ const ExercisesScreen: React.FC = () => {
             <View style={styles.tags}>
               <View style={styles.tag}>
                 <Text style={styles.tagTxt}>
-                  {item.exp_per_unit ?? item.exp_reward} EXP / {item.exp_unit_count ?? 1} {item.unit_label ?? 'rep'}
+                  +{item.exp_per_unit ?? item.exp_reward} EXP / {item.exp_unit_count ?? 1} {unitSuffix(item.primary_unit ?? item.unit_type ?? 'reps')}
                 </Text>
               </View>
               <View style={[styles.tag, { borderColor: accentForCat(item.category) }]}>
@@ -168,10 +262,26 @@ const ExercisesScreen: React.FC = () => {
                   {item.stat_type.toUpperCase()}
                 </Text>
               </View>
-              <View style={styles.tag}>
-                <Text style={styles.tagTxt}>{item.unit_label ?? item.category}</Text>
-              </View>
+              {cardUnits(item).map(u => {
+                const isPrimary = (item.primary_unit ?? item.unit_type) === u.type;
+                return (
+                  <View key={u.type} style={[styles.tag, isPrimary && styles.tagPrimary]}>
+                    <Text style={[styles.tagTxt, isPrimary && styles.tagTxtPrimary]}>
+                      {u.label}{u.default > 0 ? ` · ${u.default}` : ''}
+                    </Text>
+                  </View>
+                );
+              })}
             </View>
+            {partsOf(item).length > 0 && (
+              <View style={styles.tags}>
+                {partsOf(item).map(p => (
+                  <View key={p} style={styles.partTag}>
+                    <Text style={styles.partTagTxt}>{bodyPartLabel(p)}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
           </View>
         )}
       />
@@ -193,15 +303,50 @@ const ExercisesScreen: React.FC = () => {
               <SystemInput label="Name" value={name} onChangeText={setName} placeholder="e.g. Push-ups" />
               <SystemInput label="Description" value={desc} onChangeText={setDesc} placeholder="Optional..." multiline />
 
-              {/* Unit type */}
-              <Text style={styles.selectLbl}>UNIT TYPE</Text>
+              {/* Units */}
+              <Text style={styles.selectLbl}>UNITS</Text>
               <View style={styles.chips}>
-                {UNIT_TYPES.map(u => (
-                  <TouchableOpacity key={u.value}
-                    style={[styles.chip, unitType === u.value && styles.chipOn]}
-                    onPress={() => setUnitType(u.value)}>
-                    <Text style={[styles.chipTxt, unitType === u.value && styles.chipTxtOn]}>{u.label}</Text>
-                    <Text style={styles.chipDesc}>{u.description}</Text>
+                {UNIT_TYPES.map(u => {
+                  const on = units.includes(u.value);
+                  return (
+                    <TouchableOpacity key={u.value}
+                      style={[styles.chip, on && styles.chipOn]}
+                      onPress={() => toggleUnit(u.value, units, setUnits, unitDefaults, setUnitDefaults, primaryUnit, setPrimaryUnit)}>
+                      <View style={styles.chipRow}>
+                        <Ionicons name={u.icon} size={12} color={on ? COLORS.accentCyan : COLORS.textSecondary} />
+                        <Text style={[styles.chipTxt, on && styles.chipTxtOn]}>{u.label}</Text>
+                      </View>
+                      <Text style={styles.chipDesc}>{u.description}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              {/* Default value per unit */}
+              <Text style={styles.selectLbl}>DEFAULT VALUES</Text>
+              {units.map(type => (
+                <View key={type} style={styles.unitRow}>
+                  <Text style={styles.unitRowLbl}>{unitSuffix(type)}</Text>
+                  <TextInput
+                    style={styles.unitRowInput}
+                    value={unitDefaults[type] ?? ''}
+                    onChangeText={v => setUnitDefaults(prev => ({ ...prev, [type]: v }))}
+                    keyboardType="decimal-pad"
+                    placeholder="0"
+                    placeholderTextColor={COLORS.textMuted}
+                  />
+                </View>
+              ))}
+              <Text style={styles.expHint}>A modifier unit scales EXP by actual ÷ default (default 5 kg → 7.5 kg = ×1.5).</Text>
+
+              {/* Primary / EXP driver */}
+              <Text style={styles.selectLbl}>EXP DRIVER</Text>
+              <View style={styles.chips}>
+                {units.map(type => (
+                  <TouchableOpacity key={type}
+                    style={[styles.chip, primaryUnit === type && styles.chipOn]}
+                    onPress={() => setPrimaryUnit(type)}>
+                    <Text style={[styles.chipTxt, primaryUnit === type && styles.chipTxtOn]}>{unitSuffix(type)}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -235,16 +380,16 @@ const ExercisesScreen: React.FC = () => {
               </Text>
 
               {/* Category */}
-              <Text style={styles.selectLbl}>CATEGORY</Text>
-              <View style={styles.chips}>
-                {EXERCISE_CATEGORIES.map(c => (
-                  <TouchableOpacity key={c.value}
-                    style={[styles.chip, category === c.value && styles.chipOn]}
-                    onPress={() => { setCategory(c.value); setStatType(c.stat); }}>
-                    <Text style={[styles.chipTxt, category === c.value && styles.chipTxtOn]}>{c.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              <SystemDropdown
+                label="Category"
+                options={EXERCISE_CATEGORIES}
+                value={category}
+                onChange={(v) => {
+                  setCategory(v);
+                  const c = EXERCISE_CATEGORIES.find(x => x.value === v);
+                  if (c) setStatType(c.stat);
+                }}
+              />
 
               {/* Stat boost */}
               <Text style={styles.selectLbl}>STAT BOOST</Text>
@@ -273,6 +418,15 @@ const ExercisesScreen: React.FC = () => {
                 Example: earn {Number(expPerStatPt || 20) * 3} EXP → +3 {statType.toUpperCase()}
               </Text>
 
+              {/* Body parts */}
+              <SystemMultiDropdown
+                label="Body Parts"
+                options={BODY_PARTS}
+                values={bodyParts}
+                onChange={setBodyParts}
+              />
+              <Text style={styles.expHint}>Select every muscle group this exercise targets.</Text>
+
               <View style={styles.row}>
                 <SystemButton title="Cancel" variant="ghost" style={styles.flex1}
                   onPress={() => { resetForm(); setModal(false); }} />
@@ -298,14 +452,47 @@ const ExercisesScreen: React.FC = () => {
               <SystemInput label="Name" value={editName} onChangeText={setEditName} />
               <SystemInput label="Description" value={editDesc} onChangeText={setEditDesc} multiline />
 
-              <Text style={styles.selectLbl}>UNIT TYPE</Text>
+              <Text style={styles.selectLbl}>UNITS</Text>
               <View style={styles.chips}>
-                {UNIT_TYPES.map(u => (
-                  <TouchableOpacity key={u.value}
-                    style={[styles.chip, editUnitType === u.value && styles.chipOn]}
-                    onPress={() => setEditUnitType(u.value)}>
-                    <Text style={[styles.chipTxt, editUnitType === u.value && styles.chipTxtOn]}>{u.label}</Text>
-                    <Text style={styles.chipDesc}>{u.description}</Text>
+                {UNIT_TYPES.map(u => {
+                  const on = editUnits.includes(u.value);
+                  return (
+                    <TouchableOpacity key={u.value}
+                      style={[styles.chip, on && styles.chipOn]}
+                      onPress={() => toggleUnit(u.value, editUnits, setEditUnits, editUnitDefaults, setEditUnitDefaults, editPrimary, setEditPrimary)}>
+                      <View style={styles.chipRow}>
+                        <Ionicons name={u.icon} size={12} color={on ? COLORS.accentCyan : COLORS.textSecondary} />
+                        <Text style={[styles.chipTxt, on && styles.chipTxtOn]}>{u.label}</Text>
+                      </View>
+                      <Text style={styles.chipDesc}>{u.description}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+
+              <Text style={styles.selectLbl}>DEFAULT VALUES</Text>
+              {editUnits.map(type => (
+                <View key={type} style={styles.unitRow}>
+                  <Text style={styles.unitRowLbl}>{unitSuffix(type)}</Text>
+                  <TextInput
+                    style={styles.unitRowInput}
+                    value={editUnitDefaults[type] ?? ''}
+                    onChangeText={v => setEditUnitDefaults(prev => ({ ...prev, [type]: v }))}
+                    keyboardType="decimal-pad"
+                    placeholder="0"
+                    placeholderTextColor={COLORS.textMuted}
+                  />
+                </View>
+              ))}
+              <Text style={styles.expHint}>A modifier unit scales EXP by actual ÷ default.</Text>
+
+              <Text style={styles.selectLbl}>EXP DRIVER</Text>
+              <View style={styles.chips}>
+                {editUnits.map(type => (
+                  <TouchableOpacity key={type}
+                    style={[styles.chip, editPrimary === type && styles.chipOn]}
+                    onPress={() => setEditPrimary(type)}>
+                    <Text style={[styles.chipTxt, editPrimary === type && styles.chipTxtOn]}>{unitSuffix(type)}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -317,21 +504,21 @@ const ExercisesScreen: React.FC = () => {
                   <Text style={styles.perLabelTxt}>per</Text>
                 </View>
                 <SystemInput
-                  label={`${UNIT_TYPES.find(u => u.value === editUnitType)?.suffix ?? 'units'} done`}
+                  label={`${unitSuffix(editPrimary)} done`}
                   value={editExpUnitCount} onChangeText={setEditExpUnitCount}
                   keyboardType="decimal-pad" style={styles.flex1} />
               </View>
 
-              <Text style={styles.selectLbl}>CATEGORY</Text>
-              <View style={styles.chips}>
-                {EXERCISE_CATEGORIES.map(c => (
-                  <TouchableOpacity key={c.value}
-                    style={[styles.chip, editCategory === c.value && styles.chipOn]}
-                    onPress={() => { setEditCategory(c.value); setEditStatType(c.stat); }}>
-                    <Text style={[styles.chipTxt, editCategory === c.value && styles.chipTxtOn]}>{c.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              <SystemDropdown
+                label="Category"
+                options={EXERCISE_CATEGORIES}
+                value={editCategory}
+                onChange={(v) => {
+                  setEditCategory(v);
+                  const c = EXERCISE_CATEGORIES.find(x => x.value === v);
+                  if (c) setEditStatType(c.stat);
+                }}
+              />
 
               <Text style={styles.selectLbl}>STAT BOOST</Text>
               <View style={styles.chips}>
@@ -359,6 +546,15 @@ const ExercisesScreen: React.FC = () => {
                 Example: earn {Number(editExpPerStatPt || 20) * 3} EXP → +3 {editStatType.toUpperCase()}
               </Text>
 
+              {/* Body parts */}
+              <SystemMultiDropdown
+                label="Body Parts"
+                options={BODY_PARTS}
+                values={editBodyParts}
+                onChange={setEditBodyParts}
+              />
+              <Text style={styles.expHint}>Select every muscle group this exercise targets.</Text>
+
               <View style={styles.row}>
                 <SystemButton title="Cancel" variant="ghost" style={styles.flex1}
                   onPress={() => { setEditModal(false); setEditTarget(null); }} />
@@ -383,6 +579,14 @@ const styles = StyleSheet.create({
   tags:       { flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 6 },
   tag:        { borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 2 },
   tagTxt:     { color: COLORS.accentCyan, fontSize: 10, fontWeight: '700' },
+  tagPrimary: { borderColor: COLORS.accentGold },
+  tagTxtPrimary: { color: COLORS.accentGold },
+  partTag:    { borderWidth: 1, borderColor: COLORS.borderDim, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 2 },
+  partTagTxt: { color: COLORS.textMuted, fontSize: 10, fontWeight: '600' },
+
+  searchRow:  { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bgTertiary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 8, paddingHorizontal: 12, marginBottom: 14, gap: 8 },
+  searchInput: { flex: 1, color: COLORS.textPrimary, fontSize: 14, paddingVertical: 11 },
+  dropRow:    { flexDirection: 'row', gap: 12 },
 
   overlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' },
   sheet:      { backgroundColor: COLORS.bgPanel, borderTopLeftRadius: 20, borderTopRightRadius: 20, borderTopWidth: 1, borderColor: COLORS.accentCyan, padding: 20, maxHeight: '95%' },
@@ -407,6 +611,10 @@ const styles = StyleSheet.create({
 
   perLabel:    { justifyContent: 'flex-end', paddingBottom: 14, alignItems: 'center', paddingHorizontal: 6 },
   perLabelTxt: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
+
+  unitRow:      { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
+  unitRowLbl:   { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700', width: 70 },
+  unitRowInput: { flex: 1, backgroundColor: COLORS.bgTertiary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9, color: COLORS.textPrimary, fontSize: 14 },
 });
 
 export default ExercisesScreen;

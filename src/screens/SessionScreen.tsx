@@ -18,16 +18,50 @@ import {
 import { SystemPanel, SystemButton, ExpBar } from '../components/UIComponents';
 import { Ionicons } from '@expo/vector-icons';
 import LevelUpModal from '../components/LevelUpModal';
-import { COLORS, TITLE_CONDITIONS } from '../constants/game';
+import { COLORS, TITLE_CONDITIONS, parseUnitValues, formatUnitValues, unitPerSet, unitSuffix } from '../constants/game';
+import { parseUnits } from '../constants/game';
 import {
-  expForAmount, expForTargetSets, statDeltasFromItems, cappedStat,
+  expForUnits, UnitSpec, UnitValue, statDeltasFromItems, cappedStat,
   fullClearBonus, calculateLevelFromTotalExp,
-} from '../constants/formulas';
+} from '../utils/math';
 import { RootStackParamList } from '../../App';
 import { playSound } from '../utils/sounds';
 
 type Route = RouteProp<RootStackParamList, 'Session'>;
 type Nav   = NativeStackNavigationProp<RootStackParamList, 'Session'>;
+
+/** Unit specs for a stored units JSON, falling back to a single legacy unit. */
+const specsOf = (unitsJson: string | null | undefined, fallbackType: string): UnitSpec[] => {
+  const parsed = parseUnits(unitsJson);
+  const list = parsed.length > 0
+    ? parsed
+    : [{ type: fallbackType, label: unitSuffix(fallbackType), default: 0 }];
+  return list.map(u => ({ type: u.type, label: u.label, default: u.default, perSet: unitPerSet(u.type) }));
+};
+
+const primarySpecOf = (
+  unitsJson: string | null | undefined, primaryUnit: string | null | undefined, fallbackType: string
+): string => {
+  const specs = specsOf(unitsJson, fallbackType);
+  return primaryUnit && specs.some(s => s.type === primaryUnit) ? primaryUnit : specs[0].type;
+};
+
+/** Planned values for a stored exercise, falling back to the legacy target. */
+const plannedOf = (unitsJson: string | null | undefined, target: number, fallbackType: string): UnitValue[] => {
+  const parsed = parseUnitValues(unitsJson);
+  if (parsed.length > 0) return parsed;
+  return [{ type: fallbackType, value: target }];
+};
+
+/** Prefill record for the amount modal, one entry per configured unit. */
+const recordFor = (specs: UnitSpec[], planned: UnitValue[]): Record<string, string> => {
+  const rec: Record<string, string> = {};
+  for (const s of specs) {
+    const p = planned.find(v => v.type === s.type);
+    rec[s.type] = p ? String(p.value) : (s.default ? String(s.default) : '');
+  }
+  return rec;
+};
 
 const SessionScreen: React.FC = () => {
   const route      = useRoute<Route>();
@@ -46,13 +80,13 @@ const SessionScreen: React.FC = () => {
   const [expGained, setExpGained]       = useState(0);
   const [bonusModal, setBonusModal]     = useState(false);
   const [selBonusEx, setSelBonusEx]     = useState<Exercise | null>(null);
-  const [bonusTarget, setBonusTarget]   = useState('');
+  const [bonusUnits, setBonusUnits]     = useState<Record<string, string>>({});
 
   // Amount input modal (for non-reps exercises)
   const [amountModal, setAmountModal]   = useState(false);
   const [pendingExercise, setPending]   = useState<SessionExercise | null>(null);
   const [pendingBonus, setPendingBonus] = useState<BonusExercise | null>(null);
-  const [inputAmount, setInputAmount]   = useState('');
+  const [inputUnits, setInputUnits]     = useState<Record<string, string>>({});
 
   const [isAlreadyCompleted, setAlreadyCompleted] = useState(false);
 
@@ -96,75 +130,88 @@ const SessionScreen: React.FC = () => {
   // Called when player taps a session exercise
   const handleTapExercise = (ex: SessionExercise) => {
     if (ex.is_completed) return;
-    if (ex.unit_type === 'reps') {
-      // For reps: complete immediately with the full target amount
-      finalizeExercise(ex, ex.target * ex.sets_total);
-    } else {
-      // For distance/time: ask how much they actually did
-      setPending(ex);
-      setInputAmount(String(ex.target * ex.sets_total));
-      setAmountModal(true);
-    }
+    const specs = specsOf(ex.units, ex.unit_type);
+    const planned = plannedOf(ex.unit_values, ex.target, ex.unit_type);
+    setPending(ex);
+    setInputUnits(recordFor(specs, planned));
+    setAmountModal(true);
   };
 
   // Called when player taps a bonus exercise
   const handleTapBonus = (ex: BonusExercise) => {
     if (ex.is_completed) return;
-    if (ex.unit_type === 'reps') {
-      finalizeBonusExercise(ex, ex.target);
-    } else {
-      setPendingBonus(ex);
-      setInputAmount(String(ex.target));
-      setAmountModal(true);
-    }
+    const specs = specsOf(ex.units, ex.unit_type);
+    const planned = plannedOf(ex.unit_values, ex.target, ex.unit_type);
+    setPendingBonus(ex);
+    setInputUnits(recordFor(specs, planned));
+    setAmountModal(true);
   };
 
   // Confirm amount from modal
   const handleConfirmAmount = () => {
-    const amount = Number(inputAmount);
-    if (isNaN(amount) || amount <= 0) {
-      Alert.alert('System', 'Enter a valid amount.');
+    const specs = pendingExercise
+      ? specsOf(pendingExercise.units, pendingExercise.unit_type)
+      : specsOf(pendingBonus?.units, pendingBonus?.unit_type ?? 'reps');
+    const primary = pendingExercise
+      ? primarySpecOf(pendingExercise.units, pendingExercise.primary_unit, pendingExercise.unit_type)
+      : primarySpecOf(pendingBonus?.units, pendingBonus?.primary_unit, pendingBonus?.unit_type ?? 'reps');
+    const primaryValue = Number(inputUnits[primary]);
+    if (isNaN(primaryValue) || primaryValue <= 0) {
+      Alert.alert('System', `Enter a valid ${unitSuffix(primary)} amount.`);
       return;
     }
+    const values: UnitValue[] = specs.map(s => ({ type: s.type, value: Number(inputUnits[s.type]) || 0 }));
     setAmountModal(false);
     if (pendingExercise) {
-      finalizeExercise(pendingExercise, amount);
+      finalizeExercise(pendingExercise, values, primaryValue);
       setPending(null);
     } else if (pendingBonus) {
-      finalizeBonusExercise(pendingBonus, amount);
+      finalizeBonusExercise(pendingBonus, values, primaryValue);
       setPendingBonus(null);
     }
-    setInputAmount('');
+    setInputUnits({});
   };
 
-  const finalizeExercise = async (ex: SessionExercise, actualAmount: number) => {
-    const expEarned = expForAmount(actualAmount, ex.exp_per_unit, ex.exp_unit_count);
+  const finalizeExercise = async (ex: SessionExercise, values: UnitValue[], primaryValue: number) => {
+    const specs = specsOf(ex.units, ex.unit_type);
+    const primary = primarySpecOf(ex.units, ex.primary_unit, ex.unit_type);
+    const expEarned = expForUnits(values, specs, primary, ex.exp_per_unit, ex.exp_unit_count, ex.sets_total);
+    const actualUnitsJson = JSON.stringify(values);
     setExercises(prev =>
-      prev.map(e => e.id === ex.id ? { ...e, is_completed: 1, actual_amount: actualAmount, exp_reward: expEarned } : e)
+      prev.map(e => e.id === ex.id ? { ...e, is_completed: 1, actual_amount: primaryValue, actual_units: actualUnitsJson, exp_reward: expEarned } : e)
     );
     triggerFlash(expEarned);
     playSound('exerciseDone');
-    await completeSessionExercise(ex.id!, actualAmount, expEarned);
+    await completeSessionExercise(ex.id!, primaryValue, expEarned, actualUnitsJson);
   };
 
-  const finalizeBonusExercise = async (ex: BonusExercise, actualAmount: number) => {
-    const expEarned = expForAmount(actualAmount, ex.exp_per_unit, ex.exp_unit_count);
+  const finalizeBonusExercise = async (ex: BonusExercise, values: UnitValue[], primaryValue: number) => {
+    const specs = specsOf(ex.units, ex.unit_type);
+    const primary = primarySpecOf(ex.units, ex.primary_unit, ex.unit_type);
+    const expEarned = expForUnits(values, specs, primary, ex.exp_per_unit, ex.exp_unit_count, 1);
+    const actualUnitsJson = JSON.stringify(values);
     setBonusEx(prev =>
-      prev.map(e => e.id === ex.id ? { ...e, is_completed: 1, actual_amount: actualAmount, exp_reward: expEarned } : e)
+      prev.map(e => e.id === ex.id ? { ...e, is_completed: 1, actual_amount: primaryValue, actual_units: actualUnitsJson, exp_reward: expEarned } : e)
     );
     triggerFlash(expEarned);
     playSound('exerciseDone'); 
-    await completeBonusExercise(ex.id!, actualAmount, expEarned);
+    await completeBonusExercise(ex.id!, primaryValue, expEarned, actualUnitsJson);
   };
 
   const handleAddBonus = async () => {
     if (!selBonusEx) return Alert.alert('System', 'Select an exercise.');
-    const target = Number(bonusTarget);
-    if (isNaN(target) || target <= 0) return Alert.alert('System', 'Enter a valid target amount.');
-    await addBonusExerciseToSession(sessionId, selBonusEx, target);
+    const specs = specsOf(selBonusEx.units, selBonusEx.unit_type);
+    const primary = primarySpecOf(selBonusEx.units, selBonusEx.primary_unit, selBonusEx.unit_type);
+    const primaryValue = Number(bonusUnits[primary]);
+    if (isNaN(primaryValue) || primaryValue <= 0) {
+      Alert.alert('System', `Enter a valid ${unitSuffix(primary)} target.`);
+      return;
+    }
+    const unitValues = JSON.stringify(specs.map(s => ({ type: s.type, value: Number(bonusUnits[s.type]) || 0 })));
+    await addBonusExerciseToSession(sessionId, selBonusEx, primaryValue, unitValues);
     const updated = await getBonusExercises(sessionId);
     setBonusEx(updated);
-    setSelBonusEx(null); setBonusTarget(''); setBonusModal(false);
+    setSelBonusEx(null); setBonusUnits({}); setBonusModal(false);
   };
 
   const handleFinishSession = async () => {
@@ -315,6 +362,25 @@ const SessionScreen: React.FC = () => {
   const completedCount = exercises.filter(e => e.is_completed).length;
   const progressPct    = exercises.length > 0 ? (completedCount / exercises.length) * 100 : 0;
 
+  // Amount modal data
+  const pendingUnits = pendingExercise
+    ? specsOf(pendingExercise.units, pendingExercise.unit_type)
+    : specsOf(pendingBonus?.units, pendingBonus?.unit_type ?? 'reps');
+  const pendingPrimary = pendingExercise
+    ? primarySpecOf(pendingExercise.units, pendingExercise.primary_unit, pendingExercise.unit_type)
+    : primarySpecOf(pendingBonus?.units, pendingBonus?.primary_unit, pendingBonus?.unit_type ?? 'reps');
+  const pendingSets  = pendingExercise?.sets_total ?? 1;
+  const pendingRate  = pendingExercise?.exp_per_unit ?? pendingBonus?.exp_per_unit ?? 0;
+  const pendingCount = pendingExercise?.exp_unit_count ?? pendingBonus?.exp_unit_count ?? 1;
+  const pendingValues: UnitValue[] = pendingUnits.map(s => ({ type: s.type, value: Number(inputUnits[s.type]) || 0 }));
+  const pendingExp = pendingUnits.length > 0
+    ? expForUnits(pendingValues, pendingUnits, pendingPrimary, pendingRate, pendingCount, pendingSets)
+    : 0;
+
+  // Bonus add modal data
+  const bonusSpecs = specsOf(selBonusEx?.units, selBonusEx?.unit_type ?? 'reps');
+  const bonusPrimary = primarySpecOf(selBonusEx?.units, selBonusEx?.primary_unit, selBonusEx?.unit_type ?? 'reps');
+
   return (
     <View style={styles.root}>
       {/* EXP flash */}
@@ -424,29 +490,27 @@ const SessionScreen: React.FC = () => {
             <Text style={styles.amountSub}>
               How much did you actually complete?
             </Text>
-            <View style={styles.amountInputRow}>
-              <TextInput
-                style={styles.amountInput}
-                value={inputAmount}
-                onChangeText={setInputAmount}
-                keyboardType="decimal-pad"
-                autoFocus
-                selectTextOnFocus
-              />
-              <Text style={styles.amountUnit}>
-                {pendingExercise?.unit_label ?? pendingBonus?.unit_label}
-              </Text>
-            </View>
+            {pendingUnits.map((s, i) => (
+              <View key={s.type} style={styles.amountInputRow}>
+                <TextInput
+                  style={styles.amountInput}
+                  value={inputUnits[s.type] ?? ''}
+                  onChangeText={v => setInputUnits(prev => ({ ...prev, [s.type]: v }))}
+                  keyboardType="decimal-pad"
+                  autoFocus={i === 0}
+                  selectTextOnFocus
+                  placeholder="0"
+                  placeholderTextColor={COLORS.textMuted}
+                />
+                <Text style={styles.amountUnit}>{unitSuffix(s.type)}</Text>
+              </View>
+            ))}
             <Text style={styles.amountExpPreview}>
-              ≈ {expForAmount(
-                  Number(inputAmount || 0),
-                  pendingExercise?.exp_per_unit ?? pendingBonus?.exp_per_unit ?? 0,
-                  pendingExercise?.exp_unit_count || pendingBonus?.exp_unit_count || 1
-                )} EXP
+              ≈ {pendingExp} EXP{pendingSets > 1 ? ` · ${pendingSets} sets` : ''}
             </Text>
             <View style={styles.amountBtnRow}>
               <SystemButton title="Cancel" variant="ghost" style={styles.flex1}
-                onPress={() => { setAmountModal(false); setPending(null); setPendingBonus(null); setInputAmount(''); }} />
+                onPress={() => { setAmountModal(false); setPending(null); setPendingBonus(null); setInputUnits({}); }} />
               <SystemButton title="Confirm" style={styles.flex1} onPress={handleConfirmAmount} />
             </View>
           </View>
@@ -462,27 +526,35 @@ const SessionScreen: React.FC = () => {
               {allExercises.map(ex => (
                 <TouchableOpacity key={ex.id}
                   style={[styles.exPickItem, selBonusEx?.id === ex.id && styles.exPickItemOn]}
-                  onPress={() => setSelBonusEx(ex)}>
+                  onPress={() => {
+                    setSelBonusEx(ex);
+                    const specs = specsOf(ex.units, ex.unit_type);
+                    const rec: Record<string, string> = {};
+                    for (const s of specs) rec[s.type] = s.default ? String(s.default) : '';
+                    setBonusUnits(rec);
+                  }}>
                   <Text style={[styles.exPickTxt, selBonusEx?.id === ex.id && styles.exPickTxtOn]}>{ex.name}</Text>
-                  <Text style={styles.exPickSub}>+{ex.exp_per_unit} EXP/{ex.unit_label}</Text>
+                  <Text style={styles.exPickSub}>+{ex.exp_per_unit} EXP/{ex.exp_unit_count ?? 1} {unitSuffix(ex.primary_unit ?? ex.unit_type ?? 'reps')}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
-            {selBonusEx && (
-              <View style={styles.amountInputRow}>
+            {selBonusEx && bonusSpecs.map(s => (
+              <View key={s.type} style={styles.amountInputRow}>
                 <TextInput
                   style={styles.amountInput}
-                  value={bonusTarget}
-                  onChangeText={setBonusTarget}
+                  value={bonusUnits[s.type] ?? ''}
+                  onChangeText={v => setBonusUnits(prev => ({ ...prev, [s.type]: v }))}
                   keyboardType="decimal-pad"
-                  placeholder="target"
+                  placeholder={s.type === bonusPrimary ? 'target' : '0'}
                   placeholderTextColor={COLORS.textMuted}
                 />
-                <Text style={styles.amountUnit}>{selBonusEx.unit_label}</Text>
+                <Text style={styles.amountUnit}>
+                  {unitSuffix(s.type)}{s.type === bonusPrimary ? ' · EXP' : ''}
+                </Text>
               </View>
-            )}
+            ))}
             <View style={styles.amountBtnRow}>
-              <SystemButton title="Cancel" variant="ghost" style={styles.flex1} onPress={() => { setBonusModal(false); setSelBonusEx(null); setBonusTarget(''); }} />
+              <SystemButton title="Cancel" variant="ghost" style={styles.flex1} onPress={() => { setBonusModal(false); setSelBonusEx(null); setBonusUnits({}); }} />
               <SystemButton title="Add" style={styles.flex1} onPress={handleAddBonus} />
             </View>
           </View>
@@ -496,6 +568,12 @@ const SessionScreen: React.FC = () => {
 
 const ExerciseItem: React.FC<{ exercise: SessionExercise; index: number; onTap: () => void }> = ({ exercise, index, onTap }) => {
   const done = !!exercise.is_completed;
+  const specs = specsOf(exercise.units, exercise.unit_type);
+  const primary = primarySpecOf(exercise.units, exercise.primary_unit, exercise.unit_type);
+  const planned = plannedOf(exercise.unit_values, exercise.target, exercise.unit_type);
+  const plannedLabel = formatUnitValues(planned) || `${exercise.target} ${exercise.unit_label}`;
+  const actualLabel = formatUnitValues(parseUnitValues(exercise.actual_units)) || `${exercise.actual_amount} ${exercise.unit_label}`;
+  const previewExp = expForUnits(planned, specs, primary, exercise.exp_per_unit, exercise.exp_unit_count, exercise.sets_total);
   const checkAnim = useRef(new Animated.Value(done ? 1 : 0)).current;
   const handlePress = () => {
     if (done) return;
@@ -503,7 +581,6 @@ const ExerciseItem: React.FC<{ exercise: SessionExercise; index: number; onTap: 
     onTap();
   };
   const scale = checkAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1.3, 1] });
-  const isReps = exercise.unit_type === 'reps';
 
   return (
     <TouchableOpacity style={[styles.questItem, done && styles.questItemDone]} onPress={handlePress} disabled={done} activeOpacity={0.75}>
@@ -513,12 +590,9 @@ const ExerciseItem: React.FC<{ exercise: SessionExercise; index: number; onTap: 
       <View style={styles.questBody}>
         <Text style={[styles.questName, done && styles.questNameDone]}>{exercise.exercise_name}</Text>
         <Text style={styles.questSets}>
-          {exercise.sets_total} sets × {exercise.target} {exercise.unit_label}
-          {done && exercise.actual_amount !== exercise.target * exercise.sets_total
-            ? ` · actual: ${exercise.actual_amount} ${exercise.unit_label}`
-            : ''}
+          {exercise.sets_total} sets × {done ? actualLabel : plannedLabel}
         </Text>
-        {!isReps && !done && (
+        {!done && (
           <Text style={styles.tapHint}>Tap to log your amount</Text>
         )}
       </View>
@@ -526,7 +600,7 @@ const ExerciseItem: React.FC<{ exercise: SessionExercise; index: number; onTap: 
         <Text style={[styles.expBadgeTxt, done && styles.expBadgeTxtDone]}>
           {done
             ? `+${exercise.exp_reward}`
-            : `~${expForTargetSets(exercise.target, exercise.sets_total, exercise.exp_per_unit, exercise.exp_unit_count)}`
+            : `~${previewExp}`
           }
         </Text>
         <Text style={[styles.expBadgeLbl, done && styles.expBadgeTxtDone]}>EXP</Text>
@@ -539,6 +613,12 @@ const ExerciseItem: React.FC<{ exercise: SessionExercise; index: number; onTap: 
 
 const BonusItem: React.FC<{ exercise: BonusExercise; index: number; onTap: () => void }> = ({ exercise, index, onTap }) => {
   const done = !!exercise.is_completed;
+  const specs = specsOf(exercise.units, exercise.unit_type);
+  const primary = primarySpecOf(exercise.units, exercise.primary_unit, exercise.unit_type);
+  const planned = plannedOf(exercise.unit_values, exercise.target, exercise.unit_type);
+  const plannedLabel = formatUnitValues(planned) || `${exercise.target} ${exercise.unit_label}`;
+  const actualLabel = formatUnitValues(parseUnitValues(exercise.actual_units)) || `${exercise.actual_amount} ${exercise.unit_label}`;
+  const previewExp = expForUnits(planned, specs, primary, exercise.exp_per_unit, exercise.exp_unit_count, 1);
   return (
     <TouchableOpacity style={[styles.questItem, styles.bonusItem, done && styles.questItemDone]} onPress={onTap} disabled={done} activeOpacity={0.75}>
       <View style={[styles.indicator, styles.bonusIndicator, done && styles.indicatorDone]}>
@@ -546,13 +626,13 @@ const BonusItem: React.FC<{ exercise: BonusExercise; index: number; onTap: () =>
       </View>
       <View style={styles.questBody}>
         <Text style={[styles.questName, done && styles.questNameDone]}>{exercise.exercise_name}</Text>
-        <Text style={styles.questSets}>{exercise.target} {exercise.unit_label} · BONUS</Text>
+        <Text style={styles.questSets}>{done ? actualLabel : plannedLabel} · BONUS</Text>
       </View>
       <View style={[styles.expBadge, styles.bonusExpBadge, done && styles.expBadgeDone]}>
         <Text style={[styles.expBadgeTxt, done && styles.expBadgeTxtDone]}>
           {done
             ? `+${exercise.exp_reward}`
-            : `~${expForAmount(exercise.target, exercise.exp_per_unit, exercise.exp_unit_count)}`
+            : `~${previewExp}`
           }
         </Text>
         <Text style={[styles.expBadgeLbl, done && styles.expBadgeTxtDone]}>EXP</Text>

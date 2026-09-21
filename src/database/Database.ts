@@ -10,7 +10,8 @@
  */
 
 import * as SQLite from 'expo-sqlite';
-import { calculateLevelFromTotalExp } from '../constants/formulas';
+import { calculateLevelFromTotalExp } from '../utils/math';
+import { unitSuffix } from '../constants/game';
 
 // ─────────────────────────────────────────────
 // SINGLETON CONNECTION
@@ -64,7 +65,17 @@ export const initDatabase = async (): Promise<void> => {
       stat_type   TEXT    DEFAULT 'strength',
       stat_reward INTEGER DEFAULT 1,
       category    TEXT    DEFAULT 'strength',
+      units       TEXT    DEFAULT '[]',
+      primary_unit TEXT   DEFAULT 'reps',
       created_at  TEXT    DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS exercise_body_parts (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      exercise_id INTEGER NOT NULL,
+      body_part   TEXT    NOT NULL,
+      UNIQUE (exercise_id, body_part),
+      FOREIGN KEY (exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS plans (
@@ -83,6 +94,7 @@ export const initDatabase = async (): Promise<void> => {
       exercise_id INTEGER NOT NULL,
       sets        INTEGER DEFAULT 3,
       target      REAL    DEFAULT 10,
+      unit_values TEXT    DEFAULT '[]',
       order_index INTEGER DEFAULT 0,
       FOREIGN KEY (plan_id)     REFERENCES plans(id)     ON DELETE CASCADE,
       FOREIGN KEY (exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
@@ -97,6 +109,7 @@ export const initDatabase = async (): Promise<void> => {
       total_exp     INTEGER DEFAULT 0,
       started_at    TEXT    DEFAULT '',
       completed_at  TEXT    DEFAULT '',
+      is_manual     INTEGER DEFAULT 0,
       FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE
     );
 
@@ -109,6 +122,10 @@ export const initDatabase = async (): Promise<void> => {
       target          REAL    DEFAULT 10,
       unit_type       TEXT    DEFAULT 'reps',
       unit_label      TEXT    DEFAULT 'reps',
+      units           TEXT    DEFAULT '[]',
+      primary_unit    TEXT    DEFAULT 'reps',
+      unit_values     TEXT    DEFAULT '[]',
+      actual_units    TEXT    DEFAULT '[]',
       exp_per_unit    REAL    DEFAULT 2,
       actual_amount   REAL    DEFAULT 0,
       is_completed    INTEGER DEFAULT 0,
@@ -134,6 +151,10 @@ export const initDatabase = async (): Promise<void> => {
       target      REAL   DEFAULT 0,
       unit_type   TEXT   DEFAULT 'reps',
       unit_label  TEXT   DEFAULT 'reps',
+      units       TEXT   DEFAULT '[]',
+      primary_unit TEXT  DEFAULT 'reps',
+      unit_values TEXT   DEFAULT '[]',
+      actual_units TEXT  DEFAULT '[]',
       exp_per_unit REAL  DEFAULT 2,
       actual_amount REAL DEFAULT 0,
       is_completed INTEGER DEFAULT 0,
@@ -166,6 +187,18 @@ export const initDatabase = async (): Promise<void> => {
   await safeAlter(`ALTER TABLE session_exercises ADD COLUMN exp_per_stat_point REAL DEFAULT 20`);
   await safeAlter(`ALTER TABLE bonus_exercises ADD COLUMN exp_per_stat_point REAL DEFAULT 20`);
   await safeAlter(`ALTER TABLE bonus_exercises ADD COLUMN exp_awarded INTEGER DEFAULT 0`);
+  await safeAlter(`ALTER TABLE sessions ADD COLUMN is_manual INTEGER DEFAULT 0`);
+  await safeAlter(`ALTER TABLE exercises ADD COLUMN units TEXT DEFAULT '[]'`);
+  await safeAlter(`ALTER TABLE exercises ADD COLUMN primary_unit TEXT DEFAULT 'reps'`);
+  await safeAlter(`ALTER TABLE plan_exercises ADD COLUMN unit_values TEXT DEFAULT '[]'`);
+  await safeAlter(`ALTER TABLE session_exercises ADD COLUMN units TEXT DEFAULT '[]'`);
+  await safeAlter(`ALTER TABLE session_exercises ADD COLUMN primary_unit TEXT DEFAULT 'reps'`);
+  await safeAlter(`ALTER TABLE session_exercises ADD COLUMN unit_values TEXT DEFAULT '[]'`);
+  await safeAlter(`ALTER TABLE session_exercises ADD COLUMN actual_units TEXT DEFAULT '[]'`);
+  await safeAlter(`ALTER TABLE bonus_exercises ADD COLUMN units TEXT DEFAULT '[]'`);
+  await safeAlter(`ALTER TABLE bonus_exercises ADD COLUMN primary_unit TEXT DEFAULT 'reps'`);
+  await safeAlter(`ALTER TABLE bonus_exercises ADD COLUMN unit_values TEXT DEFAULT '[]'`);
+  await safeAlter(`ALTER TABLE bonus_exercises ADD COLUMN actual_units TEXT DEFAULT '[]'`);
 
   // Create bonus_exercises table if it doesn't exist
   await db.execAsync(`
@@ -177,6 +210,10 @@ export const initDatabase = async (): Promise<void> => {
       target        REAL    DEFAULT 0,
       unit_type     TEXT    DEFAULT 'reps',
       unit_label    TEXT    DEFAULT 'reps',
+      units         TEXT    DEFAULT '[]',
+      primary_unit  TEXT    DEFAULT 'reps',
+      unit_values   TEXT    DEFAULT '[]',
+      actual_units  TEXT    DEFAULT '[]',
       exp_per_unit  REAL    DEFAULT 2,
       actual_amount REAL    DEFAULT 0,
       is_completed  INTEGER DEFAULT 0,
@@ -186,6 +223,70 @@ export const initDatabase = async (): Promise<void> => {
       FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
     );
   `);
+
+  // ─────────────────────────────────────────────
+  // BACKFILL  legacy single-unit rows → multi-unit JSON (idempotent)
+  // Only touches rows whose units column is still empty; safe on every launch.
+  // ─────────────────────────────────────────────
+  const legacyUnits = (type: string | null, label: string | null): string => {
+    const t = type && type.length > 0 ? type : 'reps';
+    const l = label && label.length > 0 ? label : unitSuffix(t);
+    return JSON.stringify([{ type: t, label: l, default: 1 }]);
+  };
+  const legacyValues = (type: string | null, value: number): string => {
+    const t = type && type.length > 0 ? type : 'reps';
+    return JSON.stringify([{ type: t, value: Number.isFinite(value) ? value : 0 }]);
+  };
+
+  const exerciseRows = await db.getAllAsync<{ id: number; unit_type: string; unit_label: string }>(
+    `SELECT id, unit_type, unit_label FROM exercises WHERE units IS NULL OR units = '' OR units = '[]'`
+  );
+  for (const r of exerciseRows) {
+    await db.runAsync(
+      `UPDATE exercises SET units = ?, primary_unit = ? WHERE id = ?`,
+      [legacyUnits(r.unit_type, r.unit_label), r.unit_type || 'reps', r.id]
+    );
+  }
+
+  const planRows = await db.getAllAsync<{ id: number; target: number; unit_type: string; unit_label: string }>(
+    `SELECT pe.id, pe.target, e.unit_type, e.unit_label
+       FROM plan_exercises pe JOIN exercises e ON pe.exercise_id = e.id
+      WHERE pe.unit_values IS NULL OR pe.unit_values = '' OR pe.unit_values = '[]'`
+  );
+  for (const r of planRows) {
+    await db.runAsync(
+      `UPDATE plan_exercises SET unit_values = ? WHERE id = ?`,
+      [legacyValues(r.unit_type, r.target), r.id]
+    );
+  }
+
+  const sessionRows = await db.getAllAsync<{
+    id: number; target: number; actual_amount: number; unit_type: string; unit_label: string;
+  }>(
+    `SELECT id, target, actual_amount, unit_type, unit_label FROM session_exercises
+      WHERE units IS NULL OR units = '' OR units = '[]'`
+  );
+  for (const r of sessionRows) {
+    await db.runAsync(
+      `UPDATE session_exercises SET units = ?, primary_unit = ?, unit_values = ?, actual_units = ? WHERE id = ?`,
+      [legacyUnits(r.unit_type, r.unit_label), r.unit_type || 'reps',
+       legacyValues(r.unit_type, r.target), legacyValues(r.unit_type, r.actual_amount), r.id]
+    );
+  }
+
+  const bonusRows = await db.getAllAsync<{
+    id: number; target: number; actual_amount: number; unit_type: string; unit_label: string;
+  }>(
+    `SELECT id, target, actual_amount, unit_type, unit_label FROM bonus_exercises
+      WHERE units IS NULL OR units = '' OR units = '[]'`
+  );
+  for (const r of bonusRows) {
+    await db.runAsync(
+      `UPDATE bonus_exercises SET units = ?, primary_unit = ?, unit_values = ?, actual_units = ? WHERE id = ?`,
+      [legacyUnits(r.unit_type, r.unit_label), r.unit_type || 'reps',
+       legacyValues(r.unit_type, r.target), legacyValues(r.unit_type, r.actual_amount), r.id]
+    );
+  }
 };
 
 // ─────────────────────────────────────────────
@@ -223,6 +324,9 @@ export interface Exercise {
   exp_per_stat_point: number; 
   stat_type: string;
   category: string;
+  units?: string;        // JSON array of UnitSpec: [{ type, label, default }]
+  primary_unit?: string; // unit type that drives EXP
+  body_parts?: string;   // JSON array, populated by getExercises (join table, not a column)
   created_at?: string;
 }
 
@@ -249,6 +353,9 @@ export interface PlanExercise {
   stat_reward?: number;
   sets: number;
   target: number;        // renamed from reps — holds the target amount
+  unit_values?: string;  // JSON array: [{ type, value }]
+  units?: string;        // JSON array of UnitSpec (joined from exercises)
+  primary_unit?: string; // joined from exercises
   order_index: number;
 }
 
@@ -261,6 +368,7 @@ export interface Session {
   total_exp: number;
   started_at: string;
   completed_at: string;
+  is_manual?: number;
 }
 
 export interface SessionExercise {
@@ -272,6 +380,10 @@ export interface SessionExercise {
   target: number;
   unit_type: string;
   unit_label: string;
+  units?: string;         // JSON array of UnitSpec
+  primary_unit?: string;
+  unit_values?: string;   // JSON array of planned [{ type, value }]
+  actual_units?: string;  // JSON array of actual [{ type, value }]
   exp_per_unit: number;
   exp_unit_count: number;  
   exp_per_stat_point: number;
@@ -290,6 +402,10 @@ export interface BonusExercise {
   target: number;
   unit_type: string;
   unit_label: string;
+  units?: string;         // JSON array of UnitSpec
+  primary_unit?: string;
+  unit_values?: string;   // JSON array of planned [{ type, value }]
+  actual_units?: string;  // JSON array of actual [{ type, value }]
   exp_per_unit: number;
   exp_unit_count: number;
   exp_per_stat_point: number;
@@ -350,21 +466,44 @@ export const updatePlayer = async (updates: Partial<Player>): Promise<void> => {
 // EXERCISES
 // ─────────────────────────────────────────────
 
-export const createExercise = async (ex: Omit<Exercise, 'id' | 'created_at'>): Promise<number> => {
+export const createExercise = async (
+  ex: Omit<Exercise, 'id' | 'created_at' | 'body_parts'>,
+  bodyParts: string[] = []
+): Promise<number> => {
   const db = await getDb();
-  const result = await db.runAsync(
-    `INSERT INTO exercises (name, description, exp_reward, unit_type, exp_per_unit, exp_unit_count, unit_label, exp_per_stat_point, stat_type, stat_reward, category)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [ex.name, ex.description, ex.exp_reward, ex.unit_type, ex.exp_per_unit,
-     ex.exp_unit_count ?? 1, ex.unit_label, ex.exp_per_stat_point ?? 20,
-     ex.stat_type, 0, ex.category]
-  );
-  return result.lastInsertRowId;
+  let id: number | undefined;
+  await db.withTransactionAsync(async () => {
+    const result = await db.runAsync(
+      `INSERT INTO exercises (name, description, exp_reward, unit_type, exp_per_unit, exp_unit_count, unit_label, exp_per_stat_point, stat_type, stat_reward, category, units, primary_unit)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [ex.name, ex.description, ex.exp_reward, ex.unit_type, ex.exp_per_unit,
+       ex.exp_unit_count ?? 1, ex.unit_label, ex.exp_per_stat_point ?? 20,
+       ex.stat_type, 0, ex.category, ex.units ?? '[]', ex.primary_unit ?? ex.unit_type]
+    );
+    id = result.lastInsertRowId;
+    for (const bp of bodyParts) {
+      await db.runAsync(
+        `INSERT INTO exercise_body_parts (exercise_id, body_part) VALUES (?, ?)`,
+        [id, bp]
+      );
+    }
+  });
+  return id!;
 };
 
 export const getExercises = async (): Promise<Exercise[]> => {
   const db = await getDb();
-  return db.getAllAsync<Exercise>(`SELECT * FROM exercises ORDER BY created_at DESC`);
+  const exercises = await db.getAllAsync<Exercise>(`SELECT * FROM exercises ORDER BY created_at DESC`);
+  const parts = await db.getAllAsync<{ exercise_id: number; body_part: string }>(
+    `SELECT exercise_id, body_part FROM exercise_body_parts`
+  );
+  const byExercise = new Map<number, string[]>();
+  for (const p of parts) {
+    const arr = byExercise.get(p.exercise_id) ?? [];
+    arr.push(p.body_part);
+    byExercise.set(p.exercise_id, arr);
+  }
+  return exercises.map(ex => ({ ...ex, body_parts: JSON.stringify(byExercise.get(ex.id!) ?? []) }));
 };
 
 export const deleteExercise = async (id: number): Promise<void> => {
@@ -372,12 +511,30 @@ export const deleteExercise = async (id: number): Promise<void> => {
   await db.runAsync(`DELETE FROM exercises WHERE id = ?`, [id]);
 };
 
-export const updateExercise = async (id: number, updates: Partial<Exercise>): Promise<void> => {
+export const updateExercise = async (
+  id: number,
+  updates: Partial<Exercise>,
+  bodyParts?: string[]
+): Promise<void> => {
   const db = await getDb();
-  const keys = Object.keys(updates);
-  if (keys.length === 0) return;
-  const fields = keys.map(k => `${k} = ?`).join(', ');
-  await db.runAsync(`UPDATE exercises SET ${fields} WHERE id = ?`, [...Object.values(updates), id]);
+  const { body_parts, ...fields } = updates;
+  const keys = Object.keys(fields);
+  if (keys.length === 0 && bodyParts === undefined) return;
+  await db.withTransactionAsync(async () => {
+    if (keys.length > 0) {
+      const setClause = keys.map(k => `${k} = ?`).join(', ');
+      await db.runAsync(`UPDATE exercises SET ${setClause} WHERE id = ?`, [...Object.values(fields), id]);
+    }
+    if (bodyParts !== undefined) {
+      await db.runAsync(`DELETE FROM exercise_body_parts WHERE exercise_id = ?`, [id]);
+      for (const bp of bodyParts) {
+        await db.runAsync(
+          `INSERT INTO exercise_body_parts (exercise_id, body_part) VALUES (?, ?)`,
+          [id, bp]
+        );
+      }
+    }
+  });
 };
 
 // ─────────────────────────────────────────────
@@ -424,16 +581,16 @@ export const cancelTodayPendingSessions = async (planId: number): Promise<void> 
 export const addExerciseToPlan = async (pe: Omit<PlanExercise, 'id'>): Promise<void> => {
   const db = await getDb();
   await db.runAsync(
-    `INSERT INTO plan_exercises (plan_id, exercise_id, sets, target, order_index)
-     VALUES (?, ?, ?, ?, ?)`,
-    [pe.plan_id, pe.exercise_id, pe.sets, pe.target, pe.order_index]
+    `INSERT INTO plan_exercises (plan_id, exercise_id, sets, target, unit_values, order_index)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [pe.plan_id, pe.exercise_id, pe.sets, pe.target, pe.unit_values ?? '[]', pe.order_index]
   );
 };
 
 export const getPlanExercises = async (planId: number): Promise<PlanExercise[]> => {
   const db = await getDb();
   return db.getAllAsync<PlanExercise>(
-    `SELECT pe.*, e.name as exercise_name, e.exp_per_unit, e.exp_unit_count, e.exp_per_stat_point, e.unit_type, e.unit_label, e.stat_type
+    `SELECT pe.*, e.name as exercise_name, e.exp_per_unit, e.exp_unit_count, e.exp_per_stat_point, e.unit_type, e.unit_label, e.stat_type, e.units, e.primary_unit
      FROM plan_exercises pe
      JOIN exercises e ON pe.exercise_id = e.id
      WHERE pe.plan_id = ?
@@ -451,14 +608,36 @@ export const removeExerciseFromPlan = async (planExerciseId: number): Promise<vo
 // SESSIONS
 // ─────────────────────────────────────────────
 
-export const createSession = async (plan: Plan): Promise<number> => {
+export const createSession = async (plan: Plan, isManual = false): Promise<number> => {
   const db = await getDb();
   const today = new Date().toISOString().split('T')[0];
   const result = await db.runAsync(
-    `INSERT INTO sessions (plan_id, plan_name, date) VALUES (?, ?, ?)`,
-    [plan.id!, plan.name, today]
+    `INSERT INTO sessions (plan_id, plan_name, date, is_manual) VALUES (?, ?, ?, ?)`,
+    [plan.id!, plan.name, today, isManual ? 1 : 0]
   );
   return result.lastInsertRowId;
+};
+
+// Whether a session already exists today for the given plan (auto or manual).
+export const hasSessionToday = async (planId: number): Promise<boolean> => {
+  const db = await getDb();
+  const today = new Date().toISOString().split('T')[0];
+  const row = await db.getFirstAsync<{ id: number }>(
+    `SELECT id FROM sessions WHERE plan_id = ? AND date = ? LIMIT 1`,
+    [planId, today]
+  );
+  return !!row;
+};
+
+// Exercise count per plan, keyed by plan_id — used by the Add Plan picker.
+export const getPlanExerciseCounts = async (): Promise<Record<number, number>> => {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ plan_id: number; count: number }>(
+    `SELECT plan_id, COUNT(*) as count FROM plan_exercises GROUP BY plan_id`
+  );
+  const counts: Record<number, number> = {};
+  for (const r of rows) counts[r.plan_id] = r.count;
+  return counts;
 };
 
 export const populateSessionExercises = async (sessionId: number, planId: number): Promise<void> => {
@@ -467,10 +646,11 @@ export const populateSessionExercises = async (sessionId: number, planId: number
   for (const pe of planExercises) {
     await db.runAsync(
       `INSERT INTO session_exercises
-         (session_id, exercise_id, exercise_name, sets_total, target, unit_type, unit_label, exp_per_unit, exp_unit_count, exp_per_stat_point, stat_type, is_bonus)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
+         (session_id, exercise_id, exercise_name, sets_total, target, unit_type, unit_label, units, primary_unit, unit_values, exp_per_unit, exp_unit_count, exp_per_stat_point, stat_type, is_bonus)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)`,
       [sessionId, pe.exercise_id, pe.exercise_name ?? '', pe.sets, pe.target,
        pe.unit_type ?? 'reps', pe.unit_label ?? 'reps',
+       pe.units ?? '[]', pe.primary_unit ?? pe.unit_type ?? 'reps', pe.unit_values ?? '[]',
        pe.exp_per_unit ?? 2, pe.exp_unit_count ?? 1,
        (pe as any).exp_per_stat_point ?? 20,
        pe.stat_type ?? 'strength']
@@ -481,13 +661,13 @@ export const populateSessionExercises = async (sessionId: number, planId: number
 export const getTodaySessions = async (): Promise<Session[]> => {
   const db = await getDb();
   const today = new Date().toISOString().split('T')[0];
-  // Only return sessions where the plan still exists AND is still active
-  // Also include completed/in_progress sessions regardless (player already started them)
+  // Return today's sessions when the plan is still active, the session was
+  // manually added, or the player already started/finished it.
   return db.getAllAsync<Session>(
     `SELECT s.* FROM sessions s
      INNER JOIN plans p ON s.plan_id = p.id
      WHERE s.date = ?
-       AND (p.is_active = 1 OR s.status IN ('in_progress', 'completed'))
+       AND (p.is_active = 1 OR s.is_manual = 1 OR s.status IN ('in_progress', 'completed'))
      ORDER BY s.id DESC`,
     [today]
   );
@@ -523,12 +703,12 @@ export const getSession = async (id: number): Promise<Session | null> => {
 // actualAmount = how much the player actually did (reps, km, minutes, etc.)
 // expEarned = actualAmount × exp_per_unit × sets (calculated in SessionScreen)
 export const completeSessionExercise = async (
-  id: number, actualAmount: number, expEarned: number
+  id: number, actualAmount: number, expEarned: number, actualUnits: string = '[]'
 ): Promise<void> => {
   const db = await getDb();
   await db.runAsync(
-    `UPDATE session_exercises SET is_completed = 1, actual_amount = ?, exp_reward = ? WHERE id = ?`,
-    [actualAmount, expEarned, id]
+    `UPDATE session_exercises SET is_completed = 1, actual_amount = ?, exp_reward = ?, actual_units = ? WHERE id = ?`,
+    [actualAmount, expEarned, actualUnits, id]
   );
 };
 
@@ -561,27 +741,29 @@ export const getBonusExercises = async (sessionId: number): Promise<BonusExercis
 };
 
 export const addBonusExerciseToSession = async (
-  sessionId: number, exercise: Exercise, target: number
+  sessionId: number, exercise: Exercise, target: number,
+  unitValues: string = '[]'
 ): Promise<void> => {
   const db = await getDb();
   await db.runAsync(
     `INSERT INTO bonus_exercises
-       (session_id, exercise_id, exercise_name, target, unit_type, unit_label, exp_per_unit, exp_unit_count, exp_per_stat_point, stat_type)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (session_id, exercise_id, exercise_name, target, unit_type, unit_label, units, primary_unit, unit_values, exp_per_unit, exp_unit_count, exp_per_stat_point, stat_type)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [sessionId, exercise.id!, exercise.name, target,
      exercise.unit_type ?? 'reps', exercise.unit_label ?? 'reps',
+     exercise.units ?? '[]', exercise.primary_unit ?? exercise.unit_type ?? 'reps', unitValues,
      exercise.exp_per_unit ?? 2, exercise.exp_unit_count ?? 1,
      exercise.exp_per_stat_point ?? 20, exercise.stat_type ?? 'strength']
   );
 };
 
 export const completeBonusExercise = async (
-  id: number, actualAmount: number, expEarned: number
+  id: number, actualAmount: number, expEarned: number, actualUnits: string = '[]'
 ): Promise<void> => {
   const db = await getDb();
   await db.runAsync(
-    `UPDATE bonus_exercises SET is_completed = 1, actual_amount = ?, exp_reward = ? WHERE id = ?`,
-    [actualAmount, expEarned, id]
+    `UPDATE bonus_exercises SET is_completed = 1, actual_amount = ?, exp_reward = ?, actual_units = ? WHERE id = ?`,
+    [actualAmount, expEarned, actualUnits, id]
   );
 };
 
@@ -608,14 +790,15 @@ export const getMissedSessions = async (): Promise<Session[]> => {
 
 export const applyMissedSessionPenalty = async (sessionId: number): Promise<number> => {
   const db = await getDb();
-  const session = await db.getFirstAsync<{ plan_id: number }>(
-    `SELECT plan_id FROM sessions WHERE id = ?`, [sessionId]
+  const session = await db.getFirstAsync<{ plan_id: number; is_manual: number }>(
+    `SELECT plan_id, is_manual FROM sessions WHERE id = ?`, [sessionId]
   );
   if (!session) return 0;
   const plan = await db.getFirstAsync<{ penalty_exp: number }>(
     `SELECT penalty_exp FROM plans WHERE id = ?`, [session.plan_id]
   );
-  const penalty = plan?.penalty_exp ?? 0;
+  // Manually-added sessions are optional for the day — never penalised.
+  const penalty = session.is_manual ? 0 : (plan?.penalty_exp ?? 0);
   // Always move the session out of 'pending' — even a zero-penalty missed quest
   // must not be reprocessed on every load.
   await db.runAsync(`UPDATE sessions SET status = 'skipped' WHERE id = ?`, [sessionId]);
@@ -645,28 +828,33 @@ export const resetAllData = async (): Promise<void> => {
     DELETE FROM sessions;
     DELETE FROM plan_exercises;
     DELETE FROM plans;
+    DELETE FROM exercise_body_parts;
     DELETE FROM exercises;
     DELETE FROM titles;
     DELETE FROM player;
   `);
   await db.execAsync(`
     DELETE FROM sqlite_sequence WHERE name IN
-      ('player','exercises','plans','plan_exercises','sessions','session_exercises','titles','bonus_exercises');
+      ('player','exercises','exercise_body_parts','plans','plan_exercises','sessions','session_exercises','titles','bonus_exercises');
   `);
 };
 
 export const getSessionSummary = async (sessionId: number): Promise<{
-  exercises: { name: string; actual_amount: number; unit_label: string; exp_reward: number; is_completed: number }[];
-  bonuses:   { name: string; actual_amount: number; unit_label: string; exp_reward: number; is_completed: number }[];
+  exercises: { name: string; actual_amount: number; unit_label: string; units: string; primary_unit: string; actual_units: string; exp_reward: number; is_completed: number }[];
+  bonuses:   { name: string; actual_amount: number; unit_label: string; units: string; primary_unit: string; actual_units: string; exp_reward: number; is_completed: number }[];
 }> => {
   const db = await getDb();
   const exercises = await db.getAllAsync<any>(
-    `SELECT exercise_name as name, actual_amount, COALESCE(unit_label, 'reps') as unit_label, exp_reward, is_completed
+    `SELECT exercise_name as name, actual_amount, COALESCE(unit_label, 'reps') as unit_label,
+            COALESCE(units, '[]') as units, COALESCE(primary_unit, unit_type, 'reps') as primary_unit,
+            COALESCE(actual_units, '[]') as actual_units, exp_reward, is_completed
      FROM session_exercises WHERE session_id = ? ORDER BY id`,
     [sessionId]
   );
   const bonuses = await db.getAllAsync<any>(
-    `SELECT exercise_name as name, actual_amount, COALESCE(unit_label, 'reps') as unit_label, exp_reward, is_completed
+    `SELECT exercise_name as name, actual_amount, COALESCE(unit_label, 'reps') as unit_label,
+            COALESCE(units, '[]') as units, COALESCE(primary_unit, unit_type, 'reps') as primary_unit,
+            COALESCE(actual_units, '[]') as actual_units, exp_reward, is_completed
      FROM bonus_exercises WHERE session_id = ? ORDER BY id`,
     [sessionId]
   );
