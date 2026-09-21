@@ -105,6 +105,7 @@ export const initDatabase = async (): Promise<void> => {
       total_exp     INTEGER DEFAULT 0,
       started_at    TEXT    DEFAULT '',
       completed_at  TEXT    DEFAULT '',
+      is_manual     INTEGER DEFAULT 0,
       FOREIGN KEY (plan_id) REFERENCES plans(id) ON DELETE CASCADE
     );
 
@@ -174,6 +175,7 @@ export const initDatabase = async (): Promise<void> => {
   await safeAlter(`ALTER TABLE session_exercises ADD COLUMN exp_per_stat_point REAL DEFAULT 20`);
   await safeAlter(`ALTER TABLE bonus_exercises ADD COLUMN exp_per_stat_point REAL DEFAULT 20`);
   await safeAlter(`ALTER TABLE bonus_exercises ADD COLUMN exp_awarded INTEGER DEFAULT 0`);
+  await safeAlter(`ALTER TABLE sessions ADD COLUMN is_manual INTEGER DEFAULT 0`);
 
   // Create bonus_exercises table if it doesn't exist
   await db.execAsync(`
@@ -270,6 +272,7 @@ export interface Session {
   total_exp: number;
   started_at: string;
   completed_at: string;
+  is_manual?: number;
 }
 
 export interface SessionExercise {
@@ -501,14 +504,36 @@ export const removeExerciseFromPlan = async (planExerciseId: number): Promise<vo
 // SESSIONS
 // ─────────────────────────────────────────────
 
-export const createSession = async (plan: Plan): Promise<number> => {
+export const createSession = async (plan: Plan, isManual = false): Promise<number> => {
   const db = await getDb();
   const today = new Date().toISOString().split('T')[0];
   const result = await db.runAsync(
-    `INSERT INTO sessions (plan_id, plan_name, date) VALUES (?, ?, ?)`,
-    [plan.id!, plan.name, today]
+    `INSERT INTO sessions (plan_id, plan_name, date, is_manual) VALUES (?, ?, ?, ?)`,
+    [plan.id!, plan.name, today, isManual ? 1 : 0]
   );
   return result.lastInsertRowId;
+};
+
+// Whether a session already exists today for the given plan (auto or manual).
+export const hasSessionToday = async (planId: number): Promise<boolean> => {
+  const db = await getDb();
+  const today = new Date().toISOString().split('T')[0];
+  const row = await db.getFirstAsync<{ id: number }>(
+    `SELECT id FROM sessions WHERE plan_id = ? AND date = ? LIMIT 1`,
+    [planId, today]
+  );
+  return !!row;
+};
+
+// Exercise count per plan, keyed by plan_id — used by the Add Plan picker.
+export const getPlanExerciseCounts = async (): Promise<Record<number, number>> => {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ plan_id: number; count: number }>(
+    `SELECT plan_id, COUNT(*) as count FROM plan_exercises GROUP BY plan_id`
+  );
+  const counts: Record<number, number> = {};
+  for (const r of rows) counts[r.plan_id] = r.count;
+  return counts;
 };
 
 export const populateSessionExercises = async (sessionId: number, planId: number): Promise<void> => {
@@ -531,13 +556,13 @@ export const populateSessionExercises = async (sessionId: number, planId: number
 export const getTodaySessions = async (): Promise<Session[]> => {
   const db = await getDb();
   const today = new Date().toISOString().split('T')[0];
-  // Only return sessions where the plan still exists AND is still active
-  // Also include completed/in_progress sessions regardless (player already started them)
+  // Return today's sessions when the plan is still active, the session was
+  // manually added, or the player already started/finished it.
   return db.getAllAsync<Session>(
     `SELECT s.* FROM sessions s
      INNER JOIN plans p ON s.plan_id = p.id
      WHERE s.date = ?
-       AND (p.is_active = 1 OR s.status IN ('in_progress', 'completed'))
+       AND (p.is_active = 1 OR s.is_manual = 1 OR s.status IN ('in_progress', 'completed'))
      ORDER BY s.id DESC`,
     [today]
   );
@@ -658,14 +683,15 @@ export const getMissedSessions = async (): Promise<Session[]> => {
 
 export const applyMissedSessionPenalty = async (sessionId: number): Promise<number> => {
   const db = await getDb();
-  const session = await db.getFirstAsync<{ plan_id: number }>(
-    `SELECT plan_id FROM sessions WHERE id = ?`, [sessionId]
+  const session = await db.getFirstAsync<{ plan_id: number; is_manual: number }>(
+    `SELECT plan_id, is_manual FROM sessions WHERE id = ?`, [sessionId]
   );
   if (!session) return 0;
   const plan = await db.getFirstAsync<{ penalty_exp: number }>(
     `SELECT penalty_exp FROM plans WHERE id = ?`, [session.plan_id]
   );
-  const penalty = plan?.penalty_exp ?? 0;
+  // Manually-added sessions are optional for the day — never penalised.
+  const penalty = session.is_manual ? 0 : (plan?.penalty_exp ?? 0);
   // Always move the session out of 'pending' — even a zero-penalty missed quest
   // must not be reprocessed on every load.
   await db.runAsync(`UPDATE sessions SET status = 'skipped' WHERE id = ?`, [sessionId]);

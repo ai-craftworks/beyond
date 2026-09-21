@@ -189,7 +189,7 @@ const PlansScreen: React.FC = () => {
                   </TouchableOpacity>
                 ))}
               </View>
-              <Text style={styles.hint}>Empty = generate every day when active.</Text>
+              <Text style={styles.hint}>Leave empty to add this plan manually from the dashboard.</Text>
               <SystemInput
                 label="Missed Quest Penalty (EXP)"
                 value={penaltyExp}
@@ -352,7 +352,7 @@ const PlansScreen: React.FC = () => {
                   </TouchableOpacity>
                 ))}
               </View>
-              <Text style={styles.hint}>Empty = generate every day when active.</Text>
+              <Text style={styles.hint}>Leave empty to add this plan manually from the dashboard.</Text>
 
               <SystemInput
                 label="Missed Quest Penalty (EXP)"
@@ -395,7 +395,7 @@ const PlanCard: React.FC<{ plan: Plan; onManage: () => void; onToggle: () => voi
           <View style={styles.planDays}>
             {days.length > 0
               ? days.map(d => <View key={d} style={styles.dayPill}><Text style={styles.dayPillTxt}>{d}</Text></View>)
-              : <Text style={styles.everyDay}>Every day (when active)</Text>}
+              : <Text style={styles.everyDay}>Manual — add from dashboard</Text>}
           </View>
           {/* Penalty indicator */}
           {plan.penalty_exp > 0 && (
