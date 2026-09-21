@@ -14,7 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { getPlayer, Player, getTitles, EarnedTitle } from '../database/Database';
 import { SystemPanel, SectionHeader, ExpBar } from '../components/UIComponents';
 import { COLORS, RANKS, TITLE_CONDITIONS, getRankForLevel } from '../constants/game';
-import { expRequiredForLevel } from '../constants/formulas';
+import { expRequiredForLevel } from '../utils/math';
 
 const AboutScreen: React.FC = () => {
   const [player, setPlayer]   = useState<Player | null>(null);
@@ -50,15 +50,19 @@ const AboutScreen: React.FC = () => {
 
         <Text style={styles.subHeading}>EXP Formula</Text>
         <Text style={styles.bodyText}>
-          Each exercise has an EXP rate you set — for example, 1 EXP per 10 reps.
-          If you do 50 reps, you earn 5 EXP. The more you actually do, the more you earn.
+          Every exercise has one or more units. You pick a single EXP driver — for example
+          1 EXP per rep. Any other unit (weight, speed, …) scales the result by
+          actual ÷ default, so heavier or faster work earns more.
         </Text>
         <View style={styles.formulaBox}>
           <Text style={styles.formulaText}>
-            EXP = (amount ÷ unit count) × EXP value
+            EXP = (driver ÷ unit count) × EXP × Π(modifier ÷ default)
           </Text>
           <Text style={styles.formulaExample}>
-            50 reps ÷ 10 × 1 EXP = 5 EXP
+            100 reps × 1 EXP × (7.5 kg ÷ 5 kg) = 150 EXP
+          </Text>
+          <Text style={styles.formulaExample}>
+            100 reps × 1 EXP × (5 kg ÷ 5 kg) = 100 EXP
           </Text>
         </View>
 

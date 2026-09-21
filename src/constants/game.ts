@@ -68,14 +68,88 @@ export const STATS = [
 export type StatKey = typeof STATS[number]['key'];
 
 export const UNIT_TYPES = [
-  { value: 'reps',        label: 'Reps',    suffix: 'reps', description: 'Push-ups, Pull-ups' },
-  { value: 'distance_km', label: 'Km',      suffix: 'km',   description: 'Running, Cycling' },
-  { value: 'distance_m',  label: 'Metres',  suffix: 'm',    description: 'Sprints, Swimming' },
-  { value: 'time_min',    label: 'Minutes', suffix: 'min',  description: 'Plank, Yoga' },
-  { value: 'time_sec',    label: 'Seconds', suffix: 'sec',  description: 'Holds, Bursts' },
+  { value: 'reps',        label: 'Reps',         suffix: 'reps',  icon: 'repeat',      perSet: true,  description: 'Push-ups, Pull-ups' },
+  { value: 'weight_kg',   label: 'Weight (kg)',  suffix: 'kg',    icon: 'barbell',     perSet: false, description: 'Dumbbells, Barbells' },
+  { value: 'weight_lb',   label: 'Weight (lb)',  suffix: 'lb',    icon: 'barbell',     perSet: false, description: 'Imperial weights' },
+  { value: 'distance_km', label: 'Distance km',  suffix: 'km',    icon: 'walk',        perSet: true,  description: 'Running, Cycling' },
+  { value: 'distance_m',  label: 'Distance m',   suffix: 'm',     icon: 'walk',        perSet: true,  description: 'Sprints, Swimming' },
+  { value: 'time_min',    label: 'Minutes',      suffix: 'min',   icon: 'time',        perSet: true,  description: 'Plank, Yoga' },
+  { value: 'time_sec',    label: 'Seconds',      suffix: 'sec',   icon: 'time',        perSet: true,  description: 'Holds, Bursts' },
+  { value: 'speed_kmh',   label: 'Speed km/h',   suffix: 'km/h',  icon: 'speedometer', perSet: false, description: 'Running pace' },
+  { value: 'speed_mph',   label: 'Speed mph',    suffix: 'mph',   icon: 'speedometer', perSet: false, description: 'Imperial pace' },
+  { value: 'calories',    label: 'Calories',     suffix: 'cal',   icon: 'flame',       perSet: false, description: 'Energy burned' },
 ] as const;
 
 export type UnitTypeValue = typeof UNIT_TYPES[number]['value'];
+
+/** Unit catalog entry for a stored unit type, or undefined when unknown. */
+export const findUnitType = (value: string | null | undefined) =>
+  UNIT_TYPES.find(u => u.value === value);
+
+/** Display suffix for a unit type, falling back to the raw value. */
+export const unitSuffix = (value: string): string =>
+  findUnitType(value)?.suffix ?? value;
+
+/** Display label for a unit type, falling back to the raw value. */
+export const unitLabel = (value: string): string =>
+  findUnitType(value)?.label ?? value;
+
+/** Whether a unit type scales with the number of sets (work units only). */
+export const unitPerSet = (value: string): boolean =>
+  findUnitType(value)?.perSet ?? false;
+
+/** Stored shape of one configured unit on an exercise. */
+export interface StoredUnit {
+  type: string;
+  label: string;
+  default: number;
+}
+
+/** Stored shape of one value entry on a plan/session. */
+export interface StoredUnitValue {
+  type: string;
+  value: number;
+}
+
+/** Parse a stored JSON unit-spec array (exercise.units). Safe, always returns an array. */
+export const parseUnits = (json: string | null | undefined): StoredUnit[] => {
+  try {
+    const arr = JSON.parse(json || '[]');
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter(u => u && typeof u.type === 'string')
+      .map(u => ({
+        type: u.type as string,
+        label: typeof u.label === 'string' ? u.label : unitSuffix(u.type as string),
+        default: Number.isFinite(Number(u.default)) ? Number(u.default) : 0,
+      }));
+  } catch {
+    return [];
+  }
+};
+
+/** Parse a stored JSON unit-value array (plan/session unit_values, actual_units). Safe. */
+export const parseUnitValues = (json: string | null | undefined): StoredUnitValue[] => {
+  try {
+    const arr = JSON.parse(json || '[]');
+    if (!Array.isArray(arr)) return [];
+    return arr
+      .filter(u => u && typeof u.type === 'string')
+      .map(u => ({
+        type: u.type as string,
+        value: Number.isFinite(Number(u.value)) ? Number(u.value) : 0,
+      }));
+  } catch {
+    return [];
+  }
+};
+
+/** Human-readable summary of unit values, e.g. "7.5 kg × 100 reps". */
+export const formatUnitValues = (values: StoredUnitValue[]): string =>
+  values
+    .filter(u => u.value > 0)
+    .map(u => `${u.value} ${unitSuffix(u.type)}`)
+    .join(' × ');
 
 export const EXERCISE_CATEGORIES = [
   { value: 'strength',    label: 'Strength',    stat: 'strength'     },

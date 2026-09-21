@@ -11,7 +11,7 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/game';
-import { percentOf } from '../constants/formulas';
+import { percentOf } from '../utils/math';
 
 export type IonName = React.ComponentProps<typeof Ionicons>['name'];
 
