@@ -6,7 +6,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createExercise, deleteExercise, updateExercise, Exercise, getExercises } from '../database/Database';
-import { SystemButton, SystemInput, SectionHeader, EmptyState } from '../components/UIComponents';
+import { SystemButton, SystemInput, SectionHeader, EmptyState, SystemDropdown, SystemMultiDropdown } from '../components/UIComponents';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, EXERCISE_CATEGORIES, STATS, UNIT_TYPES, BODY_PARTS, bodyPartLabel, parseBodyParts } from '../constants/game';
 import { filterExercises } from '../utils/filterExercises';
@@ -54,15 +54,6 @@ const ExercisesScreen: React.FC = () => {
     setExpPerStatPt('20');
     setStatType('strength'); setCategory('strength'); setBodyParts([]);
   };
-
-  const toggleBodyPart = (value: string) =>
-    setBodyParts(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]);
-
-  const toggleEditBodyPart = (value: string) =>
-    setEditBodyParts(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]);
-
-  const togglePartFilter = (value: string) =>
-    setPartFilter(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]);
 
   const handleCreate = async () => {
     if (!name.trim())                                    return Alert.alert('System', 'Exercise name required.');
@@ -170,29 +161,23 @@ const ExercisesScreen: React.FC = () => {
                 placeholder="Search name or description" placeholderTextColor={COLORS.textMuted} />
             </View>
 
-            <Text style={styles.selectLbl}>CATEGORY</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-              <TouchableOpacity style={[styles.chip, catFilter === 'all' && styles.chipOn]}
-                onPress={() => setCatFilter('all')}>
-                <Text style={[styles.chipTxt, catFilter === 'all' && styles.chipTxtOn]}>All</Text>
-              </TouchableOpacity>
-              {EXERCISE_CATEGORIES.map(c => (
-                <TouchableOpacity key={c.value} style={[styles.chip, catFilter === c.value && styles.chipOn]}
-                  onPress={() => setCatFilter(c.value)}>
-                  <Text style={[styles.chipTxt, catFilter === c.value && styles.chipTxtOn]}>{c.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            <View style={styles.dropRow}>
+              <SystemDropdown
+                label="Category"
+                options={[{ value: 'all', label: 'All' }, ...EXERCISE_CATEGORIES]}
+                value={catFilter}
+                onChange={setCatFilter}
+                style={styles.flex1}
+              />
 
-            <Text style={styles.selectLbl}>BODY PARTS</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
-              {BODY_PARTS.map(bp => (
-                <TouchableOpacity key={bp.value} style={[styles.chip, partFilter.includes(bp.value) && styles.chipOn]}
-                  onPress={() => togglePartFilter(bp.value)}>
-                  <Text style={[styles.chipTxt, partFilter.includes(bp.value) && styles.chipTxtOn]}>{bp.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+              <SystemMultiDropdown
+                label="Body Parts"
+                options={BODY_PARTS}
+                values={partFilter}
+                onChange={setPartFilter}
+                style={styles.flex1}
+              />
+            </View>
           </>
         }
         ListEmptyComponent={<EmptyState icon="barbell"
@@ -299,16 +284,16 @@ const ExercisesScreen: React.FC = () => {
               </Text>
 
               {/* Category */}
-              <Text style={styles.selectLbl}>CATEGORY</Text>
-              <View style={styles.chips}>
-                {EXERCISE_CATEGORIES.map(c => (
-                  <TouchableOpacity key={c.value}
-                    style={[styles.chip, category === c.value && styles.chipOn]}
-                    onPress={() => { setCategory(c.value); setStatType(c.stat); }}>
-                    <Text style={[styles.chipTxt, category === c.value && styles.chipTxtOn]}>{c.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              <SystemDropdown
+                label="Category"
+                options={EXERCISE_CATEGORIES}
+                value={category}
+                onChange={(v) => {
+                  setCategory(v);
+                  const c = EXERCISE_CATEGORIES.find(x => x.value === v);
+                  if (c) setStatType(c.stat);
+                }}
+              />
 
               {/* Stat boost */}
               <Text style={styles.selectLbl}>STAT BOOST</Text>
@@ -338,16 +323,12 @@ const ExercisesScreen: React.FC = () => {
               </Text>
 
               {/* Body parts */}
-              <Text style={styles.selectLbl}>BODY PARTS (OPTIONAL)</Text>
-              <View style={styles.chips}>
-                {BODY_PARTS.map(bp => (
-                  <TouchableOpacity key={bp.value}
-                    style={[styles.chip, bodyParts.includes(bp.value) && styles.chipOn]}
-                    onPress={() => toggleBodyPart(bp.value)}>
-                    <Text style={[styles.chipTxt, bodyParts.includes(bp.value) && styles.chipTxtOn]}>{bp.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              <SystemMultiDropdown
+                label="Body Parts"
+                options={BODY_PARTS}
+                values={bodyParts}
+                onChange={setBodyParts}
+              />
               <Text style={styles.expHint}>Select every muscle group this exercise targets.</Text>
 
               <View style={styles.row}>
@@ -399,16 +380,16 @@ const ExercisesScreen: React.FC = () => {
                   keyboardType="decimal-pad" style={styles.flex1} />
               </View>
 
-              <Text style={styles.selectLbl}>CATEGORY</Text>
-              <View style={styles.chips}>
-                {EXERCISE_CATEGORIES.map(c => (
-                  <TouchableOpacity key={c.value}
-                    style={[styles.chip, editCategory === c.value && styles.chipOn]}
-                    onPress={() => { setEditCategory(c.value); setEditStatType(c.stat); }}>
-                    <Text style={[styles.chipTxt, editCategory === c.value && styles.chipTxtOn]}>{c.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              <SystemDropdown
+                label="Category"
+                options={EXERCISE_CATEGORIES}
+                value={editCategory}
+                onChange={(v) => {
+                  setEditCategory(v);
+                  const c = EXERCISE_CATEGORIES.find(x => x.value === v);
+                  if (c) setEditStatType(c.stat);
+                }}
+              />
 
               <Text style={styles.selectLbl}>STAT BOOST</Text>
               <View style={styles.chips}>
@@ -437,16 +418,12 @@ const ExercisesScreen: React.FC = () => {
               </Text>
 
               {/* Body parts */}
-              <Text style={styles.selectLbl}>BODY PARTS (OPTIONAL)</Text>
-              <View style={styles.chips}>
-                {BODY_PARTS.map(bp => (
-                  <TouchableOpacity key={bp.value}
-                    style={[styles.chip, editBodyParts.includes(bp.value) && styles.chipOn]}
-                    onPress={() => toggleEditBodyPart(bp.value)}>
-                    <Text style={[styles.chipTxt, editBodyParts.includes(bp.value) && styles.chipTxtOn]}>{bp.label}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              <SystemMultiDropdown
+                label="Body Parts"
+                options={BODY_PARTS}
+                values={editBodyParts}
+                onChange={setEditBodyParts}
+              />
               <Text style={styles.expHint}>Select every muscle group this exercise targets.</Text>
 
               <View style={styles.row}>
@@ -478,7 +455,7 @@ const styles = StyleSheet.create({
 
   searchRow:  { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bgTertiary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 8, paddingHorizontal: 12, marginBottom: 14, gap: 8 },
   searchInput: { flex: 1, color: COLORS.textPrimary, fontSize: 14, paddingVertical: 11 },
-  filterRow:  { flexDirection: 'row', gap: 7, paddingBottom: 14 },
+  dropRow:    { flexDirection: 'row', gap: 12 },
 
   overlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' },
   sheet:      { backgroundColor: COLORS.bgPanel, borderTopLeftRadius: 20, borderTopRightRadius: 20, borderTopWidth: 1, borderColor: COLORS.accentCyan, padding: 20, maxHeight: '95%' },

@@ -4,9 +4,9 @@
  * Reusable Solo Leveling-themed UI components used across all screens.
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import {
-  View, Text, TouchableOpacity, TextInput,
+  View, Text, TouchableOpacity, TextInput, Modal, ScrollView,
   ActivityIndicator, StyleSheet, ViewStyle, TextStyle,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -76,6 +76,119 @@ export const SystemInput: React.FC<InputProps> = ({
     />
   </View>
 );
+
+// ── SystemDropdown / SystemMultiDropdown ─────
+
+export interface DropdownOption { value: string; label: string; }
+
+interface DropdownModalProps {
+  visible: boolean; title: string; onClose: () => void;
+  children: React.ReactNode; footer?: React.ReactNode;
+}
+
+const DropdownModal: React.FC<DropdownModalProps> = ({ visible, title, onClose, children, footer }) => (
+  <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
+    <TouchableOpacity style={styles.dropOverlay} activeOpacity={1} onPress={onClose}>
+      <TouchableOpacity activeOpacity={1} style={styles.dropSheet} onPress={() => {}}>
+        <View style={styles.dropHdr}>
+          <Text style={styles.dropTitle}>{title}</Text>
+          <TouchableOpacity onPress={onClose}>
+            <Ionicons name="close" size={18} color={COLORS.textMuted} />
+          </TouchableOpacity>
+        </View>
+        <ScrollView style={styles.dropList} keyboardShouldPersistTaps="handled">
+          {children}
+        </ScrollView>
+        {footer && <View style={styles.dropFooter}>{footer}</View>}
+      </TouchableOpacity>
+    </TouchableOpacity>
+  </Modal>
+);
+
+interface DropdownProps {
+  label: string; options: readonly DropdownOption[]; value: string;
+  onChange: (v: string) => void; placeholder?: string; style?: ViewStyle;
+}
+
+export const SystemDropdown: React.FC<DropdownProps> = ({
+  label, options, value, onChange, placeholder = 'Select...', style,
+}) => {
+  const [open, setOpen] = useState(false);
+  const selected = options.find(o => o.value === value);
+  return (
+    <View style={[styles.dropWrap, style]}>
+      <Text style={styles.inputLabel}>{label}</Text>
+      <TouchableOpacity style={styles.dropTrigger} onPress={() => setOpen(true)} activeOpacity={0.75}>
+        <Text style={[styles.dropValue, !selected && styles.dropPlaceholder]} numberOfLines={1}>
+          {selected ? selected.label : placeholder}
+        </Text>
+        <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
+      </TouchableOpacity>
+      <DropdownModal visible={open} title={label} onClose={() => setOpen(false)}>
+        {options.map(o => (
+          <TouchableOpacity key={o.value} style={styles.dropOption}
+            onPress={() => { onChange(o.value); setOpen(false); }}>
+            <Text style={[styles.dropOptionTxt, o.value === value && styles.dropOptionTxtOn]}>{o.label}</Text>
+            {o.value === value && <Ionicons name="checkmark" size={16} color={COLORS.accentCyan} />}
+          </TouchableOpacity>
+        ))}
+      </DropdownModal>
+    </View>
+  );
+};
+
+interface MultiDropdownProps {
+  label: string; options: readonly DropdownOption[]; values: string[];
+  onChange: (v: string[]) => void; placeholder?: string; style?: ViewStyle;
+}
+
+export const SystemMultiDropdown: React.FC<MultiDropdownProps> = ({
+  label, options, values, onChange, placeholder = 'Any', style,
+}) => {
+  const [open, setOpen] = useState(false);
+  const summary = values.length === 0
+    ? placeholder
+    : values.length === 1
+      ? (options.find(o => o.value === values[0])?.label ?? values[0])
+      : `${values.length} selected`;
+  const toggle = (v: string) =>
+    onChange(values.includes(v) ? values.filter(x => x !== v) : [...values, v]);
+  return (
+    <View style={[styles.dropWrap, style]}>
+      <Text style={styles.inputLabel}>{label}</Text>
+      <TouchableOpacity style={styles.dropTrigger} onPress={() => setOpen(true)} activeOpacity={0.75}>
+        <Text style={[styles.dropValue, values.length === 0 && styles.dropPlaceholder]} numberOfLines={1}>
+          {summary}
+        </Text>
+        <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
+      </TouchableOpacity>
+      <DropdownModal
+        visible={open} title={label} onClose={() => setOpen(false)}
+        footer={
+          <>
+            <TouchableOpacity style={styles.dropFooterBtn} onPress={() => onChange([])}>
+              <Text style={styles.dropFooterTxt}>Clear</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.dropFooterBtn} onPress={() => setOpen(false)}>
+              <Text style={[styles.dropFooterTxt, styles.dropFooterTxtOn]}>Done</Text>
+            </TouchableOpacity>
+          </>
+        }
+      >
+        {options.map(o => {
+          const on = values.includes(o.value);
+          return (
+            <TouchableOpacity key={o.value} style={styles.dropOption} onPress={() => toggle(o.value)}>
+              <Text style={[styles.dropOptionTxt, on && styles.dropOptionTxtOn]}>{o.label}</Text>
+              <Ionicons name={on ? 'checkbox' : 'square-outline'} size={16}
+                color={on ? COLORS.accentCyan : COLORS.textMuted} />
+            </TouchableOpacity>
+          );
+        })}
+      </DropdownModal>
+    </View>
+  );
+};
 
 // ── SectionHeader ────────────────────────────
 
@@ -173,6 +286,23 @@ const styles = StyleSheet.create({
   inputLabel:   { color: COLORS.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 },
   input:        { backgroundColor: COLORS.bgTertiary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 8, color: COLORS.textPrimary, fontSize: 15, paddingHorizontal: 14, paddingVertical: 11 },
   inputMulti:   { height: 80, textAlignVertical: 'top' },
+
+  dropWrap:        { marginBottom: 14 },
+  dropTrigger:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: COLORS.bgTertiary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 11 },
+  dropValue:       { color: COLORS.textPrimary, fontSize: 15, flex: 1, paddingRight: 8 },
+  dropPlaceholder: { color: COLORS.textMuted },
+  dropOverlay:     { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'center', paddingHorizontal: 28 },
+  dropSheet:       { backgroundColor: COLORS.bgPanel, borderRadius: 14, borderWidth: 1, borderColor: COLORS.accentCyan, padding: 16, maxHeight: '70%' },
+  dropHdr:         { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  dropTitle:       { color: COLORS.accentCyan, fontSize: 12, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase' },
+  dropList:        { marginBottom: 4 },
+  dropOption:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.borderDim },
+  dropOptionTxt:   { color: COLORS.textSecondary, fontSize: 14, fontWeight: '600', flex: 1, paddingRight: 8 },
+  dropOptionTxtOn: { color: COLORS.accentCyan },
+  dropFooter:      { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 10 },
+  dropFooterBtn:   { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 6 },
+  dropFooterTxt:   { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
+  dropFooterTxtOn: { color: COLORS.accentCyan },
 
   secHdr:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 12 },
   secTitle:     { color: COLORS.textPrimary, fontSize: 15, fontWeight: '700' },

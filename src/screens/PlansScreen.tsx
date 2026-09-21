@@ -17,7 +17,7 @@ import {
   getPlanExercises, getExercises, addExerciseToPlan,
   removeExerciseFromPlan, updatePlan, Exercise, PlanExercise, cancelTodayPendingSessions
 } from '../database/Database';
-import { SystemButton, SystemInput, SectionHeader, EmptyState } from '../components/UIComponents';
+import { SystemButton, SystemInput, SectionHeader, EmptyState, SystemDropdown, SystemMultiDropdown } from '../components/UIComponents';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, EXERCISE_CATEGORIES, BODY_PARTS, parseBodyParts, bodyPartLabel } from '../constants/game';
 import { expForTargetSets } from '../constants/formulas';
@@ -149,9 +149,6 @@ const PlansScreen: React.FC = () => {
   const toggleDay = (day: string) =>
     setRepeatDays(prev => prev.includes(day) ? prev.filter(d => d !== day) : [...prev, day]);
 
-  const toggleExPart = (value: string) =>
-    setExParts(prev => prev.includes(value) ? prev.filter(v => v !== value) : [...prev, value]);
-
   const exShown = filterExercises(allExercises, { search: exSearch, category: exCat, bodyParts: exParts });
 
   return (
@@ -276,29 +273,23 @@ const PlansScreen: React.FC = () => {
                 placeholder="Search exercises" placeholderTextColor={COLORS.textMuted} />
             </View>
 
-            <Text style={styles.selectLbl}>CATEGORY</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-              <TouchableOpacity style={[styles.chip, exCat === 'all' && styles.chipOn]}
-                onPress={() => setExCat('all')}>
-                <Text style={[styles.chipTxt, exCat === 'all' && styles.chipTxtOn]}>All</Text>
-              </TouchableOpacity>
-              {EXERCISE_CATEGORIES.map(c => (
-                <TouchableOpacity key={c.value} style={[styles.chip, exCat === c.value && styles.chipOn]}
-                  onPress={() => setExCat(c.value)}>
-                  <Text style={[styles.chipTxt, exCat === c.value && styles.chipTxtOn]}>{c.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+            <View style={styles.dropRow}>
+              <SystemDropdown
+                label="Category"
+                options={[{ value: 'all', label: 'All' }, ...EXERCISE_CATEGORIES]}
+                value={exCat}
+                onChange={setExCat}
+                style={styles.flex1}
+              />
 
-            <Text style={styles.selectLbl}>BODY PARTS</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
-              {BODY_PARTS.map(bp => (
-                <TouchableOpacity key={bp.value} style={[styles.chip, exParts.includes(bp.value) && styles.chipOn]}
-                  onPress={() => toggleExPart(bp.value)}>
-                  <Text style={[styles.chipTxt, exParts.includes(bp.value) && styles.chipTxtOn]}>{bp.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+              <SystemMultiDropdown
+                label="Body Parts"
+                options={BODY_PARTS}
+                values={exParts}
+                onChange={setExParts}
+                style={styles.flex1}
+              />
+            </View>
 
             <Text style={styles.selectLbl}>SELECT EXERCISE</Text>
             <ScrollView style={styles.exPickList} nestedScrollEnabled>
@@ -459,13 +450,9 @@ const styles = StyleSheet.create({
   manageHdr:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 18 },
 
   selectLbl:    { color: COLORS.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 8, textTransform: 'uppercase' },
-  chipRow:      { flexDirection: 'row', gap: 7, paddingBottom: 14 },
-  chip:         { borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 6 },
-  chipOn:       { borderColor: COLORS.accentCyan, backgroundColor: `${COLORS.accentCyan}18` },
-  chipTxt:      { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' },
-  chipTxtOn:    { color: COLORS.accentCyan },
   searchRow:    { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bgTertiary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 8, paddingHorizontal: 12, marginBottom: 14, gap: 8 },
   searchInput:  { flex: 1, color: COLORS.textPrimary, fontSize: 14, paddingVertical: 11 },
+  dropRow:      { flexDirection: 'row', gap: 12 },
   dayRow:       { flexDirection: 'row', gap: 6, marginBottom: 6, flexWrap: 'wrap' },
   dayChip:      { borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 7, minWidth: 42, alignItems: 'center' },
   dayChipOn:    { borderColor: COLORS.accentCyan, backgroundColor: `${COLORS.accentCyan}18` },
