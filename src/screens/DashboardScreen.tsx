@@ -17,7 +17,7 @@ import {
   getPlans, createSession, populateSessionExercises,
   getMissedSessions, applyMissedSessionPenalty,
   Plan, getPlanExerciseCounts, hasSessionToday,
-  getDojoMetrics, DojoMetrics,
+  getMartialArts, MartialArt,
 } from '../database/Database';
 import { SystemPanel, SectionHeader, StatRow, ExpBar, RankBadge, EmptyState, IonName } from '../components/UIComponents';
 import { Ionicons } from '@expo/vector-icons';
@@ -39,7 +39,7 @@ const DashboardScreen: React.FC = () => {
   const insets                      = useSafeAreaInsets();
   const [player, setPlayer]         = useState<Player | null>(null);
   const [sessions, setSessions]     = useState<Session[]>([]);
-  const [dojo, setDojo]             = useState<DojoMetrics | null>(null);
+  const [arts, setArts]             = useState<MartialArt[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [pickerPlans, setPickerPlans]     = useState<PickerPlan[]>([]);
@@ -60,7 +60,7 @@ const DashboardScreen: React.FC = () => {
     await checkMissedPenalties();
     await generateTodaySessions();
     setSessions(await getTodaySessions());
-    setDojo(await getDojoMetrics());
+    setArts(await getMartialArts());
   };
 
   // Finds sessions from previous days still marked 'pending' and applies their penalty
@@ -145,7 +145,7 @@ const DashboardScreen: React.FC = () => {
   const rank     = getRankForLevel(player.level);
   const todayStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   const doneCount = sessions.filter(s => s.status === 'completed').length;
-  const dojoBelt  = dojo ? getBeltForLevel(dojo.highestLevel) : null;
+  const skillCount = arts.reduce((n, a) => n + (a.skill_count ?? 0), 0);
 
   return (
     <ScrollView
@@ -195,36 +195,30 @@ const DashboardScreen: React.FC = () => {
       <SystemPanel>
         <SectionHeader
           title="Dojo"
-          subtitle={dojo && dojo.artCount > 0
-            ? `${dojo.artCount} art${dojo.artCount === 1 ? '' : 's'} · ${dojo.skillCount} skill${dojo.skillCount === 1 ? '' : 's'}`
+          subtitle={arts.length > 0
+            ? `${arts.length} art${arts.length === 1 ? '' : 's'} · ${skillCount} skill${skillCount === 1 ? '' : 's'}`
             : 'Martial proficiency'}
           action={{ label: 'Open', onPress: () => navigation.navigate('Dojo') }}
         />
-        {!dojo || dojo.artCount === 0 || !dojoBelt ? (
+        {arts.length === 0 ? (
           <EmptyState icon="hand-left" title="No martial arts yet"
             subtitle="Open the Dojo tab to create one." />
         ) : (
-          <>
-            <View style={styles.beltStrip}>
-              <View style={[styles.beltDotBig, { backgroundColor: dojoBelt.color }]} />
-              <Text style={[styles.beltName, { color: dojoBelt.color }]}>{dojoBelt.belt} Belt</Text>
-              {!!dojo.highestArtName && (
-                <Text style={styles.beltArt} numberOfLines={1}>· {dojo.highestArtName}</Text>
-              )}
-              <Text style={styles.beltLvl}>Lv. {dojo.highestLevel}</Text>
-            </View>
-            <ExpBar current={dojo.topArtExp} max={dojo.topArtExpToNext || 1} />
-            <View style={styles.dojoStats}>
-              {([
-                { icon: 'shield',      label: 'Arts',            value: dojo.artCount,            color: COLORS.accentBlue },
-                { icon: 'layers',      label: 'Skills',          value: dojo.skillCount,          color: COLORS.accentCyan },
-                { icon: 'barbell',     label: 'Tagged Workouts', value: dojo.taggedWorkoutCount,  color: COLORS.accentGreen },
-                { icon: 'trending-up', label: 'Proficiency EXP', value: dojo.totalProficiencyExp, color: COLORS.accentGold },
-              ] as { icon: IonName; label: string; value: number; color: string }[]).map(m => (
-                <StatRow key={m.label} icon={m.icon} label={m.label} value={m.value} color={m.color} />
-              ))}
-            </View>
-          </>
+          arts.map(art => {
+            const belt = getBeltForLevel(art.level);
+            return (
+              <StatRow
+                key={art.id}
+                icon={art.icon as IonName}
+                label={art.name}
+                value={art.level}
+                valueText={belt.belt}
+                color={belt.color}
+                showBar
+                progress={art.exp / (art.exp_to_next || 1)}
+              />
+            );
+          })
         )}
       </SystemPanel>
 
@@ -373,14 +367,6 @@ const styles = StyleSheet.create({
   questStatus: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginLeft: 4 },
   questStatusRow: { flexDirection: 'row', alignItems: 'center' },
   questExp:    { color: COLORS.accentGreen, fontSize: 13, fontWeight: '700' },
-
-  beltStrip:   { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
-  beltDotBig:  { width: 10, height: 10, borderRadius: 5 },
-  beltName:    { fontSize: 14, fontWeight: '800', letterSpacing: 0.3 },
-  beltArt:     { color: COLORS.textSecondary, fontSize: 12, flexShrink: 1 },
-  beltLvl:     { color: COLORS.textMuted, fontSize: 12, fontWeight: '700', marginLeft: 'auto' },
-
-  dojoStats:   { marginTop: 14 },
 
   quickNav:    { flexDirection: 'row', gap: 10 },
   quickBtn:    { flex: 1, backgroundColor: COLORS.bgSecondary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 10, paddingVertical: 14, alignItems: 'center', gap: 5 },

@@ -217,22 +217,31 @@ export const SectionHeader: React.FC<SecHdrProps> = ({ title, subtitle, action }
 interface StatRowProps {
   icon: IonName; label: string; value: number; color: string;
   showBar?: boolean; maxValue?: number;
+  progress?: number;   // 0..1 — overrides value/maxValue for the bar fill
+  valueText?: string;  // overrides the displayed value text
 }
 
-export const StatRow: React.FC<StatRowProps> = ({ icon, label, value, color, showBar, maxValue = 100 }) => (
-  <View style={styles.statRow}>
-    <Ionicons name={icon} size={16} color={color} style={styles.statIcon} />
-    <Text style={styles.statLabel}>{label}</Text>
-    <View style={styles.statRight}>
-      {showBar && (
-        <View style={styles.statBarBg}>
-          <View style={[styles.statBarFill, { width: `${percentOf(value, maxValue)}%` as any, backgroundColor: color }]} />
-        </View>
-      )}
-      <Text style={[styles.statVal, { color }]}>{value}</Text>
+export const StatRow: React.FC<StatRowProps> = ({
+  icon, label, value, color, showBar, maxValue = 100, progress, valueText,
+}) => {
+  const fill = progress != null
+    ? Math.min(Math.max(progress, 0), 1) * 100
+    : percentOf(value, maxValue);
+  return (
+    <View style={styles.statRow}>
+      <Ionicons name={icon} size={16} color={color} style={styles.statIcon} />
+      <Text style={styles.statLabel}>{label}</Text>
+      <View style={styles.statRight}>
+        {showBar && (
+          <View style={styles.statBarBg}>
+            <View style={[styles.statBarFill, { width: `${fill}%` as any, backgroundColor: color }]} />
+          </View>
+        )}
+        <Text style={[styles.statVal, { color }]}>{valueText ?? value}</Text>
+      </View>
     </View>
-  </View>
-);
+  );
+};
 
 // ── ExpBar ───────────────────────────────────
 

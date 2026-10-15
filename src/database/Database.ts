@@ -497,19 +497,6 @@ export interface SkillExercise {
   exercise_id: number;
 }
 
-/** Aggregate Dojo figures for the dashboard. All zero when nothing exists yet. */
-export interface DojoMetrics {
-  artCount: number;
-  skillCount: number;
-  trainedSkillCount: number;
-  taggedWorkoutCount: number;
-  totalProficiencyExp: number;
-  highestLevel: number;
-  highestArtName: string | null;
-  topArtExp: number;
-  topArtExpToNext: number;
-}
-
 // ─────────────────────────────────────────────
 // PLAYER
 // ─────────────────────────────────────────────
@@ -1193,56 +1180,4 @@ export const awardMartialProficiency = async (
       await applySkillExp(Number(id), gained);
     }
   });
-};
-
-/** Aggregate Dojo numbers for the dashboard in a few cheap queries. */
-export const getDojoMetrics = async (): Promise<DojoMetrics> => {
-  const db = await getDb();
-  const arts = await db.getAllAsync<{ id: number; name: string }>(
-    `SELECT id, name FROM martial_arts`
-  );
-  const perArt = await db.getAllAsync<{ martial_art_id: number; total_exp: number }>(
-    `SELECT martial_art_id, COALESCE(SUM(total_exp), 0) as total_exp
-       FROM skills GROUP BY martial_art_id`
-  );
-  const skills = await db.getFirstAsync<{ skill_count: number; trained_count: number }>(
-    `SELECT COUNT(*) as skill_count,
-            COALESCE(SUM(CASE WHEN total_exp > 0 THEN 1 ELSE 0 END), 0) as trained_count
-       FROM skills`
-  );
-  const tags = await db.getFirstAsync<{ tag_count: number }>(
-    `SELECT COUNT(*) as tag_count FROM skill_exercises`
-  );
-
-  const expByArt: Record<number, number> = {};
-  for (const r of perArt) expByArt[r.martial_art_id] = r.total_exp;
-
-  let highestLevel = 0;
-  let highestArtName: string | null = null;
-  let topArtExp = 0;
-  let topArtExpToNext = calculateMartialLevelFromTotalExp(0).expToNext;
-  let topTotal = -1;
-  for (const art of arts) {
-    const total = expByArt[art.id] ?? 0;
-    const { level, expInCurrentLevel, expToNext } = calculateMartialLevelFromTotalExp(total);
-    if (level > highestLevel) highestLevel = level;
-    if (total > topTotal) {
-      topTotal = total;
-      highestArtName = art.name;
-      topArtExp = expInCurrentLevel;
-      topArtExpToNext = expToNext;
-    }
-  }
-
-  return {
-    artCount: arts.length,
-    skillCount: skills?.skill_count ?? 0,
-    trainedSkillCount: skills?.trained_count ?? 0,
-    taggedWorkoutCount: tags?.tag_count ?? 0,
-    totalProficiencyExp: perArt.reduce((sum, r) => sum + r.total_exp, 0),
-    highestLevel,
-    highestArtName,
-    topArtExp,
-    topArtExpToNext,
-  };
 };

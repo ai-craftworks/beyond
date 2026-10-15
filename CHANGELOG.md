@@ -34,3 +34,8 @@
 - Added affected body parts for workouts.
 - Added manual plans.
 - Modified exp calculation based on all units.
+
+### 12 Oct, 2026
+
+- Modified modals into individual screens for worouts.
+- Added martial arts and skills functionalities.
