@@ -17,10 +17,11 @@ import {
   getPlans, createSession, populateSessionExercises,
   getMissedSessions, applyMissedSessionPenalty,
   Plan, getPlanExerciseCounts, hasSessionToday,
+  getMartialArts, MartialArt,
 } from '../database/Database';
 import { SystemPanel, SectionHeader, StatRow, ExpBar, RankBadge, EmptyState, IonName } from '../components/UIComponents';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, getRankForLevel, STATS } from '../constants/game';
+import { COLORS, getRankForLevel, getBeltForLevel, STATS } from '../constants/game';
 import { RootStackParamList, TabParamList } from '../../App';
 import { playSound } from '../utils/sounds';
 
@@ -38,6 +39,7 @@ const DashboardScreen: React.FC = () => {
   const insets                      = useSafeAreaInsets();
   const [player, setPlayer]         = useState<Player | null>(null);
   const [sessions, setSessions]     = useState<Session[]>([]);
+  const [arts, setArts]             = useState<MartialArt[]>([]);
   const [refreshing, setRefreshing] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [pickerPlans, setPickerPlans]     = useState<PickerPlan[]>([]);
@@ -58,6 +60,7 @@ const DashboardScreen: React.FC = () => {
     await checkMissedPenalties();
     await generateTodaySessions();
     setSessions(await getTodaySessions());
+    setArts(await getMartialArts());
   };
 
   // Finds sessions from previous days still marked 'pending' and applies their penalty
@@ -142,6 +145,7 @@ const DashboardScreen: React.FC = () => {
   const rank     = getRankForLevel(player.level);
   const todayStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   const doneCount = sessions.filter(s => s.status === 'completed').length;
+  const skillCount = arts.reduce((n, a) => n + (a.skill_count ?? 0), 0);
 
   return (
     <ScrollView
@@ -187,6 +191,37 @@ const DashboardScreen: React.FC = () => {
         ))}
       </SystemPanel>
 
+      {/* Dojo */}
+      <SystemPanel>
+        <SectionHeader
+          title="Dojo"
+          subtitle={arts.length > 0
+            ? `${arts.length} art${arts.length === 1 ? '' : 's'} · ${skillCount} skill${skillCount === 1 ? '' : 's'}`
+            : 'Martial proficiency'}
+          action={{ label: 'Open', onPress: () => navigation.navigate('Dojo') }}
+        />
+        {arts.length === 0 ? (
+          <EmptyState icon="hand-left" title="No martial arts yet"
+            subtitle="Open the Dojo tab to create one." />
+        ) : (
+          arts.map(art => {
+            const belt = getBeltForLevel(art.level);
+            return (
+              <StatRow
+                key={art.id}
+                icon={art.icon as IonName}
+                label={art.name}
+                value={art.level}
+                valueText={belt.belt}
+                color={belt.color}
+                showBar
+                progress={art.exp / (art.exp_to_next || 1)}
+              />
+            );
+          })
+        )}
+      </SystemPanel>
+
       {/* Today's quests */}
       <SystemPanel>
         <SectionHeader
@@ -212,6 +247,7 @@ const DashboardScreen: React.FC = () => {
         {([
           { icon: 'barbell', label: 'Exercises', screen: 'Exercises' as const },
           { icon: 'list',    label: 'Plans',     screen: 'Plans'     as const },
+          { icon: 'hand-left', label: 'Dojo',    screen: 'Dojo'      as const },
           { icon: 'person',  label: 'Profile',   screen: 'Profile'   as const },
         ] as const).map(item => (
           <TouchableOpacity key={item.label} style={styles.quickBtn}

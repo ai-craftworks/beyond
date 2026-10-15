@@ -7,10 +7,10 @@
 import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Alert, TouchableOpacity } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
-import { getPlayer, Player, getTitles, EarnedTitle, getRecentSessions, Session, getSessionSummary, resetAllData } from '../database/Database';
-import { SystemPanel, SectionHeader, StatRow, ExpBar } from '../components/UIComponents';
+import { getPlayer, Player, getTitles, EarnedTitle, getRecentSessions, Session, getSessionSummary, resetAllData, getMartialArts, MartialArt } from '../database/Database';
+import { SystemPanel, SectionHeader, StatRow, ExpBar, IonName } from '../components/UIComponents';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, getRankForLevel, STATS, parseUnitValues, formatUnitValues } from '../constants/game';
+import { COLORS, getRankForLevel, getBeltForLevel, STATS, parseUnitValues, formatUnitValues } from '../constants/game';
 import { sumExp, expToNextRemaining } from '../utils/math';
 
 const amountLabel = (ex: any): string =>
@@ -24,6 +24,7 @@ const ProfileScreen: React.FC = () => {
   const [player,   setPlayer]   = useState<Player | null>(null);
   const [titles,   setTitles]   = useState<EarnedTitle[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
+  const [arts,     setArts]     = useState<MartialArt[]>([]);
   const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
 
   const [expandedSession, setExpandedSession] = useState<number | null>(null);
@@ -32,10 +33,11 @@ const ProfileScreen: React.FC = () => {
   useFocusEffect(useCallback(() => { loadAll(); }, []));
 
   const loadAll = async () => {
-    const [p, t, s] = await Promise.all([getPlayer(), getTitles(), getRecentSessions(15)]);
+    const [p, t, s, a] = await Promise.all([getPlayer(), getTitles(), getRecentSessions(15), getMartialArts()]);
     setPlayer(p);
     setTitles(t);
     setSessions(s);
+    setArts(a);
   };
 
   const toggleSession = async (sessionId: number) => {
@@ -54,6 +56,7 @@ const ProfileScreen: React.FC = () => {
   const rank       = getRankForLevel(player.level);
   const completed  = sessions.filter(s => s.status === 'completed').length;
   const totalExp   = sumExp(sessions);
+  const skillCount = arts.reduce((n, a) => n + (a.skill_count ?? 0), 0);
 
   const handleReset = () => {
     Alert.alert(
@@ -101,6 +104,35 @@ const ProfileScreen: React.FC = () => {
             value={(player as any)[s.key]} color={s.color} showBar
             maxValue={Math.max(100, (player as any)[s.key])} />
         ))}
+      </SystemPanel>
+
+      {/* Dojo */}
+      <SystemPanel>
+        <SectionHeader
+          title="Dojo"
+          subtitle={arts.length > 0
+            ? `${arts.length} art${arts.length === 1 ? '' : 's'} · ${skillCount} skill${skillCount === 1 ? '' : 's'}`
+            : 'Martial proficiency'}
+        />
+        {arts.length === 0 ? (
+          <Text style={styles.noData}>No martial arts yet. Start one in the Dojo tab.</Text>
+        ) : (
+          arts.map(art => {
+            const belt = getBeltForLevel(art.level);
+            return (
+              <StatRow
+                key={art.id}
+                icon={art.icon as IonName}
+                label={art.name}
+                value={art.level}
+                valueText={belt.belt}
+                color={belt.color}
+                showBar
+                progress={art.exp / (art.exp_to_next || 1)}
+              />
+            );
+          })
+        )}
       </SystemPanel>
 
       {/* Achievements summary */}

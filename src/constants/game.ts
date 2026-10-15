@@ -54,6 +54,55 @@ export const calculateLevelFromTotalExp = (totalExp: number) => {
 };
 
 // ─────────────────────────────────────────────
+// MARTIAL ARTS PROFICIENCY
+// Faster curve than the player: starts low and grows gently so arts
+// progress visibly as the hunter trains. Tune base/exponent here.
+// ─────────────────────────────────────────────
+
+export const MARTIAL_EXP_BASE = 60;
+export const MARTIAL_EXP_EXPONENT = 1.35;
+
+/** Total EXP required to advance a martial art/skill from this level to the next */
+export const expRequiredForMartialLevel = (level: number): number =>
+  Math.floor(MARTIAL_EXP_BASE * Math.pow(level, MARTIAL_EXP_EXPONENT));
+
+/**
+ * Given accumulated proficiency EXP, returns the martial-art level and progress.
+ * Mirrors {@link calculateLevelFromTotalExp} but on the faster martial curve.
+ */
+export const calculateMartialLevelFromTotalExp = (totalExp: number) => {
+  let level = 1;
+  let remaining = totalExp;
+  while (level < 100) {
+    const needed = expRequiredForMartialLevel(level);
+    if (remaining < needed) break;
+    remaining -= needed;
+    level++;
+  }
+  return { level, expInCurrentLevel: remaining, expToNext: expRequiredForMartialLevel(level) };
+};
+
+/** Belt ladder mapped to proficiency level. Colours are UI-only, tune freely. */
+export const MARTIAL_BELTS = [
+  { belt: 'White',  minLevel: 1,  color: '#E8F4FD' },
+  { belt: 'Yellow', minLevel: 5,  color: '#FFD700' },
+  { belt: 'Orange', minLevel: 10, color: '#FF9800' },
+  { belt: 'Green',  minLevel: 16, color: '#4CAF50' },
+  { belt: 'Blue',   minLevel: 24, color: '#2196F3' },
+  { belt: 'Purple', minLevel: 34, color: '#9C27B0' },
+  { belt: 'Brown',  minLevel: 46, color: '#8D6E63' },
+  { belt: 'Red',    minLevel: 60, color: '#FF4757' },
+  { belt: 'Black',  minLevel: 75, color: '#5A6B85' },
+] as const;
+
+export const getBeltForLevel = (level: number) => {
+  for (let i = MARTIAL_BELTS.length - 1; i >= 0; i--) {
+    if (level >= MARTIAL_BELTS[i].minLevel) return MARTIAL_BELTS[i];
+  }
+  return MARTIAL_BELTS[0];
+};
+
+// ─────────────────────────────────────────────
 // STAT SYSTEM
 // ─────────────────────────────────────────────
 

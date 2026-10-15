@@ -11,14 +11,15 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { getPlayer, Player, getTitles, EarnedTitle } from '../database/Database';
+import { getPlayer, Player, getTitles, EarnedTitle, getMartialArts, MartialArt } from '../database/Database';
 import { SystemPanel, SectionHeader, ExpBar } from '../components/UIComponents';
-import { COLORS, RANKS, TITLE_CONDITIONS, getRankForLevel } from '../constants/game';
+import { COLORS, RANKS, TITLE_CONDITIONS, getRankForLevel, MARTIAL_BELTS, getBeltForLevel, expRequiredForMartialLevel } from '../constants/game';
 import { expRequiredForLevel } from '../utils/math';
 
 const AboutScreen: React.FC = () => {
   const [player, setPlayer]   = useState<Player | null>(null);
   const [titles, setTitles]   = useState<EarnedTitle[]>([]);
+  const [arts, setArts]       = useState<MartialArt[]>([]);
 
   useFocusEffect(
     useCallback(() => {
@@ -27,12 +28,15 @@ const AboutScreen: React.FC = () => {
   );
 
   const load = async () => {
-    const [p, t] = await Promise.all([getPlayer(), getTitles()]);
+    const [p, t, a] = await Promise.all([getPlayer(), getTitles(), getMartialArts()]);
     setPlayer(p);
     setTitles(t);
+    setArts(a);
   };
 
   const earnedTitleNames = new Set(titles.map(t => t.title));
+  const highestArtLevel  = arts.reduce((m, a) => Math.max(m, a.level), 0);
+  const currentBelt      = highestArtLevel > 0 ? getBeltForLevel(highestArtLevel) : null;
 
   return (
     <ScrollView style={styles.root} contentContainerStyle={styles.content}>
@@ -198,6 +202,104 @@ const AboutScreen: React.FC = () => {
         </View>
       </SystemPanel>
 
+      {/* ── MARTIAL ARTS & BELTS ── */}
+      <SystemPanel>
+        <SectionHeader title="Martial Arts & Belts" subtitle="The Dojo" />
+        <Text style={styles.bodyText}>
+          Open the Dojo tab to create a martial art, add skills under it, and tag
+          existing workouts to those skills. Training a tagged workout also trains
+          the art it belongs to.
+        </Text>
+
+        <View style={styles.divider} />
+
+        <Text style={styles.subHeading}>How Proficiency Grows</Text>
+        <Text style={styles.bodyText}>
+          Finishing a workout that is tagged to a skill adds that workout's base EXP
+          to the skill's proficiency. Each skill levels up on its own, and an art's
+          level and belt are simply the combined EXP of all its skills — so training
+          any tagged skill advances the art. Untagged workouts (like general
+          bodybuilding) never count.
+        </Text>
+
+        <View style={styles.divider} />
+
+        <Text style={styles.subHeading}>Martial EXP Formula</Text>
+        <Text style={styles.bodyText}>
+          Proficiency levels use a gentler curve than hunter ranks —{' '}
+          <Text style={styles.highlight}>60 × level^1.35</Text> — so belts are reached
+          visibly faster.
+        </Text>
+        <View style={styles.formulaBox}>
+          <Text style={styles.formulaText}>EXP = ⌊60 × level^1.35⌋</Text>
+          {[1, 5, 10, 25, 50].map(lvl => (
+            <Text key={lvl} style={styles.formulaExample}>
+              Lv {lvl}  →  {expRequiredForMartialLevel(lvl).toLocaleString()} EXP to advance
+            </Text>
+          ))}
+        </View>
+
+        <View style={styles.divider} />
+
+        <Text style={styles.subHeading}>Belt Ladder</Text>
+        <Text style={styles.bodyText}>
+          Every art and skill climbs the same belt ladder by proficiency level.
+        </Text>
+
+        <View style={styles.rankTable}>
+          {MARTIAL_BELTS.map((belt, i) => {
+            const isUnlocked = highestArtLevel >= belt.minLevel;
+            const isCurrent  = currentBelt?.belt === belt.belt;
+            const next       = MARTIAL_BELTS[i + 1];
+            return (
+              <View key={belt.belt} style={[styles.rankRow, isCurrent && styles.rankRowCurrent]}>
+                <View style={[styles.rankBadge, { borderColor: belt.color }]}>
+                  <View style={[styles.beltDotGuide, { backgroundColor: belt.color }]} />
+                </View>
+
+                <View style={styles.rankInfo}>
+                  <Text style={[styles.rankLabel, { color: isUnlocked ? belt.color : COLORS.textMuted }]}>
+                    {belt.belt} Belt
+                  </Text>
+                  <Text style={styles.rankReq}>
+                    Requires Lv {belt.minLevel}
+                    {next ? `  →  Lv ${next.minLevel} for ${next.belt}` : '  →  MASTERED'}
+                  </Text>
+                </View>
+
+                <View style={styles.rankStatus}>
+                  {isCurrent ? (
+                    <View style={styles.currentBadge}>
+                      <Text style={styles.currentBadgeText}>YOU</Text>
+                    </View>
+                  ) : isUnlocked ? (
+                    <Ionicons name="checkmark-circle" size={20} color={COLORS.accentGreen} />
+                  ) : (
+                    <Ionicons name="lock-closed" size={18} color={COLORS.textMuted} />
+                  )}
+                </View>
+              </View>
+            );
+          })}
+        </View>
+
+        <View style={styles.progressBox}>
+          {arts.length === 0 ? (
+            <Text style={styles.progressSub}>
+              You haven't started an art yet. Open the Dojo tab to create your first one.
+            </Text>
+          ) : (
+            <>
+              <Text style={styles.progressTitle}>Your Dojo</Text>
+              <Text style={styles.progressSub}>
+                {arts.length} art{arts.length === 1 ? '' : 's'} practiced
+                {currentBelt ? `  ·  Highest belt: ${currentBelt.belt} (Lv ${highestArtLevel})` : ''}.
+              </Text>
+            </>
+          )}
+        </View>
+      </SystemPanel>
+
       {/* ── TITLES ── */}
       <SystemPanel>
         <SectionHeader
@@ -256,6 +358,9 @@ const AboutScreen: React.FC = () => {
           { icon: 'warning-outline' as const, tip: 'Set penalty EXP on plans you take seriously to keep yourself accountable.' },
           { icon: 'trending-up-outline' as const, tip: 'Higher EXP per unit rewards intensity. Set rates that challenge you.' },
           { icon: 'medal-outline' as const, tip: 'Ranks advance automatically when you hit the required level. Keep grinding.' },
+          { icon: 'hand-left-outline' as const, tip: 'Create a martial art in the Dojo, add skills, then tag the workouts you already do.' },
+          { icon: 'ribbon-outline' as const, tip: 'Tagging one workout to many skills trains all of them at once, plus each parent art.' },
+          { icon: 'medal' as const, tip: 'Martial belts follow a faster curve than hunter ranks — proficiency grows quickly.' },
         ].map((item, i) => (
           <View key={i} style={styles.tipRow}>
             <Ionicons name={item.icon} size={18} color={COLORS.accentCyan} style={styles.tipIcon} />
@@ -289,6 +394,7 @@ const styles = StyleSheet.create({
   rankRow:        { flexDirection: 'row', alignItems: 'center', gap: 12, padding: 10, borderRadius: 8, borderWidth: 1, borderColor: COLORS.borderDim },
   rankRowCurrent: { borderColor: COLORS.accentCyan, backgroundColor: `${COLORS.accentCyan}08` },
   rankBadge:      { width: 40, height: 40, borderRadius: 20, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  beltDotGuide:   { width: 12, height: 12, borderRadius: 6 },
   rankLetter:     { fontSize: 14, fontWeight: '900' },
   rankInfo:       { flex: 1 },
   rankLabel:      { fontSize: 13, fontWeight: '700', marginBottom: 2 },

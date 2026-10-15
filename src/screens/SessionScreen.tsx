@@ -1,27 +1,27 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, ScrollView, StyleSheet, TouchableOpacity,
   Animated, Alert, ActivityIndicator, Modal,
   KeyboardAvoidingView, Platform, TextInput,
 } from 'react-native';
-import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
+import { useNavigation, useRoute, RouteProp, useFocusEffect } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   getSessionExercises, getPlayer, updatePlayer,
   updateSession, completeSessionExercise,
   SessionExercise, Player, saveTitle,
-  getBonusExercises, addBonusExerciseToSession,
-  completeBonusExercise, markBonusExercisesAwarded,
-  BonusExercise, getExercises, Exercise, getSession
+  getBonusExercises, completeBonusExercise,
+  markBonusExercisesAwarded, BonusExercise, getSession,
+  awardMartialProficiency,
 } from '../database/Database';
 import { SystemPanel, SystemButton, ExpBar } from '../components/UIComponents';
 import { Ionicons } from '@expo/vector-icons';
 import LevelUpModal from '../components/LevelUpModal';
-import { COLORS, TITLE_CONDITIONS, parseUnitValues, formatUnitValues, unitPerSet, unitSuffix } from '../constants/game';
-import { parseUnits } from '../constants/game';
+import { COLORS, TITLE_CONDITIONS, parseUnitValues, formatUnitValues, unitSuffix } from '../constants/game';
+import { specsOf, primarySpecOf, plannedOf, recordFor } from '../utils/units';
 import {
-  expForUnits, UnitSpec, UnitValue, statDeltasFromItems, cappedStat,
+  expForUnits, UnitValue, statDeltasFromItems, cappedStat,
   fullClearBonus, calculateLevelFromTotalExp,
 } from '../utils/math';
 import { RootStackParamList } from '../../App';
@@ -29,39 +29,6 @@ import { playSound } from '../utils/sounds';
 
 type Route = RouteProp<RootStackParamList, 'Session'>;
 type Nav   = NativeStackNavigationProp<RootStackParamList, 'Session'>;
-
-/** Unit specs for a stored units JSON, falling back to a single legacy unit. */
-const specsOf = (unitsJson: string | null | undefined, fallbackType: string): UnitSpec[] => {
-  const parsed = parseUnits(unitsJson);
-  const list = parsed.length > 0
-    ? parsed
-    : [{ type: fallbackType, label: unitSuffix(fallbackType), default: 0 }];
-  return list.map(u => ({ type: u.type, label: u.label, default: u.default, perSet: unitPerSet(u.type) }));
-};
-
-const primarySpecOf = (
-  unitsJson: string | null | undefined, primaryUnit: string | null | undefined, fallbackType: string
-): string => {
-  const specs = specsOf(unitsJson, fallbackType);
-  return primaryUnit && specs.some(s => s.type === primaryUnit) ? primaryUnit : specs[0].type;
-};
-
-/** Planned values for a stored exercise, falling back to the legacy target. */
-const plannedOf = (unitsJson: string | null | undefined, target: number, fallbackType: string): UnitValue[] => {
-  const parsed = parseUnitValues(unitsJson);
-  if (parsed.length > 0) return parsed;
-  return [{ type: fallbackType, value: target }];
-};
-
-/** Prefill record for the amount modal, one entry per configured unit. */
-const recordFor = (specs: UnitSpec[], planned: UnitValue[]): Record<string, string> => {
-  const rec: Record<string, string> = {};
-  for (const s of specs) {
-    const p = planned.find(v => v.type === s.type);
-    rec[s.type] = p ? String(p.value) : (s.default ? String(s.default) : '');
-  }
-  return rec;
-};
 
 const SessionScreen: React.FC = () => {
   const route      = useRoute<Route>();
@@ -71,16 +38,12 @@ const SessionScreen: React.FC = () => {
 
   const [exercises, setExercises]       = useState<SessionExercise[]>([]);
   const [bonusExercises, setBonusEx]    = useState<BonusExercise[]>([]);
-  const [allExercises, setAllEx]        = useState<Exercise[]>([]);
   const [player, setPlayer]             = useState<Player | null>(null);
   const [loading, setLoading]           = useState(true);
   const [finishing, setFinishing]       = useState(false);
   const [levelUpVisible, setLvlUp]      = useState(false);
   const [newTitle, setNewTitle]         = useState<string | undefined>();
   const [expGained, setExpGained]       = useState(0);
-  const [bonusModal, setBonusModal]     = useState(false);
-  const [selBonusEx, setSelBonusEx]     = useState<Exercise | null>(null);
-  const [bonusUnits, setBonusUnits]     = useState<Record<string, string>>({});
 
   // Amount input modal (for non-reps exercises)
   const [amountModal, setAmountModal]   = useState(false);
@@ -96,21 +59,24 @@ const SessionScreen: React.FC = () => {
 
   useEffect(() => { loadSession(); }, []);
 
+  // Refresh bonus quests when returning from the Add Bonus screen.
+  useFocusEffect(useCallback(() => {
+    getBonusExercises(sessionId).then(setBonusEx);
+  }, [sessionId]));
+
   const loadSession = async () => {
     setLoading(true);
     const currentSession = await getSession(sessionId);
     if (currentSession?.status === 'pending') {
       await updateSession(sessionId, { status: 'in_progress', started_at: new Date().toISOString() });
     }
-    const [exs, bonus, p, all] = await Promise.all([
+    const [exs, bonus, p] = await Promise.all([
       getSessionExercises(sessionId),
       getBonusExercises(sessionId),
       getPlayer(),
-      getExercises(),
     ]);
     setExercises(exs);
     setBonusEx(bonus);
-    setAllEx(all);
     setPlayer(p);
     setAlreadyCompleted(currentSession?.status === 'completed');
     if (currentSession?.status === 'pending') playSound('questStart');
@@ -198,22 +164,6 @@ const SessionScreen: React.FC = () => {
     await completeBonusExercise(ex.id!, primaryValue, expEarned, actualUnitsJson);
   };
 
-  const handleAddBonus = async () => {
-    if (!selBonusEx) return Alert.alert('System', 'Select an exercise.');
-    const specs = specsOf(selBonusEx.units, selBonusEx.unit_type);
-    const primary = primarySpecOf(selBonusEx.units, selBonusEx.primary_unit, selBonusEx.unit_type);
-    const primaryValue = Number(bonusUnits[primary]);
-    if (isNaN(primaryValue) || primaryValue <= 0) {
-      Alert.alert('System', `Enter a valid ${unitSuffix(primary)} target.`);
-      return;
-    }
-    const unitValues = JSON.stringify(specs.map(s => ({ type: s.type, value: Number(bonusUnits[s.type]) || 0 })));
-    await addBonusExerciseToSession(sessionId, selBonusEx, primaryValue, unitValues);
-    const updated = await getBonusExercises(sessionId);
-    setBonusEx(updated);
-    setSelBonusEx(null); setBonusUnits({}); setBonusModal(false);
-  };
-
   const handleFinishSession = async () => {
     if (finishingRef.current) return;
     finishingRef.current = true;
@@ -260,6 +210,11 @@ const SessionScreen: React.FC = () => {
           exp_awarded: claimableBonus.some(cb => cb.id === b.id) ? 1 : b.exp_awarded,
         })));
 
+        // Train martial-arts proficiency from every workout just cleared.
+        await awardMartialProficiency(
+          [...doneMain, ...claimableBonus].map(e => ({ exercise_id: e.exercise_id, exp: e.exp_reward }))
+        );
+
         if (!levelled) navigation.goBack();
       } else {
         // Session already completed — claim only newly-completed bonus EXP
@@ -280,6 +235,11 @@ const SessionScreen: React.FC = () => {
           ...b,
           exp_awarded: claimableBonus.some(cb => cb.id === b.id) ? 1 : b.exp_awarded,
         })));
+
+        // Claimed bonus quests train martial-arts proficiency too.
+        await awardMartialProficiency(
+          claimableBonus.map(e => ({ exercise_id: e.exercise_id, exp: e.exp_reward }))
+        );
       }
     } catch (e) {
       console.error(e);
@@ -377,10 +337,6 @@ const SessionScreen: React.FC = () => {
     ? expForUnits(pendingValues, pendingUnits, pendingPrimary, pendingRate, pendingCount, pendingSets)
     : 0;
 
-  // Bonus add modal data
-  const bonusSpecs = specsOf(selBonusEx?.units, selBonusEx?.unit_type ?? 'reps');
-  const bonusPrimary = primarySpecOf(selBonusEx?.units, selBonusEx?.primary_unit, selBonusEx?.unit_type ?? 'reps');
-
   return (
     <View style={styles.root}>
       {/* EXP flash */}
@@ -427,7 +383,8 @@ const SessionScreen: React.FC = () => {
         {/* Bonus section */}
         <View style={styles.bonusHeader}>
           <Text style={styles.bonusLbl}>— BONUS QUESTS —</Text>
-          <TouchableOpacity style={styles.addBonusBtn} onPress={() => setBonusModal(true)}>
+          <TouchableOpacity style={styles.addBonusBtn}
+            onPress={() => navigation.navigate('WorkoutSelect', { mode: 'bonus', sessionId })}>
             <Text style={styles.addBonusTxt}>+ Add</Text>
           </TouchableOpacity>
         </View>
@@ -512,50 +469,6 @@ const SessionScreen: React.FC = () => {
               <SystemButton title="Cancel" variant="ghost" style={styles.flex1}
                 onPress={() => { setAmountModal(false); setPending(null); setPendingBonus(null); setInputUnits({}); }} />
               <SystemButton title="Confirm" style={styles.flex1} onPress={handleConfirmAmount} />
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
-
-      {/* Add bonus exercise modal */}
-      <Modal visible={bonusModal} transparent animationType="slide" onRequestClose={() => setBonusModal(false)}>
-        <KeyboardAvoidingView style={styles.amountOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-          <View style={[styles.amountSheet, { maxHeight: '80%', paddingBottom: 24 + insets.bottom }]}>
-            <Text style={styles.amountTitle}>◆ ADD BONUS QUEST</Text>
-            <ScrollView keyboardShouldPersistTaps="handled" style={{ maxHeight: 260 }} nestedScrollEnabled>
-              {allExercises.map(ex => (
-                <TouchableOpacity key={ex.id}
-                  style={[styles.exPickItem, selBonusEx?.id === ex.id && styles.exPickItemOn]}
-                  onPress={() => {
-                    setSelBonusEx(ex);
-                    const specs = specsOf(ex.units, ex.unit_type);
-                    const rec: Record<string, string> = {};
-                    for (const s of specs) rec[s.type] = s.default ? String(s.default) : '';
-                    setBonusUnits(rec);
-                  }}>
-                  <Text style={[styles.exPickTxt, selBonusEx?.id === ex.id && styles.exPickTxtOn]}>{ex.name}</Text>
-                  <Text style={styles.exPickSub}>+{ex.exp_per_unit} EXP/{ex.exp_unit_count ?? 1} {unitSuffix(ex.primary_unit ?? ex.unit_type ?? 'reps')}</Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-            {selBonusEx && bonusSpecs.map(s => (
-              <View key={s.type} style={styles.amountInputRow}>
-                <TextInput
-                  style={styles.amountInput}
-                  value={bonusUnits[s.type] ?? ''}
-                  onChangeText={v => setBonusUnits(prev => ({ ...prev, [s.type]: v }))}
-                  keyboardType="decimal-pad"
-                  placeholder={s.type === bonusPrimary ? 'target' : '0'}
-                  placeholderTextColor={COLORS.textMuted}
-                />
-                <Text style={styles.amountUnit}>
-                  {unitSuffix(s.type)}{s.type === bonusPrimary ? ' · EXP' : ''}
-                </Text>
-              </View>
-            ))}
-            <View style={styles.amountBtnRow}>
-              <SystemButton title="Cancel" variant="ghost" style={styles.flex1} onPress={() => { setBonusModal(false); setSelBonusEx(null); setBonusUnits({}); }} />
-              <SystemButton title="Add" style={styles.flex1} onPress={handleAddBonus} />
             </View>
           </View>
         </KeyboardAvoidingView>
@@ -714,7 +627,6 @@ const styles = StyleSheet.create({
   exPickItemOn:  { borderColor: COLORS.accentCyan, backgroundColor: `${COLORS.accentCyan}12` },
   exPickTxt:     { color: COLORS.textSecondary, fontSize: 14, flex: 1 },
   exPickTxtOn:   { color: COLORS.accentCyan },
-  exPickSub:     { color: COLORS.textMuted, fontSize: 11 },
 
   completedBanner:     { marginTop: 24, marginBottom: 8, backgroundColor: `${COLORS.accentGreen}12`, borderWidth: 1, borderColor: COLORS.accentGreen, borderRadius: 10, padding: 20, alignItems: 'center', gap: 6 },
   completedBannerText: { color: COLORS.accentGreen, fontSize: 16, fontWeight: '800', letterSpacing: 2 },
