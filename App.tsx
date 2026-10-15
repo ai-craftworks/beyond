@@ -7,6 +7,7 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context'; // ← added useSafeAreaInsets
 
 import { initDatabase, getPlayer } from './src/database/Database';
+import type { Plan } from './src/database/Database';
 import { COLORS } from './src/constants/game';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -14,6 +15,8 @@ import RegistrationScreen from './src/screens/RegistrationScreen';
 import DashboardScreen    from './src/screens/DashboardScreen';
 import ExercisesScreen    from './src/screens/ExercisesScreen';
 import PlansScreen        from './src/screens/PlansScreen';
+import ManagePlanScreen   from './src/screens/ManagePlanScreen';
+import WorkoutSelectScreen from './src/screens/WorkoutSelectScreen';
 import ProfileScreen      from './src/screens/ProfileScreen';
 import SessionScreen      from './src/screens/SessionScreen';
 import AboutScreen from './src/screens/AboutScreen';
@@ -23,6 +26,10 @@ export type RootStackParamList = {
   Registration: undefined;
   Main:         undefined;
   Session:      { sessionId: number };
+  ManagePlan:   { plan: Plan };
+  WorkoutSelect:
+    | { mode: 'plan'; planId: number; planName: string }
+    | { mode: 'bonus'; sessionId: number };
 };
 
 export type TabParamList = {
@@ -218,6 +225,32 @@ const App: React.FC = () => {
               headerTintColor: COLORS.accentCyan,
               animation: 'slide_from_bottom',
             }}
+          />
+          <Stack.Screen
+            name="ManagePlan"
+            component={ManagePlanScreen}
+            options={({ route }) => ({
+              headerShown: true,
+              headerTitle: route.params.plan.name,
+              headerStyle: styles.header,
+              headerTitleStyle: styles.headerTitle,
+              headerTintColor: COLORS.accentCyan,
+              animation: 'slide_from_right',
+            })}
+          />
+          <Stack.Screen
+            name="WorkoutSelect"
+            component={WorkoutSelectScreen}
+            options={({ route }) => ({
+              headerShown: true,
+              headerTitle: route.params.mode === 'plan'
+                ? `Add to ${route.params.planName}`
+                : 'Add Bonus Quest',
+              headerStyle: styles.header,
+              headerTitleStyle: styles.headerTitle,
+              headerTintColor: COLORS.accentCyan,
+              animation: 'slide_from_right',
+            })}
           />
         </Stack.Navigator>
       </NavigationContainer>
