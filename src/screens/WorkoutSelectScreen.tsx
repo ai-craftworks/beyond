@@ -1,9 +1,10 @@
 /**
  * src/screens/WorkoutSelectScreen.tsx
  * ====================================
- * Full-screen workout picker used by two flows:
+ * Full-screen workout picker used by three flows:
  *   - mode 'plan'  → add a workout to a plan (with sets + target units)
  *   - mode 'bonus' → add a bonus quest to a session (with target units)
+ *   - mode 'skill' → tag one or more workouts to a martial-art skill (multi-select)
  */
 
 import React, { useEffect, useState } from 'react';
@@ -16,7 +17,8 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   getExercises, getPlanExercises, addExerciseToPlan,
-  addBonusExerciseToSession, Exercise,
+  addBonusExerciseToSession, addExerciseToSkill,
+  getTaggedExerciseIdsForSkill, Exercise,
 } from '../database/Database';
 import { SystemButton, SystemInput, SystemDropdown, SystemMultiDropdown, EmptyState } from '../components/UIComponents';
 import { Ionicons } from '@expo/vector-icons';
@@ -33,7 +35,10 @@ const WorkoutSelectScreen: React.FC = () => {
   const route      = useRoute<Route>();
   const navigation = useNavigation<Nav>();
   const insets     = useSafeAreaInsets();
-  const isPlan     = route.params.mode === 'plan';
+  const mode       = route.params.mode;
+  const isPlan     = mode === 'plan';
+  const skillId    = mode === 'skill' ? route.params.skillId : null;
+  const isSkill    = skillId !== null;
 
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -41,6 +46,8 @@ const WorkoutSelectScreen: React.FC = () => {
   const [selected, setSelected]   = useState<Exercise | null>(null);
   const [sets, setSets]           = useState('3');
   const [unitVals, setUnitVals]   = useState<Record<string, string>>({});
+  const [taggedIds, setTaggedIds] = useState<number[]>([]);
+  const [pickedIds, setPickedIds] = useState<number[]>([]);
 
   // List search / filters
   const [search, setSearch] = useState('');
@@ -49,12 +56,22 @@ const WorkoutSelectScreen: React.FC = () => {
 
   useEffect(() => {
     (async () => {
-      setExercises(await getExercises());
+      const [exs, tagged] = await Promise.all([
+        getExercises(),
+        isSkill ? getTaggedExerciseIdsForSkill(skillId!) : Promise.resolve<number[]>([]),
+      ]);
+      setExercises(exs);
+      setTaggedIds(tagged);
       setLoading(false);
     })();
-  }, []);
+  }, [isSkill, skillId]);
 
   const selectExercise = (ex: Exercise) => {
+    if (isSkill) {
+      if (taggedIds.includes(ex.id!)) return;
+      setPickedIds(prev => prev.includes(ex.id!) ? prev.filter(i => i !== ex.id!) : [...prev, ex.id!]);
+      return;
+    }
     setSelected(ex);
     const defaults: Record<string, string> = {};
     for (const s of specsOf(ex.units, ex.unit_type ?? 'reps')) {
@@ -72,6 +89,20 @@ const WorkoutSelectScreen: React.FC = () => {
     : 0;
 
   const handleConfirm = async () => {
+    if (isSkill) {
+      if (pickedIds.length === 0) return Alert.alert('System', 'Select at least one workout.');
+      setSubmitting(true);
+      try {
+        for (const id of pickedIds) await addExerciseToSkill(skillId!, id);
+        navigation.goBack();
+      } catch (e) {
+        console.error('tag workouts error:', e);
+        Alert.alert('Error', 'Failed to tag workouts. Please try again.');
+        setSubmitting(false);
+      }
+      return;
+    }
+
     if (!selected) return Alert.alert('System', 'Select an exercise first.');
     if (isPlan && (isNaN(Number(sets)) || Number(sets) < 1)) {
       return Alert.alert('System', 'Enter valid sets.');
@@ -83,7 +114,7 @@ const WorkoutSelectScreen: React.FC = () => {
     const unitValues = JSON.stringify(values);
     setSubmitting(true);
     try {
-      if (route.params.mode === 'plan') {
+      if (mode === 'plan') {
         const { planId } = route.params;
         const orderIndex = (await getPlanExercises(planId)).length;
         await addExerciseToPlan({
@@ -94,7 +125,7 @@ const WorkoutSelectScreen: React.FC = () => {
           unit_values: unitValues,
           order_index: orderIndex,
         });
-      } else {
+      } else if (mode === 'bonus') {
         await addBonusExerciseToSession(route.params.sessionId, selected, primaryVal, unitValues);
       }
       navigation.goBack();
@@ -116,6 +147,9 @@ const WorkoutSelectScreen: React.FC = () => {
       >
         {isPlan && (
           <Text style={styles.planTag}>PLAN · {route.params.planName}</Text>
+        )}
+        {mode === 'skill' && (
+          <Text style={styles.planTag}>TAG WORKOUTS · {route.params.skillName}</Text>
         )}
 
         {/* Filters */}
@@ -142,36 +176,51 @@ const WorkoutSelectScreen: React.FC = () => {
           />
         </View>
 
-        <Text style={styles.selectLbl}>SELECT WORKOUT</Text>
+        <Text style={styles.selectLbl}>{isSkill ? 'SELECT WORKOUTS TO TAG' : 'SELECT WORKOUT'}</Text>
         {loading ? (
           <ActivityIndicator color={COLORS.accentCyan} style={{ marginVertical: 24 }} />
         ) : exShown.length === 0 ? (
           <EmptyState icon="barbell" title="No workouts match" subtitle="Try a different search or filter." />
         ) : (
-          exShown.map(ex => (
-            <TouchableOpacity
-              key={ex.id}
-              style={[styles.exPickItem, selected?.id === ex.id && styles.exPickItemOn]}
-              onPress={() => selectExercise(ex)}
-              activeOpacity={0.75}
-            >
-              <View style={styles.exPickInfo}>
-                <Text style={[styles.exPickTxt, selected?.id === ex.id && styles.exPickTxtOn]}>{ex.name}</Text>
-                {parseBodyParts(ex.body_parts).length > 0 && (
-                  <Text style={styles.exPickParts}>
-                    {parseBodyParts(ex.body_parts).map(p => bodyPartLabel(p)).join(' · ')}
+          exShown.map(ex => {
+            const tagged = isSkill && taggedIds.includes(ex.id!);
+            const picked = isSkill && pickedIds.includes(ex.id!);
+            const isOn   = isSkill ? (tagged || picked) : selected?.id === ex.id;
+            return (
+              <TouchableOpacity
+                key={ex.id}
+                style={[styles.exPickItem, isOn && styles.exPickItemOn, tagged && styles.exPickItemTagged]}
+                onPress={() => selectExercise(ex)}
+                disabled={tagged}
+                activeOpacity={0.75}
+              >
+                <View style={styles.exPickInfo}>
+                  <Text style={[styles.exPickTxt, isOn && styles.exPickTxtOn]}>{ex.name}</Text>
+                  {parseBodyParts(ex.body_parts).length > 0 && (
+                    <Text style={styles.exPickParts}>
+                      {parseBodyParts(ex.body_parts).map(p => bodyPartLabel(p)).join(' · ')}
+                    </Text>
+                  )}
+                </View>
+                {isSkill ? (
+                  <View style={styles.checkWrap}>
+                    {tagged
+                      ? <Ionicons name="checkmark-circle" size={20} color={COLORS.accentGreen} />
+                      : <Ionicons name={picked ? 'checkbox' : 'square-outline'} size={20}
+                          color={picked ? COLORS.accentCyan : COLORS.textMuted} />}
+                  </View>
+                ) : (
+                  <Text style={styles.exPickExp}>
+                    +{ex.exp_per_unit} EXP/{ex.exp_unit_count ?? 1} {unitSuffix(ex.primary_unit ?? ex.unit_type ?? 'reps')}
                   </Text>
                 )}
-              </View>
-              <Text style={styles.exPickExp}>
-                +{ex.exp_per_unit} EXP/{ex.exp_unit_count ?? 1} {unitSuffix(ex.primary_unit ?? ex.unit_type ?? 'reps')}
-              </Text>
-            </TouchableOpacity>
-          ))
+              </TouchableOpacity>
+            );
+          })
         )}
 
-        {/* Values */}
-        {selected && (
+        {/* Values (plan / bonus only) */}
+        {!isSkill && selected && (
           <>
             <Text style={styles.selectLbl}>TARGET</Text>
             {isPlan && (
@@ -201,8 +250,15 @@ const WorkoutSelectScreen: React.FC = () => {
 
         <View style={styles.row}>
           <SystemButton title="Cancel" variant="ghost" style={styles.flex1} onPress={() => navigation.goBack()} />
-          <SystemButton title={isPlan ? 'Add' : 'Add Bonus'} style={styles.flex1}
-            onPress={handleConfirm} loading={submitting} disabled={!selected} />
+          <SystemButton
+            title={isSkill
+              ? `Add ${pickedIds.length} Workout${pickedIds.length === 1 ? '' : 's'}`
+              : isPlan ? 'Add' : 'Add Bonus'}
+            style={styles.flex1}
+            onPress={handleConfirm}
+            loading={submitting}
+            disabled={isSkill ? pickedIds.length === 0 : !selected}
+          />
         </View>
       </ScrollView>
     </View>
@@ -223,11 +279,13 @@ const styles = StyleSheet.create({
 
   exPickItem:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, borderWidth: 1, borderColor: COLORS.borderDim, borderRadius: 8, marginBottom: 5 },
   exPickItemOn:{ borderColor: COLORS.accentCyan, backgroundColor: `${COLORS.accentCyan}12` },
+  exPickItemTagged: { borderColor: `${COLORS.accentGreen}66`, backgroundColor: `${COLORS.accentGreen}0D`, opacity: 0.8 },
   exPickInfo:  { flex: 1, paddingRight: 8 },
   exPickTxt:   { color: COLORS.textSecondary, fontSize: 14, flex: 1 },
   exPickTxtOn: { color: COLORS.accentCyan },
   exPickParts: { color: COLORS.textMuted, fontSize: 10, marginTop: 2 },
   exPickExp:   { color: COLORS.textMuted, fontSize: 12 },
+  checkWrap:   { paddingLeft: 4 },
 
   unitRow:      { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
   unitRowLbl:   { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700', width: 80 },

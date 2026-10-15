@@ -11,7 +11,7 @@
 
 import * as SQLite from 'expo-sqlite';
 import { calculateLevelFromTotalExp } from '../utils/math';
-import { unitSuffix } from '../constants/game';
+import { unitSuffix, calculateMartialLevelFromTotalExp } from '../constants/game';
 
 // ─────────────────────────────────────────────
 // SINGLETON CONNECTION
@@ -207,20 +207,57 @@ export const initDatabase = async (): Promise<void> => {
       session_id    INTEGER NOT NULL,
       exercise_id   INTEGER NOT NULL,
       exercise_name TEXT    DEFAULT '',
-      target        REAL    DEFAULT 0,
-      unit_type     TEXT    DEFAULT 'reps',
-      unit_label    TEXT    DEFAULT 'reps',
-      units         TEXT    DEFAULT '[]',
-      primary_unit  TEXT    DEFAULT 'reps',
-      unit_values   TEXT    DEFAULT '[]',
-      actual_units  TEXT    DEFAULT '[]',
-      exp_per_unit  REAL    DEFAULT 2,
-      actual_amount REAL    DEFAULT 0,
+      target        REAL   DEFAULT 0,
+      unit_type     TEXT   DEFAULT 'reps',
+      unit_label    TEXT   DEFAULT 'reps',
+      units         TEXT   DEFAULT '[]',
+      primary_unit  TEXT   DEFAULT 'reps',
+      unit_values   TEXT   DEFAULT '[]',
+      actual_units  TEXT   DEFAULT '[]',
+      exp_per_unit  REAL   DEFAULT 2,
+      actual_amount REAL DEFAULT 0,
       is_completed  INTEGER DEFAULT 0,
-      exp_reward    REAL    DEFAULT 0,
-      stat_type     TEXT    DEFAULT 'strength',
+      exp_reward    REAL   DEFAULT 0,
+      stat_type     TEXT   DEFAULT 'strength',
       stat_reward   INTEGER DEFAULT 1,
       FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS martial_arts (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      name          TEXT    NOT NULL,
+      description   TEXT    DEFAULT '',
+      icon          TEXT    DEFAULT 'flame',
+      color         TEXT    DEFAULT '#00D4FF',
+      total_exp     INTEGER DEFAULT 0,
+      level         INTEGER DEFAULT 1,
+      exp           INTEGER DEFAULT 0,
+      exp_to_next   INTEGER DEFAULT 0,
+      created_at    TEXT    DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS skills (
+      id              INTEGER PRIMARY KEY AUTOINCREMENT,
+      martial_art_id  INTEGER NOT NULL,
+      name            TEXT    NOT NULL,
+      description     TEXT    DEFAULT '',
+      media_type      TEXT    DEFAULT 'none',
+      media_uri       TEXT    DEFAULT '',
+      total_exp       INTEGER DEFAULT 0,
+      level           INTEGER DEFAULT 1,
+      exp             INTEGER DEFAULT 0,
+      exp_to_next     INTEGER DEFAULT 0,
+      created_at      TEXT    DEFAULT (datetime('now')),
+      FOREIGN KEY (martial_art_id) REFERENCES martial_arts(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS skill_exercises (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      skill_id    INTEGER NOT NULL,
+      exercise_id INTEGER NOT NULL,
+      UNIQUE (skill_id, exercise_id),
+      FOREIGN KEY (skill_id)    REFERENCES skills(id)    ON DELETE CASCADE,
+      FOREIGN KEY (exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
     );
   `);
 
@@ -423,6 +460,43 @@ export interface EarnedTitle {
   earned_at: string;
 }
 
+export interface MartialArt {
+  id?: number;
+  name: string;
+  description: string;
+  icon: string;
+  color: string;
+  total_exp: number;
+  level: number;
+  exp: number;
+  exp_to_next: number;
+  created_at?: string;
+  skill_count?: number;
+}
+
+export type SkillMediaType = 'none' | 'image' | 'video';
+
+export interface Skill {
+  id?: number;
+  martial_art_id: number;
+  name: string;
+  description: string;
+  media_type: SkillMediaType;
+  media_uri: string;
+  total_exp: number;
+  level: number;
+  exp: number;
+  exp_to_next: number;
+  created_at?: string;
+  exercise_count?: number;
+}
+
+export interface SkillExercise {
+  id?: number;
+  skill_id: number;
+  exercise_id: number;
+}
+
 // ─────────────────────────────────────────────
 // PLAYER
 // ─────────────────────────────────────────────
@@ -508,6 +582,8 @@ export const getExercises = async (): Promise<Exercise[]> => {
 
 export const deleteExercise = async (id: number): Promise<void> => {
   const db = await getDb();
+  // FK enforcement is off — clean dependants explicitly.
+  await db.runAsync(`DELETE FROM skill_exercises WHERE exercise_id = ?`, [id]);
   await db.runAsync(`DELETE FROM exercises WHERE id = ?`, [id]);
 };
 
@@ -823,6 +899,9 @@ export const applyMissedSessionPenalty = async (sessionId: number): Promise<numb
 export const resetAllData = async (): Promise<void> => {
   const db = await getDb();
   await db.execAsync(`
+    DELETE FROM skill_exercises;
+    DELETE FROM skills;
+    DELETE FROM martial_arts;
     DELETE FROM bonus_exercises;
     DELETE FROM session_exercises;
     DELETE FROM sessions;
@@ -835,7 +914,7 @@ export const resetAllData = async (): Promise<void> => {
   `);
   await db.execAsync(`
     DELETE FROM sqlite_sequence WHERE name IN
-      ('player','exercises','exercise_body_parts','plans','plan_exercises','sessions','session_exercises','titles','bonus_exercises');
+      ('player','exercises','exercise_body_parts','plans','plan_exercises','sessions','session_exercises','titles','bonus_exercises','martial_arts','skills','skill_exercises');
   `);
 };
 
@@ -859,4 +938,233 @@ export const getSessionSummary = async (sessionId: number): Promise<{
     [sessionId]
   );
   return { exercises, bonuses };
+};
+
+// ─────────────────────────────────────────────
+// MARTIAL ARTS
+// ─────────────────────────────────────────────
+
+export const createMartialArt = async (
+  art: Pick<MartialArt, 'name' | 'description' | 'icon' | 'color'>
+): Promise<number> => {
+  const db = await getDb();
+  const expToNext = calculateMartialLevelFromTotalExp(0).expToNext;
+  const result = await db.runAsync(
+    `INSERT INTO martial_arts (name, description, icon, color, total_exp, level, exp, exp_to_next)
+     VALUES (?, ?, ?, ?, 0, 1, 0, ?)`,
+    [art.name, art.description, art.icon, art.color, expToNext]
+  );
+  return result.lastInsertRowId;
+};
+
+export const getMartialArts = async (): Promise<MartialArt[]> => {
+  const db = await getDb();
+  const arts = await db.getAllAsync<MartialArt>(
+    `SELECT * FROM martial_arts ORDER BY created_at DESC`
+  );
+  const counts = await db.getAllAsync<{ martial_art_id: number; count: number }>(
+    `SELECT martial_art_id, COUNT(*) as count FROM skills GROUP BY martial_art_id`
+  );
+  const byArt: Record<number, number> = {};
+  for (const c of counts) byArt[c.martial_art_id] = c.count;
+  return arts.map(a => ({ ...a, skill_count: byArt[a.id!] ?? 0 }));
+};
+
+export const getMartialArt = async (id: number): Promise<MartialArt | null> => {
+  const db = await getDb();
+  return db.getFirstAsync<MartialArt>(`SELECT * FROM martial_arts WHERE id = ?`, [id]);
+};
+
+export const updateMartialArt = async (id: number, updates: Partial<MartialArt>): Promise<void> => {
+  const db = await getDb();
+  const { id: _drop, skill_count: _drop2, created_at: _drop3, ...fields } = updates;
+  const keys = Object.keys(fields);
+  if (keys.length === 0) return;
+  const setClause = keys.map(k => `${k} = ?`).join(', ');
+  await db.runAsync(`UPDATE martial_arts SET ${setClause} WHERE id = ?`, [...Object.values(fields), id]);
+};
+
+/** Deletes an art, its skills and all tags. Returns media URIs to remove from disk. */
+export const deleteMartialArt = async (id: number): Promise<string[]> => {
+  const db = await getDb();
+  const skills = await db.getAllAsync<{ id: number; media_uri: string; media_type: string }>(
+    `SELECT id, media_uri, media_type FROM skills WHERE martial_art_id = ?`, [id]
+  );
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(
+      `DELETE FROM skill_exercises WHERE skill_id IN (SELECT id FROM skills WHERE martial_art_id = ?)`,
+      [id]
+    );
+    await db.runAsync(`DELETE FROM skills WHERE martial_art_id = ?`, [id]);
+    await db.runAsync(`DELETE FROM martial_arts WHERE id = ?`, [id]);
+  });
+  return skills
+    .filter(s => s.media_type !== 'none' && s.media_uri)
+    .map(s => s.media_uri);
+};
+
+export const createSkill = async (
+  skill: Pick<Skill, 'martial_art_id' | 'name' | 'description' | 'media_type' | 'media_uri'>
+): Promise<number> => {
+  const db = await getDb();
+  const expToNext = calculateMartialLevelFromTotalExp(0).expToNext;
+  const result = await db.runAsync(
+    `INSERT INTO skills (martial_art_id, name, description, media_type, media_uri, total_exp, level, exp, exp_to_next)
+     VALUES (?, ?, ?, ?, ?, 0, 1, 0, ?)`,
+    [skill.martial_art_id, skill.name, skill.description,
+     skill.media_type ?? 'none', skill.media_uri ?? '', expToNext]
+  );
+  return result.lastInsertRowId;
+};
+
+export const getSkills = async (martialArtId: number): Promise<Skill[]> => {
+  const db = await getDb();
+  const skills = await db.getAllAsync<Skill>(
+    `SELECT * FROM skills WHERE martial_art_id = ? ORDER BY created_at ASC`, [martialArtId]
+  );
+  const counts = await db.getAllAsync<{ skill_id: number; count: number }>(
+    `SELECT skill_id, COUNT(*) as count FROM skill_exercises GROUP BY skill_id`
+  );
+  const bySkill: Record<number, number> = {};
+  for (const c of counts) bySkill[c.skill_id] = c.count;
+  return skills.map(s => ({ ...s, exercise_count: bySkill[s.id!] ?? 0 }));
+};
+
+export const getSkill = async (id: number): Promise<Skill | null> => {
+  const db = await getDb();
+  return db.getFirstAsync<Skill>(`SELECT * FROM skills WHERE id = ?`, [id]);
+};
+
+export const updateSkill = async (id: number, updates: Partial<Skill>): Promise<void> => {
+  const db = await getDb();
+  const { id: _drop, exercise_count: _drop2, created_at: _drop3, ...fields } = updates;
+  const keys = Object.keys(fields);
+  if (keys.length === 0) return;
+  const setClause = keys.map(k => `${k} = ?`).join(', ');
+  await db.runAsync(`UPDATE skills SET ${setClause} WHERE id = ?`, [...Object.values(fields), id]);
+};
+
+/** Deletes a skill and its tags. Returns the media URI to remove from disk (if any). */
+export const deleteSkill = async (id: number): Promise<string | null> => {
+  const db = await getDb();
+  const skill = await db.getFirstAsync<{ media_uri: string; media_type: string }>(
+    `SELECT media_uri, media_type FROM skills WHERE id = ?`, [id]
+  );
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(`DELETE FROM skill_exercises WHERE skill_id = ?`, [id]);
+    await db.runAsync(`DELETE FROM skills WHERE id = ?`, [id]);
+  });
+  return skill && skill.media_type !== 'none' && skill.media_uri ? skill.media_uri : null;
+};
+
+export const addExerciseToSkill = async (skillId: number, exerciseId: number): Promise<void> => {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT OR IGNORE INTO skill_exercises (skill_id, exercise_id) VALUES (?, ?)`,
+    [skillId, exerciseId]
+  );
+};
+
+export const removeExerciseFromSkill = async (skillId: number, exerciseId: number): Promise<void> => {
+  const db = await getDb();
+  await db.runAsync(
+    `DELETE FROM skill_exercises WHERE skill_id = ? AND exercise_id = ?`,
+    [skillId, exerciseId]
+  );
+};
+
+export const getTaggedExerciseIdsForSkill = async (skillId: number): Promise<number[]> => {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ exercise_id: number }>(
+    `SELECT exercise_id FROM skill_exercises WHERE skill_id = ?`, [skillId]
+  );
+  return rows.map(r => r.exercise_id);
+};
+
+export const getExercisesForSkill = async (skillId: number): Promise<Exercise[]> => {
+  const db = await getDb();
+  const exercises = await db.getAllAsync<Exercise>(
+    `SELECT e.* FROM exercises e
+       JOIN skill_exercises se ON se.exercise_id = e.id
+      WHERE se.skill_id = ?
+      ORDER BY e.name`,
+    [skillId]
+  );
+  if (exercises.length === 0) return [];
+  const ids = exercises.map(e => e.id!);
+  const placeholders = ids.map(() => '?').join(', ');
+  const parts = await db.getAllAsync<{ exercise_id: number; body_part: string }>(
+    `SELECT exercise_id, body_part FROM exercise_body_parts WHERE exercise_id IN (${placeholders})`,
+    ids
+  );
+  const byExercise = new Map<number, string[]>();
+  for (const p of parts) {
+    const arr = byExercise.get(p.exercise_id) ?? [];
+    arr.push(p.body_part);
+    byExercise.set(p.exercise_id, arr);
+  }
+  return exercises.map(ex => ({ ...ex, body_parts: JSON.stringify(byExercise.get(ex.id!) ?? []) }));
+};
+
+/**
+ * Awards proficiency EXP to every skill (and martial art) reachable from the
+ * given exercise completions. Each item's EXP is added once per tagged skill,
+ * and once per martial art (deduped) even if several of its skills are tagged.
+ */
+export const awardMartialProficiency = async (
+  items: { exercise_id: number; exp: number }[]
+): Promise<void> => {
+  const valid = items.filter(i => i.exercise_id > 0 && i.exp > 0);
+  if (valid.length === 0) return;
+
+  const db = await getDb();
+  const ids = [...new Set(valid.map(i => i.exercise_id))];
+  const placeholders = ids.map(() => '?').join(', ');
+  const tags = await db.getAllAsync<{ exercise_id: number; skill_id: number; martial_art_id: number }>(
+    `SELECT se.exercise_id, se.skill_id, s.martial_art_id
+       FROM skill_exercises se
+       JOIN skills s ON s.id = se.skill_id
+      WHERE se.exercise_id IN (${placeholders})`,
+    ids
+  );
+  if (tags.length === 0) return;
+
+  const skillExp: Record<number, number> = {};
+  const artExp: Record<number, number> = {};
+  const seenItemArt = new Set<string>();
+  for (const item of valid) {
+    for (const t of tags) {
+      if (t.exercise_id !== item.exercise_id) continue;
+      skillExp[t.skill_id] = (skillExp[t.skill_id] ?? 0) + item.exp;
+      const key = `${item.exercise_id}:${t.martial_art_id}`;
+      if (!seenItemArt.has(key)) {
+        seenItemArt.add(key);
+        artExp[t.martial_art_id] = (artExp[t.martial_art_id] ?? 0) + item.exp;
+      }
+    }
+  }
+
+  const applyExp = async (
+    table: 'skills' | 'martial_arts', id: number, gained: number
+  ): Promise<void> => {
+    const row = await db.getFirstAsync<{ total_exp: number }>(
+      `SELECT total_exp FROM ${table} WHERE id = ?`, [id]
+    );
+    if (!row) return;
+    const newTotal = (row.total_exp ?? 0) + gained;
+    const { level, expInCurrentLevel, expToNext } = calculateMartialLevelFromTotalExp(newTotal);
+    await db.runAsync(
+      `UPDATE ${table} SET total_exp = ?, level = ?, exp = ?, exp_to_next = ? WHERE id = ?`,
+      [newTotal, level, expInCurrentLevel, expToNext, id]
+    );
+  };
+
+  await db.withTransactionAsync(async () => {
+    for (const [id, gained] of Object.entries(skillExp)) {
+      await applyExp('skills', Number(id), gained);
+    }
+    for (const [id, gained] of Object.entries(artExp)) {
+      await applyExp('martial_arts', Number(id), gained);
+    }
+  });
 };

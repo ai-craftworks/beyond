@@ -12,7 +12,8 @@ import {
   updateSession, completeSessionExercise,
   SessionExercise, Player, saveTitle,
   getBonusExercises, completeBonusExercise,
-  markBonusExercisesAwarded, BonusExercise, getSession
+  markBonusExercisesAwarded, BonusExercise, getSession,
+  awardMartialProficiency,
 } from '../database/Database';
 import { SystemPanel, SystemButton, ExpBar } from '../components/UIComponents';
 import { Ionicons } from '@expo/vector-icons';
@@ -209,6 +210,11 @@ const SessionScreen: React.FC = () => {
           exp_awarded: claimableBonus.some(cb => cb.id === b.id) ? 1 : b.exp_awarded,
         })));
 
+        // Train martial-arts proficiency from every workout just cleared.
+        await awardMartialProficiency(
+          [...doneMain, ...claimableBonus].map(e => ({ exercise_id: e.exercise_id, exp: e.exp_reward }))
+        );
+
         if (!levelled) navigation.goBack();
       } else {
         // Session already completed — claim only newly-completed bonus EXP
@@ -229,6 +235,11 @@ const SessionScreen: React.FC = () => {
           ...b,
           exp_awarded: claimableBonus.some(cb => cb.id === b.id) ? 1 : b.exp_awarded,
         })));
+
+        // Claimed bonus quests train martial-arts proficiency too.
+        await awardMartialProficiency(
+          claimableBonus.map(e => ({ exercise_id: e.exercise_id, exp: e.exp_reward }))
+        );
       }
     } catch (e) {
       console.error(e);

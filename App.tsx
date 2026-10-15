@@ -17,6 +17,9 @@ import ExercisesScreen    from './src/screens/ExercisesScreen';
 import PlansScreen        from './src/screens/PlansScreen';
 import ManagePlanScreen   from './src/screens/ManagePlanScreen';
 import WorkoutSelectScreen from './src/screens/WorkoutSelectScreen';
+import MartialArtsScreen  from './src/screens/MartialArtsScreen';
+import MartialArtDetailScreen from './src/screens/MartialArtDetailScreen';
+import SkillDetailScreen  from './src/screens/SkillDetailScreen';
 import ProfileScreen      from './src/screens/ProfileScreen';
 import SessionScreen      from './src/screens/SessionScreen';
 import AboutScreen from './src/screens/AboutScreen';
@@ -29,13 +32,17 @@ export type RootStackParamList = {
   ManagePlan:   { plan: Plan };
   WorkoutSelect:
     | { mode: 'plan'; planId: number; planName: string }
-    | { mode: 'bonus'; sessionId: number };
+    | { mode: 'bonus'; sessionId: number }
+    | { mode: 'skill'; skillId: number; skillName: string };
+  MartialArtDetail: { artId: number };
+  SkillDetail:      { skillId: number };
 };
 
 export type TabParamList = {
   Dashboard: undefined;
   Exercises: undefined;
   Plans:     undefined;
+  Dojo:      undefined;
   Profile:   undefined;
   About:     undefined; 
 };
@@ -131,6 +138,24 @@ const MainTabs: React.FC = () => {
           headerTintColor: COLORS.accentCyan,
           tabBarIcon: ({ focused }) => (
             <Ionicons name={focused ? 'list' : 'list-outline'} size={22}
+              color={focused ? COLORS.accentCyan : COLORS.textMuted} />
+          ),
+        }}
+      />
+
+      <Tab.Screen
+        name="Dojo"
+        component={MartialArtsScreen}
+        listeners={{ tabPress: () => playSound('navigate') }}
+        options={{
+          title: 'Dojo',
+          headerShown: true,
+          headerTitle: 'Martial Arts',
+          headerStyle: styles.header,
+          headerTitleStyle: styles.headerTitle,
+          headerTintColor: COLORS.accentCyan,
+          tabBarIcon: ({ focused }) => (
+            <Ionicons name={focused ? 'hand-left' : 'hand-left-outline'} size={22}
               color={focused ? COLORS.accentCyan : COLORS.textMuted} />
           ),
         }}
@@ -245,12 +270,38 @@ const App: React.FC = () => {
               headerShown: true,
               headerTitle: route.params.mode === 'plan'
                 ? `Add to ${route.params.planName}`
-                : 'Add Bonus Quest',
+                : route.params.mode === 'skill'
+                  ? `Add to ${route.params.skillName}`
+                  : 'Add Bonus Quest',
               headerStyle: styles.header,
               headerTitleStyle: styles.headerTitle,
               headerTintColor: COLORS.accentCyan,
               animation: 'slide_from_right',
             })}
+          />
+          <Stack.Screen
+            name="MartialArtDetail"
+            component={MartialArtDetailScreen}
+            options={{
+              headerShown: true,
+              headerTitle: 'Martial Art',
+              headerStyle: styles.header,
+              headerTitleStyle: styles.headerTitle,
+              headerTintColor: COLORS.accentCyan,
+              animation: 'slide_from_right',
+            }}
+          />
+          <Stack.Screen
+            name="SkillDetail"
+            component={SkillDetailScreen}
+            options={{
+              headerShown: true,
+              headerTitle: 'Skill',
+              headerStyle: styles.header,
+              headerTitleStyle: styles.headerTitle,
+              headerTintColor: COLORS.accentCyan,
+              animation: 'slide_from_right',
+            }}
           />
         </Stack.Navigator>
       </NavigationContainer>
