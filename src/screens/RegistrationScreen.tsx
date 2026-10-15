@@ -47,7 +47,6 @@ const RegistrationScreen: React.FC<Props> = ({ navigation }) => {
   }, []);
 
   const handleNext = () => {
-    playSound('click'); 
     if (step === 0) {
       if (!name.trim())              return Alert.alert('System', 'Enter your name, Hunter.');
       const a = Number(age);
@@ -63,7 +62,6 @@ const RegistrationScreen: React.FC<Props> = ({ navigation }) => {
   };
 
   const handleRegister = async () => {
-    playSound('click'); 
     setLoading(true);
     try {
       const playerId = await createPlayer(name.trim(), Number(age), Number(weight), Number(height));
@@ -127,7 +125,7 @@ const RegistrationScreen: React.FC<Props> = ({ navigation }) => {
               <SystemInput label="Weight (kg)" value={weight} onChangeText={setWeight} keyboardType="decimal-pad" />
               <SystemInput label="Height (cm)" value={height} onChangeText={setHeight} keyboardType="decimal-pad" />
               <View style={styles.row}>
-                <TouchableOpacity style={styles.backBtn} onPress={() => setStep(0)}>
+                <TouchableOpacity style={styles.backBtn} onPress={() => { playSound('click'); setStep(0); }}>
                   <View style={styles.backRow}>
                     <Ionicons name="arrow-back" size={14} color={COLORS.accentCyan} />
                     <Text style={styles.backTxt}>BACK</Text>
@@ -152,7 +150,7 @@ const RegistrationScreen: React.FC<Props> = ({ navigation }) => {
                 <Text style={styles.noticeTxt}>Starting stats: All at 10  ·  Rank: E  ·  Level: 1</Text>
               </View>
               <View style={styles.row}>
-                <TouchableOpacity style={styles.backBtn} onPress={() => setStep(1)}>
+                <TouchableOpacity style={styles.backBtn} onPress={() => { playSound('click'); setStep(1); }}>
                   <View style={styles.backRow}>
                     <Ionicons name="arrow-back" size={14} color={COLORS.accentCyan} />
                     <Text style={styles.backTxt}>BACK</Text>

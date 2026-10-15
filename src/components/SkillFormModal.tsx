@@ -17,6 +17,7 @@ import MediaViewer from './MediaViewer';
 import { COLORS } from '../constants/game';
 import { Skill, SkillMediaType, createSkill, updateSkill } from '../database/Database';
 import { pickSkillMedia, deleteMedia } from '../utils/media';
+import { playSound } from '../utils/sounds';
 
 interface SkillFormModalProps {
   visible: boolean;
@@ -61,6 +62,7 @@ const SkillFormModal: React.FC<SkillFormModalProps> = ({
 
   const handlePick = async () => {
     if (picking) return;
+    playSound('click');
     setPicking(true);
     try {
       const picked = await pickSkillMedia();
@@ -78,6 +80,7 @@ const SkillFormModal: React.FC<SkillFormModalProps> = ({
   };
 
   const handleRemoveMedia = () => {
+    playSound('click');
     if (mediaUri && mediaUri !== originalUri) deleteMedia(mediaUri);
     setMedia('none');
     setMediaUri('');

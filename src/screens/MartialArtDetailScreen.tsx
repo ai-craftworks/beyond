@@ -15,6 +15,7 @@ import { SystemPanel, SystemButton, SectionHeader, ExpBar, EmptyState } from '..
 import SkillFormModal from '../components/SkillFormModal';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, getBeltForLevel } from '../constants/game';
+import { playSound } from '../utils/sounds';
 import { RootStackParamList } from '../../App';
 
 type Route = RouteProp<RootStackParamList, 'MartialArtDetail'>;
@@ -89,7 +90,7 @@ const MartialArtDetailScreen: React.FC = () => {
               key={skill.id}
               style={styles.skillCard}
               activeOpacity={0.8}
-              onPress={() => navigation.navigate('SkillDetail', { skillId: skill.id! })}
+              onPress={() => { playSound('navigate'); navigation.navigate('SkillDetail', { skillId: skill.id! }); }}
             >
               <View style={styles.skillLeft}>
                 <Text style={styles.skillName}>{skill.name}</Text>

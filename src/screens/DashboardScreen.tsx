@@ -17,10 +17,11 @@ import {
   getPlans, createSession, populateSessionExercises,
   getMissedSessions, applyMissedSessionPenalty,
   Plan, getPlanExerciseCounts, hasSessionToday,
+  getDojoMetrics, DojoMetrics,
 } from '../database/Database';
 import { SystemPanel, SectionHeader, StatRow, ExpBar, RankBadge, EmptyState, IonName } from '../components/UIComponents';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, getRankForLevel, STATS } from '../constants/game';
+import { COLORS, getRankForLevel, getBeltForLevel, STATS } from '../constants/game';
 import { RootStackParamList, TabParamList } from '../../App';
 import { playSound } from '../utils/sounds';
 
@@ -38,6 +39,7 @@ const DashboardScreen: React.FC = () => {
   const insets                      = useSafeAreaInsets();
   const [player, setPlayer]         = useState<Player | null>(null);
   const [sessions, setSessions]     = useState<Session[]>([]);
+  const [dojo, setDojo]             = useState<DojoMetrics | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [pickerPlans, setPickerPlans]     = useState<PickerPlan[]>([]);
@@ -58,6 +60,7 @@ const DashboardScreen: React.FC = () => {
     await checkMissedPenalties();
     await generateTodaySessions();
     setSessions(await getTodaySessions());
+    setDojo(await getDojoMetrics());
   };
 
   // Finds sessions from previous days still marked 'pending' and applies their penalty
@@ -142,6 +145,7 @@ const DashboardScreen: React.FC = () => {
   const rank     = getRankForLevel(player.level);
   const todayStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   const doneCount = sessions.filter(s => s.status === 'completed').length;
+  const dojoBelt  = dojo ? getBeltForLevel(dojo.highestLevel) : null;
 
   return (
     <ScrollView
@@ -187,6 +191,41 @@ const DashboardScreen: React.FC = () => {
         ))}
       </SystemPanel>
 
+      {/* Dojo */}
+      <SystemPanel>
+        <SectionHeader
+          title="Dojo"
+          subtitle="Martial proficiency"
+          action={{ label: 'Open', onPress: () => navigation.navigate('Dojo') }}
+        />
+        {!dojo || dojo.artCount === 0 || !dojoBelt ? (
+          <EmptyState icon="hand-left" title="No martial arts yet"
+            subtitle="Open the Dojo tab to create one." />
+        ) : (
+          <>
+            <View style={styles.beltStrip}>
+              <View style={[styles.beltDotBig, { backgroundColor: dojoBelt.color }]} />
+              <Text style={[styles.beltName, { color: dojoBelt.color }]}>{dojoBelt.belt} Belt</Text>
+              <Text style={styles.beltLvl}>Highest · Lv. {dojo.highestLevel}</Text>
+            </View>
+            <View style={styles.dojoGrid}>
+              {([
+                { icon: 'shield',      label: 'Arts',      value: dojo.artCount },
+                { icon: 'layers',      label: 'Skills',    value: dojo.skillCount },
+                { icon: 'barbell',     label: 'Tagged',    value: dojo.taggedWorkoutCount },
+                { icon: 'trending-up', label: 'Prof. EXP', value: dojo.totalProficiencyExp },
+              ] as { icon: IonName; label: string; value: number }[]).map(m => (
+                <View key={m.label} style={styles.dojoTile}>
+                  <Ionicons name={m.icon} size={16} color={COLORS.accentCyan} />
+                  <Text style={styles.dojoVal}>{m.value.toLocaleString()}</Text>
+                  <Text style={styles.dojoLbl}>{m.label}</Text>
+                </View>
+              ))}
+            </View>
+          </>
+        )}
+      </SystemPanel>
+
       {/* Today's quests */}
       <SystemPanel>
         <SectionHeader
@@ -212,6 +251,7 @@ const DashboardScreen: React.FC = () => {
         {([
           { icon: 'barbell', label: 'Exercises', screen: 'Exercises' as const },
           { icon: 'list',    label: 'Plans',     screen: 'Plans'     as const },
+          { icon: 'hand-left', label: 'Dojo',    screen: 'Dojo'      as const },
           { icon: 'person',  label: 'Profile',   screen: 'Profile'   as const },
         ] as const).map(item => (
           <TouchableOpacity key={item.label} style={styles.quickBtn}
@@ -331,6 +371,16 @@ const styles = StyleSheet.create({
   questStatus: { fontSize: 11, fontWeight: '700', letterSpacing: 0.5, marginLeft: 4 },
   questStatusRow: { flexDirection: 'row', alignItems: 'center' },
   questExp:    { color: COLORS.accentGreen, fontSize: 13, fontWeight: '700' },
+
+  beltStrip:   { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.bgTertiary, borderRadius: 8, padding: 10, marginBottom: 12 },
+  beltDotBig:  { width: 10, height: 10, borderRadius: 5 },
+  beltName:    { fontSize: 13, fontWeight: '800', letterSpacing: 0.3 },
+  beltLvl:     { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', marginLeft: 'auto' },
+
+  dojoGrid:    { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  dojoTile:    { flexGrow: 1, flexBasis: '45%', backgroundColor: COLORS.bgTertiary, borderRadius: 8, paddingVertical: 10, alignItems: 'center', gap: 3 },
+  dojoVal:     { color: COLORS.textPrimary, fontSize: 16, fontWeight: '800' },
+  dojoLbl:     { color: COLORS.textMuted, fontSize: 10, fontWeight: '600', letterSpacing: 0.3 },
 
   quickNav:    { flexDirection: 'row', gap: 10 },
   quickBtn:    { flex: 1, backgroundColor: COLORS.bgSecondary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 10, paddingVertical: 14, alignItems: 'center', gap: 5 },

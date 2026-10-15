@@ -12,6 +12,7 @@ import {
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/game';
 import { percentOf } from '../utils/math';
+import { playSound } from '../utils/sounds';
 
 export type IonName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -41,7 +42,7 @@ export const SystemButton: React.FC<BtnProps> = ({
   return (
     <TouchableOpacity
       style={[styles.btn, { backgroundColor: bg }, variant === 'ghost' && styles.btnGhost, disabled && styles.btnDisabled, style]}
-      onPress={onPress} disabled={disabled || loading} activeOpacity={0.75}
+      onPress={() => { playSound('click'); onPress(); }} disabled={disabled || loading} activeOpacity={0.75}
     >
       {loading
         ? <ActivityIndicator color={clr} size="small" />
@@ -118,7 +119,7 @@ export const SystemDropdown: React.FC<DropdownProps> = ({
   return (
     <View style={[styles.dropWrap, style]}>
       <Text style={styles.inputLabel}>{label}</Text>
-      <TouchableOpacity style={styles.dropTrigger} onPress={() => setOpen(true)} activeOpacity={0.75}>
+      <TouchableOpacity style={styles.dropTrigger} onPress={() => { playSound('click'); setOpen(true); }} activeOpacity={0.75}>
         <Text style={[styles.dropValue, !selected && styles.dropPlaceholder]} numberOfLines={1}>
           {selected ? selected.label : placeholder}
         </Text>
@@ -127,7 +128,7 @@ export const SystemDropdown: React.FC<DropdownProps> = ({
       <DropdownModal visible={open} title={label} onClose={() => setOpen(false)}>
         {options.map(o => (
           <TouchableOpacity key={o.value} style={styles.dropOption}
-            onPress={() => { onChange(o.value); setOpen(false); }}>
+            onPress={() => { playSound('click'); onChange(o.value); setOpen(false); }}>
             <Text style={[styles.dropOptionTxt, o.value === value && styles.dropOptionTxtOn]}>{o.label}</Text>
             {o.value === value && <Ionicons name="checkmark" size={16} color={COLORS.accentCyan} />}
           </TouchableOpacity>
@@ -156,7 +157,7 @@ export const SystemMultiDropdown: React.FC<MultiDropdownProps> = ({
   return (
     <View style={[styles.dropWrap, style]}>
       <Text style={styles.inputLabel}>{label}</Text>
-      <TouchableOpacity style={styles.dropTrigger} onPress={() => setOpen(true)} activeOpacity={0.75}>
+      <TouchableOpacity style={styles.dropTrigger} onPress={() => { playSound('click'); setOpen(true); }} activeOpacity={0.75}>
         <Text style={[styles.dropValue, values.length === 0 && styles.dropPlaceholder]} numberOfLines={1}>
           {summary}
         </Text>
@@ -166,10 +167,10 @@ export const SystemMultiDropdown: React.FC<MultiDropdownProps> = ({
         visible={open} title={label} onClose={() => setOpen(false)}
         footer={
           <>
-            <TouchableOpacity style={styles.dropFooterBtn} onPress={() => onChange([])}>
+            <TouchableOpacity style={styles.dropFooterBtn} onPress={() => { playSound('click'); onChange([]); }}>
               <Text style={styles.dropFooterTxt}>Clear</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.dropFooterBtn} onPress={() => setOpen(false)}>
+            <TouchableOpacity style={styles.dropFooterBtn} onPress={() => { playSound('click'); setOpen(false); }}>
               <Text style={[styles.dropFooterTxt, styles.dropFooterTxtOn]}>Done</Text>
             </TouchableOpacity>
           </>
@@ -178,7 +179,7 @@ export const SystemMultiDropdown: React.FC<MultiDropdownProps> = ({
         {options.map(o => {
           const on = values.includes(o.value);
           return (
-            <TouchableOpacity key={o.value} style={styles.dropOption} onPress={() => toggle(o.value)}>
+            <TouchableOpacity key={o.value} style={styles.dropOption} onPress={() => { playSound('click'); toggle(o.value); }}>
               <Text style={[styles.dropOptionTxt, on && styles.dropOptionTxtOn]}>{o.label}</Text>
               <Ionicons name={on ? 'checkbox' : 'square-outline'} size={16}
                 color={on ? COLORS.accentCyan : COLORS.textMuted} />
@@ -204,7 +205,7 @@ export const SectionHeader: React.FC<SecHdrProps> = ({ title, subtitle, action }
       {subtitle && <Text style={styles.secSub}>{subtitle}</Text>}
     </View>
     {action && (
-      <TouchableOpacity onPress={action.onPress}>
+      <TouchableOpacity onPress={() => { playSound('click'); action.onPress(); }}>
         <Text style={styles.secAction}>{action.label}</Text>
       </TouchableOpacity>
     )}

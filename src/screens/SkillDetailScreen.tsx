@@ -20,6 +20,7 @@ import SkillFormModal from '../components/SkillFormModal';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, getBeltForLevel, parseBodyParts, bodyPartLabel, unitSuffix } from '../constants/game';
 import { deleteMedia } from '../utils/media';
+import { playSound } from '../utils/sounds';
 import { RootStackParamList } from '../../App';
 
 type Route = RouteProp<RootStackParamList, 'SkillDetail'>;
@@ -147,7 +148,7 @@ const SkillDetailScreen: React.FC = () => {
                     {parts.length > 0 ? `  ·  ${parts.map(bodyPartLabel).join(' · ')}` : ''}
                   </Text>
                 </View>
-                <TouchableOpacity onPress={() => handleRemoveWorkout(ex)} style={styles.removeBtn}>
+                <TouchableOpacity onPress={() => { playSound('click'); handleRemoveWorkout(ex); }} style={styles.removeBtn}>
                   <Ionicons name="close" size={18} color={COLORS.accentRed} />
                 </TouchableOpacity>
               </View>

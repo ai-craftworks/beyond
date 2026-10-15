@@ -497,6 +497,16 @@ export interface SkillExercise {
   exercise_id: number;
 }
 
+/** Aggregate Dojo figures for the dashboard. All zero when nothing exists yet. */
+export interface DojoMetrics {
+  artCount: number;
+  skillCount: number;
+  trainedSkillCount: number;
+  taggedWorkoutCount: number;
+  totalProficiencyExp: number;
+  highestLevel: number;
+}
+
 // ─────────────────────────────────────────────
 // PLAYER
 // ─────────────────────────────────────────────
@@ -1167,4 +1177,31 @@ export const awardMartialProficiency = async (
       await applyExp('martial_arts', Number(id), gained);
     }
   });
+};
+
+/** Aggregate Dojo numbers for the dashboard in a few cheap queries. */
+export const getDojoMetrics = async (): Promise<DojoMetrics> => {
+  const db = await getDb();
+  const arts = await db.getFirstAsync<{ art_count: number; total_exp: number; highest_level: number }>(
+    `SELECT COUNT(*) as art_count,
+            COALESCE(SUM(total_exp), 0) as total_exp,
+            COALESCE(MAX(level), 0) as highest_level
+       FROM martial_arts`
+  );
+  const skills = await db.getFirstAsync<{ skill_count: number; trained_count: number }>(
+    `SELECT COUNT(*) as skill_count,
+            COALESCE(SUM(CASE WHEN total_exp > 0 THEN 1 ELSE 0 END), 0) as trained_count
+       FROM skills`
+  );
+  const tags = await db.getFirstAsync<{ tag_count: number }>(
+    `SELECT COUNT(*) as tag_count FROM skill_exercises`
+  );
+  return {
+    artCount: arts?.art_count ?? 0,
+    skillCount: skills?.skill_count ?? 0,
+    trainedSkillCount: skills?.trained_count ?? 0,
+    taggedWorkoutCount: tags?.tag_count ?? 0,
+    totalProficiencyExp: arts?.total_exp ?? 0,
+    highestLevel: arts?.highest_level ?? 0,
+  };
 };
