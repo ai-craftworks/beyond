@@ -195,7 +195,9 @@ const DashboardScreen: React.FC = () => {
       <SystemPanel>
         <SectionHeader
           title="Dojo"
-          subtitle="Martial proficiency"
+          subtitle={dojo && dojo.artCount > 0
+            ? `${dojo.artCount} art${dojo.artCount === 1 ? '' : 's'} · ${dojo.skillCount} skill${dojo.skillCount === 1 ? '' : 's'}`
+            : 'Martial proficiency'}
           action={{ label: 'Open', onPress: () => navigation.navigate('Dojo') }}
         />
         {!dojo || dojo.artCount === 0 || !dojoBelt ? (
@@ -206,20 +208,20 @@ const DashboardScreen: React.FC = () => {
             <View style={styles.beltStrip}>
               <View style={[styles.beltDotBig, { backgroundColor: dojoBelt.color }]} />
               <Text style={[styles.beltName, { color: dojoBelt.color }]}>{dojoBelt.belt} Belt</Text>
-              <Text style={styles.beltLvl}>Highest · Lv. {dojo.highestLevel}</Text>
+              {!!dojo.highestArtName && (
+                <Text style={styles.beltArt} numberOfLines={1}>· {dojo.highestArtName}</Text>
+              )}
+              <Text style={styles.beltLvl}>Lv. {dojo.highestLevel}</Text>
             </View>
-            <View style={styles.dojoGrid}>
+            <ExpBar current={dojo.topArtExp} max={dojo.topArtExpToNext || 1} />
+            <View style={styles.dojoStats}>
               {([
-                { icon: 'shield',      label: 'Arts',      value: dojo.artCount },
-                { icon: 'layers',      label: 'Skills',    value: dojo.skillCount },
-                { icon: 'barbell',     label: 'Tagged',    value: dojo.taggedWorkoutCount },
-                { icon: 'trending-up', label: 'Prof. EXP', value: dojo.totalProficiencyExp },
-              ] as { icon: IonName; label: string; value: number }[]).map(m => (
-                <View key={m.label} style={styles.dojoTile}>
-                  <Ionicons name={m.icon} size={16} color={COLORS.accentCyan} />
-                  <Text style={styles.dojoVal}>{m.value.toLocaleString()}</Text>
-                  <Text style={styles.dojoLbl}>{m.label}</Text>
-                </View>
+                { icon: 'shield',      label: 'Arts',            value: dojo.artCount,            color: COLORS.accentBlue },
+                { icon: 'layers',      label: 'Skills',          value: dojo.skillCount,          color: COLORS.accentCyan },
+                { icon: 'barbell',     label: 'Tagged Workouts', value: dojo.taggedWorkoutCount,  color: COLORS.accentGreen },
+                { icon: 'trending-up', label: 'Proficiency EXP', value: dojo.totalProficiencyExp, color: COLORS.accentGold },
+              ] as { icon: IonName; label: string; value: number; color: string }[]).map(m => (
+                <StatRow key={m.label} icon={m.icon} label={m.label} value={m.value} color={m.color} />
               ))}
             </View>
           </>
@@ -372,15 +374,13 @@ const styles = StyleSheet.create({
   questStatusRow: { flexDirection: 'row', alignItems: 'center' },
   questExp:    { color: COLORS.accentGreen, fontSize: 13, fontWeight: '700' },
 
-  beltStrip:   { flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: COLORS.bgTertiary, borderRadius: 8, padding: 10, marginBottom: 12 },
+  beltStrip:   { flexDirection: 'row', alignItems: 'center', gap: 8, marginBottom: 12 },
   beltDotBig:  { width: 10, height: 10, borderRadius: 5 },
-  beltName:    { fontSize: 13, fontWeight: '800', letterSpacing: 0.3 },
-  beltLvl:     { color: COLORS.textMuted, fontSize: 11, fontWeight: '600', marginLeft: 'auto' },
+  beltName:    { fontSize: 14, fontWeight: '800', letterSpacing: 0.3 },
+  beltArt:     { color: COLORS.textSecondary, fontSize: 12, flexShrink: 1 },
+  beltLvl:     { color: COLORS.textMuted, fontSize: 12, fontWeight: '700', marginLeft: 'auto' },
 
-  dojoGrid:    { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  dojoTile:    { flexGrow: 1, flexBasis: '45%', backgroundColor: COLORS.bgTertiary, borderRadius: 8, paddingVertical: 10, alignItems: 'center', gap: 3 },
-  dojoVal:     { color: COLORS.textPrimary, fontSize: 16, fontWeight: '800' },
-  dojoLbl:     { color: COLORS.textMuted, fontSize: 10, fontWeight: '600', letterSpacing: 0.3 },
+  dojoStats:   { marginTop: 14 },
 
   quickNav:    { flexDirection: 'row', gap: 10 },
   quickBtn:    { flex: 1, backgroundColor: COLORS.bgSecondary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 10, paddingVertical: 14, alignItems: 'center', gap: 5 },

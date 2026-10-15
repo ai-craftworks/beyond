@@ -216,9 +216,10 @@ const AboutScreen: React.FC = () => {
         <Text style={styles.subHeading}>How Proficiency Grows</Text>
         <Text style={styles.bodyText}>
           Finishing a workout that is tagged to a skill adds that workout's base EXP
-          to the skill's proficiency. The same EXP is added once to the parent art,
-          so skills and arts level up together. Each workout counts once per skill
-          and once per art — repeating it does not double the gain.
+          to the skill's proficiency. Each skill levels up on its own, and an art's
+          level and belt are simply the combined EXP of all its skills — so training
+          any tagged skill advances the art. Untagged workouts (like general
+          bodybuilding) never count.
         </Text>
 
         <View style={styles.divider} />

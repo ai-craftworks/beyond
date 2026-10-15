@@ -505,6 +505,9 @@ export interface DojoMetrics {
   taggedWorkoutCount: number;
   totalProficiencyExp: number;
   highestLevel: number;
+  highestArtName: string | null;
+  topArtExp: number;
+  topArtExpToNext: number;
 }
 
 // ─────────────────────────────────────────────
@@ -967,22 +970,50 @@ export const createMartialArt = async (
   return result.lastInsertRowId;
 };
 
+/**
+ * An art's proficiency is derived entirely from its skills: total EXP is the
+ * sum of its skills' EXP, and level/belt follow from that. The art has no
+ * independent EXP pool, so untagged/general training never moves it.
+ */
+interface SkillAgg { skill_count: number; total_exp: number; }
+
+const deriveArt = (art: MartialArt, agg?: SkillAgg): MartialArt => {
+  const totalExp = agg?.total_exp ?? 0;
+  const { level, expInCurrentLevel, expToNext } = calculateMartialLevelFromTotalExp(totalExp);
+  return {
+    ...art,
+    total_exp: totalExp,
+    level,
+    exp: expInCurrentLevel,
+    exp_to_next: expToNext,
+    skill_count: agg?.skill_count ?? 0,
+  };
+};
+
 export const getMartialArts = async (): Promise<MartialArt[]> => {
   const db = await getDb();
   const arts = await db.getAllAsync<MartialArt>(
     `SELECT * FROM martial_arts ORDER BY created_at DESC`
   );
-  const counts = await db.getAllAsync<{ martial_art_id: number; count: number }>(
-    `SELECT martial_art_id, COUNT(*) as count FROM skills GROUP BY martial_art_id`
+  const aggs = await db.getAllAsync<SkillAgg & { martial_art_id: number }>(
+    `SELECT martial_art_id, COUNT(*) as skill_count, COALESCE(SUM(total_exp), 0) as total_exp
+       FROM skills GROUP BY martial_art_id`
   );
-  const byArt: Record<number, number> = {};
-  for (const c of counts) byArt[c.martial_art_id] = c.count;
-  return arts.map(a => ({ ...a, skill_count: byArt[a.id!] ?? 0 }));
+  const byArt: Record<number, SkillAgg> = {};
+  for (const a of aggs) byArt[a.martial_art_id] = a;
+  return arts.map(a => deriveArt(a, byArt[a.id!]));
 };
 
 export const getMartialArt = async (id: number): Promise<MartialArt | null> => {
   const db = await getDb();
-  return db.getFirstAsync<MartialArt>(`SELECT * FROM martial_arts WHERE id = ?`, [id]);
+  const art = await db.getFirstAsync<MartialArt>(`SELECT * FROM martial_arts WHERE id = ?`, [id]);
+  if (!art) return null;
+  const agg = await db.getFirstAsync<SkillAgg>(
+    `SELECT COUNT(*) as skill_count, COALESCE(SUM(total_exp), 0) as total_exp
+       FROM skills WHERE martial_art_id = ?`,
+    [id]
+  );
+  return deriveArt(art, agg ?? undefined);
 };
 
 export const updateMartialArt = async (id: number, updates: Partial<MartialArt>): Promise<void> => {
@@ -1117,9 +1148,9 @@ export const getExercisesForSkill = async (skillId: number): Promise<Exercise[]>
 };
 
 /**
- * Awards proficiency EXP to every skill (and martial art) reachable from the
- * given exercise completions. Each item's EXP is added once per tagged skill,
- * and once per martial art (deduped) even if several of its skills are tagged.
+ * Awards proficiency EXP to every skill tagged to the given exercise
+ * completions. Each item's EXP is added once per tagged skill. Martial arts
+ * have no independent EXP — their proficiency is derived from their skills.
  */
 export const awardMartialProficiency = async (
   items: { exercise_id: number; exp: number }[]
@@ -1130,51 +1161,36 @@ export const awardMartialProficiency = async (
   const db = await getDb();
   const ids = [...new Set(valid.map(i => i.exercise_id))];
   const placeholders = ids.map(() => '?').join(', ');
-  const tags = await db.getAllAsync<{ exercise_id: number; skill_id: number; martial_art_id: number }>(
-    `SELECT se.exercise_id, se.skill_id, s.martial_art_id
-       FROM skill_exercises se
-       JOIN skills s ON s.id = se.skill_id
-      WHERE se.exercise_id IN (${placeholders})`,
+  const tags = await db.getAllAsync<{ exercise_id: number; skill_id: number }>(
+    `SELECT exercise_id, skill_id FROM skill_exercises WHERE exercise_id IN (${placeholders})`,
     ids
   );
   if (tags.length === 0) return;
 
   const skillExp: Record<number, number> = {};
-  const artExp: Record<number, number> = {};
-  const seenItemArt = new Set<string>();
   for (const item of valid) {
     for (const t of tags) {
       if (t.exercise_id !== item.exercise_id) continue;
       skillExp[t.skill_id] = (skillExp[t.skill_id] ?? 0) + item.exp;
-      const key = `${item.exercise_id}:${t.martial_art_id}`;
-      if (!seenItemArt.has(key)) {
-        seenItemArt.add(key);
-        artExp[t.martial_art_id] = (artExp[t.martial_art_id] ?? 0) + item.exp;
-      }
     }
   }
 
-  const applyExp = async (
-    table: 'skills' | 'martial_arts', id: number, gained: number
-  ): Promise<void> => {
+  const applySkillExp = async (id: number, gained: number): Promise<void> => {
     const row = await db.getFirstAsync<{ total_exp: number }>(
-      `SELECT total_exp FROM ${table} WHERE id = ?`, [id]
+      `SELECT total_exp FROM skills WHERE id = ?`, [id]
     );
     if (!row) return;
     const newTotal = (row.total_exp ?? 0) + gained;
     const { level, expInCurrentLevel, expToNext } = calculateMartialLevelFromTotalExp(newTotal);
     await db.runAsync(
-      `UPDATE ${table} SET total_exp = ?, level = ?, exp = ?, exp_to_next = ? WHERE id = ?`,
+      `UPDATE skills SET total_exp = ?, level = ?, exp = ?, exp_to_next = ? WHERE id = ?`,
       [newTotal, level, expInCurrentLevel, expToNext, id]
     );
   };
 
   await db.withTransactionAsync(async () => {
     for (const [id, gained] of Object.entries(skillExp)) {
-      await applyExp('skills', Number(id), gained);
-    }
-    for (const [id, gained] of Object.entries(artExp)) {
-      await applyExp('martial_arts', Number(id), gained);
+      await applySkillExp(Number(id), gained);
     }
   });
 };
@@ -1182,11 +1198,12 @@ export const awardMartialProficiency = async (
 /** Aggregate Dojo numbers for the dashboard in a few cheap queries. */
 export const getDojoMetrics = async (): Promise<DojoMetrics> => {
   const db = await getDb();
-  const arts = await db.getFirstAsync<{ art_count: number; total_exp: number; highest_level: number }>(
-    `SELECT COUNT(*) as art_count,
-            COALESCE(SUM(total_exp), 0) as total_exp,
-            COALESCE(MAX(level), 0) as highest_level
-       FROM martial_arts`
+  const arts = await db.getAllAsync<{ id: number; name: string }>(
+    `SELECT id, name FROM martial_arts`
+  );
+  const perArt = await db.getAllAsync<{ martial_art_id: number; total_exp: number }>(
+    `SELECT martial_art_id, COALESCE(SUM(total_exp), 0) as total_exp
+       FROM skills GROUP BY martial_art_id`
   );
   const skills = await db.getFirstAsync<{ skill_count: number; trained_count: number }>(
     `SELECT COUNT(*) as skill_count,
@@ -1196,12 +1213,36 @@ export const getDojoMetrics = async (): Promise<DojoMetrics> => {
   const tags = await db.getFirstAsync<{ tag_count: number }>(
     `SELECT COUNT(*) as tag_count FROM skill_exercises`
   );
+
+  const expByArt: Record<number, number> = {};
+  for (const r of perArt) expByArt[r.martial_art_id] = r.total_exp;
+
+  let highestLevel = 0;
+  let highestArtName: string | null = null;
+  let topArtExp = 0;
+  let topArtExpToNext = calculateMartialLevelFromTotalExp(0).expToNext;
+  let topTotal = -1;
+  for (const art of arts) {
+    const total = expByArt[art.id] ?? 0;
+    const { level, expInCurrentLevel, expToNext } = calculateMartialLevelFromTotalExp(total);
+    if (level > highestLevel) highestLevel = level;
+    if (total > topTotal) {
+      topTotal = total;
+      highestArtName = art.name;
+      topArtExp = expInCurrentLevel;
+      topArtExpToNext = expToNext;
+    }
+  }
+
   return {
-    artCount: arts?.art_count ?? 0,
+    artCount: arts.length,
     skillCount: skills?.skill_count ?? 0,
     trainedSkillCount: skills?.trained_count ?? 0,
     taggedWorkoutCount: tags?.tag_count ?? 0,
-    totalProficiencyExp: arts?.total_exp ?? 0,
-    highestLevel: arts?.highest_level ?? 0,
+    totalProficiencyExp: perArt.reduce((sum, r) => sum + r.total_exp, 0),
+    highestLevel,
+    highestArtName,
+    topArtExp,
+    topArtExpToNext,
   };
 };
