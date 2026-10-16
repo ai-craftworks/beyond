@@ -770,9 +770,24 @@ export const createGroup = async (kind: string, name: string, color: string): Pr
   return result.lastInsertRowId;
 };
 
-export const renameGroup = async (id: number, name: string): Promise<void> => {
+/**
+ * Rename a group. Returns false when another group of the same kind already
+ * uses that name (case-insensitive) so callers can show feedback instead of
+ * hitting the UNIQUE (kind, name) constraint.
+ */
+export const renameGroup = async (id: number, name: string): Promise<boolean> => {
   const db = await getDb();
-  await db.runAsync(`UPDATE item_groups SET name = ? WHERE id = ?`, [name.trim(), id]);
+  const trimmed = name.trim();
+  const clash = await db.getFirstAsync<{ id: number }>(
+    `SELECT id FROM item_groups
+      WHERE name = ? COLLATE NOCASE
+        AND id != ?
+        AND kind = (SELECT kind FROM item_groups WHERE id = ?)`,
+    [trimmed, id, id],
+  );
+  if (clash) return false;
+  await db.runAsync(`UPDATE item_groups SET name = ? WHERE id = ?`, [trimmed, id]);
+  return true;
 };
 
 export const deleteGroup = async (id: number): Promise<void> => {

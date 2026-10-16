@@ -83,9 +83,18 @@ const GroupsScreen: React.FC = () => {
   const handleAdd = async () => {
     const name = newName.trim();
     if (!name) return;
-    await createGroup(kind, name, groupColorForIndex(groups.length));
-    setNewName('');
-    await load();
+    if (groups.some(g => g.name.toLowerCase() === name.toLowerCase())) {
+      Alert.alert('System', 'A group with this name already exists.');
+      return;
+    }
+    try {
+      await createGroup(kind, name, groupColorForIndex(groups.length));
+      setNewName('');
+      await load();
+    } catch (e) {
+      console.error('createGroup error:', e);
+      Alert.alert('Error', 'Could not create the group. Please try again.');
+    }
   };
 
   const startRename = (g: Group) => {
@@ -97,9 +106,18 @@ const GroupsScreen: React.FC = () => {
     if (editingId == null) return;
     const name = editName.trim();
     if (!name) { setEditingId(null); return; }
-    await renameGroup(editingId, name);
-    setEditingId(null);
-    await load();
+    try {
+      const ok = await renameGroup(editingId, name);
+      if (!ok) {
+        Alert.alert('System', 'A group with that name already exists.');
+        return;           // keep the editor open so the name can be fixed
+      }
+      setEditingId(null);
+      await load();
+    } catch (e) {
+      console.error('renameGroup error:', e);
+      Alert.alert('Error', 'Could not rename the group. Please try again.');
+    }
   };
 
   const remove = (g: Group) =>
@@ -108,9 +126,14 @@ const GroupsScreen: React.FC = () => {
       {
         text: 'Delete', style: 'destructive',
         onPress: async () => {
-          await deleteGroup(g.id!);
-          if (expandedId === g.id) setExpandedId(null);
-          await load();
+          try {
+            await deleteGroup(g.id!);
+            if (expandedId === g.id) setExpandedId(null);
+            await load();
+          } catch (e) {
+            console.error('deleteGroup error:', e);
+            Alert.alert('Error', 'Could not delete the group. Please try again.');
+          }
         },
       },
     ]);

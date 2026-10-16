@@ -299,7 +299,6 @@ const App: React.FC = () => {
               options={{
                 headerShown: true,
                 headerTitle: 'Groups',
-                headerLeft: () => <HamburgerButton />,
                 headerStyle: styles.header,
                 headerTitleStyle: styles.headerTitle,
                 headerTintColor: COLORS.accentCyan,
