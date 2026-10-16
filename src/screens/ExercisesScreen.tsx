@@ -3,24 +3,28 @@ import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
   Modal, ScrollView, Alert, KeyboardAvoidingView, Platform, TextInput,
 } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createExercise, deleteExercise, updateExercise, Exercise, getExercises, getGroups, Group } from '../database/Database';
-import { SystemButton, SystemInput, SectionHeader, EmptyState, SystemDropdown, SystemMultiDropdown } from '../components/UIComponents';
-import GroupManagerModal, { GroupPicker } from '../components/GroupManagerModal';
+import { SystemButton, SystemInput, SectionHeader, EmptyState, SystemDropdown, SystemMultiDropdown, FilterSheet, FilterSection, FilterChip, FilterButton } from '../components/UIComponents';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, EXERCISE_CATEGORIES, STATS, UNIT_TYPES, BODY_PARTS, bodyPartLabel, parseBodyParts, parseUnits, parseGroupIds, unitSuffix } from '../constants/game';
 import { filterExercises } from '../utils/filterExercises';
+import type { RootStackParamList } from '../../App';
+
+type Nav = NativeStackNavigationProp<RootStackParamList>;
 
 const emptyDefaults = (): Record<string, string> => ({ reps: '10' });
 
 const ExercisesScreen: React.FC = () => {
+  const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const [exercises, setExercises] = useState<Exercise[]>([]);
   const [groups, setGroups]       = useState<Group[]>([]);
   const [modal, setModal]         = useState(false);
   const [loading, setLoading]     = useState(false);
-  const [groupMgr, setGroupMgr]   = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const [editModal, setEditModal]     = useState(false);
   const [editTarget, setEditTarget]   = useState<Exercise | null>(null);
@@ -64,7 +68,7 @@ const ExercisesScreen: React.FC = () => {
     setGroups(grps);
   };
 
-  const groupOptions = groups.map(g => ({ value: String(g.id), label: g.name }));
+  const groupOptions = groups.map(g => ({ value: String(g.id), label: g.name, color: g.color }));
   const groupName = (id: number) => groups.find(g => g.id === id)?.name ?? '';
   const groupColor = (id: number) => groups.find(g => g.id === id)?.color ?? COLORS.textSecondary;
 
@@ -210,6 +214,10 @@ const ExercisesScreen: React.FC = () => {
     return [{ type: ex.unit_type ?? 'reps', label: ex.unit_label ?? 'reps', default: 0 }];
   };
   const filtersActive = search.trim() !== '' || catFilter !== 'all' || partFilter.length > 0 || groupFilter.length > 0;
+  const filterCount = (catFilter !== 'all' ? 1 : 0) + (partFilter.length > 0 ? 1 : 0) + (groupFilter.length > 0 ? 1 : 0);
+  const resetFilters = () => { setCatFilter('all'); setPartFilter([]); setGroupFilter([]); };
+  const togglePart = (v: string) => setPartFilter(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
+  const toggleGroupF = (v: string) => setGroupFilter(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
   const shown = filterExercises(exercises, { search, category: catFilter, bodyParts: partFilter, groups: groupFilter.map(Number) });
   const cardGroups = (ex: Exercise) => parseGroupIds(ex.groups);
 
@@ -223,42 +231,15 @@ const ExercisesScreen: React.FC = () => {
           <>
             <SectionHeader title="Exercise Library"
               subtitle={filtersActive ? `${shown.length} / ${exercises.length} shown` : `${exercises.length} exercises`}
+              secondary={{ label: 'Groups', onPress: () => navigation.navigate('Groups', { kind: 'exercise' }) }}
               action={{ label: '+ Create', onPress: () => setModal(true) }} />
 
             <View style={styles.searchRow}>
               <Ionicons name="search" size={16} color={COLORS.textMuted} />
               <TextInput style={styles.searchInput} value={search} onChangeText={setSearch}
                 placeholder="Search name or description" placeholderTextColor={COLORS.textMuted} />
-              <TouchableOpacity onPress={() => setGroupMgr(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="pricetags-outline" size={18} color={COLORS.accentCyan} />
-              </TouchableOpacity>
+              <FilterButton count={filterCount} onPress={() => setFiltersOpen(true)} />
             </View>
-
-            <View style={styles.dropRow}>
-              <SystemDropdown
-                label="Category"
-                options={[{ value: 'all', label: 'All' }, ...EXERCISE_CATEGORIES]}
-                value={catFilter}
-                onChange={setCatFilter}
-                style={styles.flex1}
-              />
-
-              <SystemMultiDropdown
-                label="Body Parts"
-                options={BODY_PARTS}
-                values={partFilter}
-                onChange={setPartFilter}
-                style={styles.flex1}
-              />
-            </View>
-
-            <SystemMultiDropdown
-              label="Groups"
-              options={groupOptions}
-              values={groupFilter}
-              onChange={setGroupFilter}
-              placeholder={groups.length === 0 ? 'No groups yet' : 'Any'}
-            />
           </>
         }
         ListEmptyComponent={<EmptyState icon="barbell"
@@ -464,7 +445,13 @@ const ExercisesScreen: React.FC = () => {
               />
               <Text style={styles.expHint}>Select every muscle group this exercise targets.</Text>
 
-              <GroupPicker groups={groups} selected={selGroups} onChange={setSelGroups} />
+              <SystemMultiDropdown
+                label="Groups"
+                options={groupOptions}
+                values={selGroups.map(String)}
+                onChange={ids => setSelGroups(ids.map(Number))}
+                placeholder={groups.length === 0 ? 'No groups yet' : 'Any'}
+              />
 
               <View style={styles.row}>
                 <SystemButton title="Cancel" variant="ghost" style={styles.flex1}
@@ -594,7 +581,13 @@ const ExercisesScreen: React.FC = () => {
               />
               <Text style={styles.expHint}>Select every muscle group this exercise targets.</Text>
 
-              <GroupPicker groups={groups} selected={editGroups} onChange={setEditGroups} />
+              <SystemMultiDropdown
+                label="Groups"
+                options={groupOptions}
+                values={editGroups.map(String)}
+                onChange={ids => setEditGroups(ids.map(Number))}
+                placeholder={groups.length === 0 ? 'No groups yet' : 'Any'}
+              />
 
               <View style={styles.row}>
                 <SystemButton title="Cancel" variant="ghost" style={styles.flex1}
@@ -607,13 +600,37 @@ const ExercisesScreen: React.FC = () => {
         </KeyboardAvoidingView>
       </Modal>
 
-      <GroupManagerModal
-        visible={groupMgr}
-        kind="exercise"
-        title="Workout Groups"
-        onClose={() => setGroupMgr(false)}
-        onChanged={load}
-      />
+      <FilterSheet
+        visible={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        onReset={resetFilters}
+      >
+        <FilterSection label="Category">
+          <FilterChip label="All" active={catFilter === 'all'} onPress={() => setCatFilter('all')} />
+          {EXERCISE_CATEGORIES.map(c => (
+            <FilterChip key={c.value} label={c.label} color={accentForCat(c.value)}
+              active={catFilter === c.value}
+              onPress={() => setCatFilter(catFilter === c.value ? 'all' : c.value)} />
+          ))}
+        </FilterSection>
+
+        <FilterSection label="Body Parts">
+          {BODY_PARTS.map(b => (
+            <FilterChip key={b.value} label={b.label} active={partFilter.includes(b.value)}
+              onPress={() => togglePart(b.value)} />
+          ))}
+        </FilterSection>
+
+        <FilterSection label="Groups">
+          {groups.length === 0 ? (
+            <Text style={styles.filterEmpty}>No groups yet — create some from the Groups screen.</Text>
+          ) : groups.map(g => (
+            <FilterChip key={g.id} label={g.name} color={g.color}
+              active={groupFilter.includes(String(g.id))}
+              onPress={() => toggleGroupF(String(g.id))} />
+          ))}
+        </FilterSection>
+      </FilterSheet>
     </View>
   );
 };
@@ -638,6 +655,7 @@ const styles = StyleSheet.create({
 
   searchRow:  { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bgTertiary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 8, paddingHorizontal: 12, marginBottom: 14, gap: 8 },
   searchInput: { flex: 1, color: COLORS.textPrimary, fontSize: 14, paddingVertical: 11 },
+  filterEmpty: { color: COLORS.textMuted, fontSize: 12, fontStyle: 'italic' },
   dropRow:    { flexDirection: 'row', gap: 12 },
 
   overlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'flex-end' },

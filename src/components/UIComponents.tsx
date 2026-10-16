@@ -80,7 +80,7 @@ export const SystemInput: React.FC<InputProps> = ({
 
 // ── SystemDropdown / SystemMultiDropdown ─────
 
-export interface DropdownOption { value: string; label: string; }
+export interface DropdownOption { value: string; label: string; color?: string; }
 
 interface DropdownModalProps {
   visible: boolean; title: string; onClose: () => void;
@@ -120,16 +120,22 @@ export const SystemDropdown: React.FC<DropdownProps> = ({
     <View style={[styles.dropWrap, style]}>
       <Text style={styles.inputLabel}>{label}</Text>
       <TouchableOpacity style={styles.dropTrigger} onPress={() => { playSound('click'); setOpen(true); }} activeOpacity={0.75}>
-        <Text style={[styles.dropValue, !selected && styles.dropPlaceholder]} numberOfLines={1}>
-          {selected ? selected.label : placeholder}
-        </Text>
+        <View style={styles.dropTriggerMain}>
+          {selected?.color && <View style={[styles.optDot, { backgroundColor: selected.color }]} />}
+          <Text style={[styles.dropValue, !selected && styles.dropPlaceholder]} numberOfLines={1}>
+            {selected ? selected.label : placeholder}
+          </Text>
+        </View>
         <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
       </TouchableOpacity>
       <DropdownModal visible={open} title={label} onClose={() => setOpen(false)}>
         {options.map(o => (
           <TouchableOpacity key={o.value} style={styles.dropOption}
             onPress={() => { playSound('click'); onChange(o.value); setOpen(false); }}>
-            <Text style={[styles.dropOptionTxt, o.value === value && styles.dropOptionTxtOn]}>{o.label}</Text>
+            <View style={styles.dropOptionMain}>
+              {o.color && <View style={[styles.optDot, { backgroundColor: o.color }]} />}
+              <Text style={[styles.dropOptionTxt, o.value === value && styles.dropOptionTxtOn]} numberOfLines={1}>{o.label}</Text>
+            </View>
             {o.value === value && <Ionicons name="checkmark" size={16} color={COLORS.accentCyan} />}
           </TouchableOpacity>
         ))}
@@ -152,15 +158,19 @@ export const SystemMultiDropdown: React.FC<MultiDropdownProps> = ({
     : values.length === 1
       ? (options.find(o => o.value === values[0])?.label ?? values[0])
       : `${values.length} selected`;
+  const soleColor = values.length === 1 ? options.find(o => o.value === values[0])?.color : undefined;
   const toggle = (v: string) =>
     onChange(values.includes(v) ? values.filter(x => x !== v) : [...values, v]);
   return (
     <View style={[styles.dropWrap, style]}>
       <Text style={styles.inputLabel}>{label}</Text>
       <TouchableOpacity style={styles.dropTrigger} onPress={() => { playSound('click'); setOpen(true); }} activeOpacity={0.75}>
-        <Text style={[styles.dropValue, values.length === 0 && styles.dropPlaceholder]} numberOfLines={1}>
-          {summary}
-        </Text>
+        <View style={styles.dropTriggerMain}>
+          {soleColor && <View style={[styles.optDot, { backgroundColor: soleColor }]} />}
+          <Text style={[styles.dropValue, values.length === 0 && styles.dropPlaceholder]} numberOfLines={1}>
+            {summary}
+          </Text>
+        </View>
         <Ionicons name="chevron-down" size={16} color={COLORS.textSecondary} />
       </TouchableOpacity>
       <DropdownModal
@@ -180,7 +190,10 @@ export const SystemMultiDropdown: React.FC<MultiDropdownProps> = ({
           const on = values.includes(o.value);
           return (
             <TouchableOpacity key={o.value} style={styles.dropOption} onPress={() => { playSound('click'); toggle(o.value); }}>
-              <Text style={[styles.dropOptionTxt, on && styles.dropOptionTxtOn]}>{o.label}</Text>
+              <View style={styles.dropOptionMain}>
+                {o.color && <View style={[styles.optDot, { backgroundColor: o.color }]} />}
+                <Text style={[styles.dropOptionTxt, on && styles.dropOptionTxtOn]} numberOfLines={1}>{o.label}</Text>
+              </View>
               <Ionicons name={on ? 'checkbox' : 'square-outline'} size={16}
                 color={on ? COLORS.accentCyan : COLORS.textMuted} />
             </TouchableOpacity>
@@ -196,20 +209,112 @@ export const SystemMultiDropdown: React.FC<MultiDropdownProps> = ({
 interface SecHdrProps {
   title: string; subtitle?: string;
   action?: { label: string; onPress: () => void };
+  secondary?: { label: string; onPress: () => void };
 }
 
-export const SectionHeader: React.FC<SecHdrProps> = ({ title, subtitle, action }) => (
+export const SectionHeader: React.FC<SecHdrProps> = ({ title, subtitle, action, secondary }) => (
   <View style={styles.secHdr}>
-    <View>
+    <View style={styles.secHdrLeft}>
       <Text style={styles.secTitle}>{title}</Text>
       {subtitle && <Text style={styles.secSub}>{subtitle}</Text>}
     </View>
-    {action && (
-      <TouchableOpacity onPress={() => { playSound('click'); action.onPress(); }}>
-        <Text style={styles.secAction}>{action.label}</Text>
-      </TouchableOpacity>
-    )}
+    <View style={styles.secHdrActions}>
+      {secondary && (
+        <TouchableOpacity onPress={() => { playSound('click'); secondary.onPress(); }}>
+          <Text style={styles.secActionAlt}>{secondary.label}</Text>
+        </TouchableOpacity>
+      )}
+      {action && (
+        <TouchableOpacity onPress={() => { playSound('click'); action.onPress(); }}>
+          <Text style={styles.secAction}>{action.label}</Text>
+        </TouchableOpacity>
+      )}
+    </View>
   </View>
+);
+
+// ── FilterSheet ──────────────────────────────
+
+interface FilterSheetProps {
+  visible: boolean;
+  onClose: () => void;
+  onReset: () => void;
+  title?: string;
+  children: React.ReactNode;
+}
+
+/** Themed bottom sheet that hosts a screen's filter controls. */
+export const FilterSheet: React.FC<FilterSheetProps> = ({
+  visible, onClose, onReset, title = 'Filters', children,
+}) => (
+  <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+    <TouchableOpacity style={styles.filterOverlay} activeOpacity={1} onPress={onClose}>
+      <TouchableOpacity activeOpacity={1} style={styles.filterSheet} onPress={() => {}}>
+        <View style={styles.filterHandle} />
+        <View style={styles.filterHdr}>
+          <Text style={styles.filterTitle}>◆ {title.toUpperCase()}</Text>
+          <TouchableOpacity onPress={() => { playSound('click'); onClose(); }}>
+            <Ionicons name="close" size={20} color={COLORS.textMuted} />
+          </TouchableOpacity>
+        </View>
+        <ScrollView style={styles.filterBody} showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 8 }}>
+          {children}
+        </ScrollView>
+        <View style={styles.filterFooter}>
+          <TouchableOpacity style={[styles.filterBtn, styles.filterReset]}
+            onPress={() => { playSound('click'); onReset(); }} activeOpacity={0.75}>
+            <Text style={styles.filterResetTxt}>Reset</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.filterBtn, styles.filterApply]}
+            onPress={() => { playSound('click'); onClose(); }} activeOpacity={0.75}>
+            <Text style={styles.filterApplyTxt}>Apply</Text>
+          </TouchableOpacity>
+        </View>
+      </TouchableOpacity>
+    </TouchableOpacity>
+  </Modal>
+);
+
+interface FilterSectionProps { label: string; children: React.ReactNode; }
+
+/** A labelled block of filter chips inside a FilterSheet. */
+export const FilterSection: React.FC<FilterSectionProps> = ({ label, children }) => (
+  <View style={styles.filterSection}>
+    <Text style={styles.filterSectionLbl}>{label}</Text>
+    <View style={styles.filterSectionRow}>{children}</View>
+  </View>
+);
+
+interface FilterChipProps {
+  label: string; active: boolean; onPress: () => void; color?: string;
+}
+
+/** Selectable pill chip used inside FilterSection. */
+export const FilterChip: React.FC<FilterChipProps> = ({ label, active, onPress, color }) => {
+  const c = color ?? COLORS.accentCyan;
+  return (
+    <TouchableOpacity
+      style={[styles.fChip, active && { borderColor: c, backgroundColor: `${c}22` }]}
+      onPress={() => { playSound('click'); onPress(); }} activeOpacity={0.75}
+    >
+      {color && <View style={[styles.fChipDot, { backgroundColor: active ? c : COLORS.textMuted }]} />}
+      <Text style={[styles.fChipTxt, active && { color: c }]}>{label}</Text>
+    </TouchableOpacity>
+  );
+};
+
+interface FilterButtonProps { count: number; onPress: () => void; }
+
+/** The funnel button shown at the right of a search row; shows an active-filter count. */
+export const FilterButton: React.FC<FilterButtonProps> = ({ count, onPress }) => (
+  <TouchableOpacity style={styles.filterTrigger} onPress={() => { playSound('click'); onPress(); }}
+    activeOpacity={0.75} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+    <Ionicons name="options-outline" size={20} color={count > 0 ? COLORS.accentCyan : COLORS.textSecondary} />
+    {count > 0 && (
+      <View style={styles.filterBadge}><Text style={styles.filterBadgeTxt}>{count}</Text></View>
+    )}
+  </TouchableOpacity>
 );
 
 // ── StatRow ──────────────────────────────────
@@ -299,25 +404,55 @@ const styles = StyleSheet.create({
 
   dropWrap:        { marginBottom: 14 },
   dropTrigger:     { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: COLORS.bgTertiary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 11 },
+  dropTriggerMain: { flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1 },
   dropValue:       { color: COLORS.textPrimary, fontSize: 15, flex: 1, paddingRight: 8 },
   dropPlaceholder: { color: COLORS.textMuted },
+  optDot:          { width: 9, height: 9, borderRadius: 4.5 },
   dropOverlay:     { flex: 1, backgroundColor: 'rgba(0,0,0,0.75)', justifyContent: 'center', paddingHorizontal: 28 },
   dropSheet:       { backgroundColor: COLORS.bgPanel, borderRadius: 14, borderWidth: 1, borderColor: COLORS.accentCyan, padding: 16, maxHeight: '70%' },
   dropHdr:         { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
   dropTitle:       { color: COLORS.accentCyan, fontSize: 12, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase' },
   dropList:        { marginBottom: 4 },
   dropOption:      { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: COLORS.borderDim },
-  dropOptionTxt:   { color: COLORS.textSecondary, fontSize: 14, fontWeight: '600', flex: 1, paddingRight: 8 },
+  dropOptionMain:  { flexDirection: 'row', alignItems: 'center', gap: 9, flex: 1, paddingRight: 8 },
+  dropOptionTxt:   { color: COLORS.textSecondary, fontSize: 14, fontWeight: '600', flex: 1 },
   dropOptionTxtOn: { color: COLORS.accentCyan },
   dropFooter:      { flexDirection: 'row', justifyContent: 'flex-end', gap: 10, marginTop: 10 },
   dropFooterBtn:   { paddingVertical: 8, paddingHorizontal: 14, borderRadius: 6 },
   dropFooterTxt:   { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700' },
   dropFooterTxtOn: { color: COLORS.accentCyan },
 
+  filterOverlay:    { flex: 1, backgroundColor: 'rgba(0,0,0,0.78)', justifyContent: 'flex-end' },
+  filterSheet:      { backgroundColor: COLORS.bgPanel, borderTopLeftRadius: 20, borderTopRightRadius: 20, borderTopWidth: 1, borderColor: COLORS.accentCyan, padding: 20, maxHeight: '85%' },
+  filterHandle:     { width: 40, height: 4, backgroundColor: COLORS.borderMain, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
+  filterHdr:        { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 },
+  filterTitle:      { color: COLORS.accentCyan, fontSize: 13, fontWeight: '700', letterSpacing: 2 },
+  filterBody:       { flexShrink: 1 },
+  filterFooter:     { flexDirection: 'row', gap: 12, marginTop: 16 },
+  filterBtn:        { flex: 1, borderRadius: 8, paddingVertical: 13, alignItems: 'center', justifyContent: 'center' },
+  filterReset:      { borderWidth: 1, borderColor: COLORS.borderMain },
+  filterResetTxt:   { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700', letterSpacing: 1 },
+  filterApply:      { backgroundColor: COLORS.accentCyan },
+  filterApplyTxt:   { color: '#0A0E1A', fontSize: 13, fontWeight: '700', letterSpacing: 1 },
+
+  filterTrigger:    { padding: 2 },
+  filterBadge:      { position: 'absolute', top: -5, right: -6, minWidth: 16, height: 16, borderRadius: 8, backgroundColor: COLORS.accentCyan, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 3 },
+  filterBadgeTxt:   { color: '#0A0E1A', fontSize: 10, fontWeight: '800' },
+
+  filterSection:    { marginBottom: 18 },
+  filterSectionLbl: { color: COLORS.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 9 },
+  filterSectionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
+  fChip:            { flexDirection: 'row', alignItems: 'center', gap: 6, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 6, paddingHorizontal: 11, paddingVertical: 7 },
+  fChipDot:         { width: 8, height: 8, borderRadius: 4 },
+  fChipTxt:         { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' },
+
   secHdr:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 12 },
+  secHdrLeft:   { flex: 1, paddingRight: 10 },
+  secHdrActions:{ flexDirection: 'row', alignItems: 'center', gap: 14 },
   secTitle:     { color: COLORS.textPrimary, fontSize: 15, fontWeight: '700' },
   secSub:       { color: COLORS.textMuted, fontSize: 11, marginTop: 2 },
   secAction:    { color: COLORS.accentCyan, fontSize: 13, fontWeight: '600' },
+  secActionAlt: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
 
   statRow:      { flexDirection: 'row', alignItems: 'center', paddingVertical: 9, borderBottomWidth: 1, borderBottomColor: COLORS.borderDim },
   statIcon:     { width: 26, textAlign: 'center' },

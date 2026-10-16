@@ -10,6 +10,7 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import { initDatabase, getPlayer } from './src/database/Database';
 import type { Plan } from './src/database/Database';
 import { COLORS } from './src/constants/game';
+import type { GroupKind } from './src/constants/game';
 import { Ionicons } from '@expo/vector-icons';
 import { NavProvider, OffcanvasNav, HamburgerButton } from './src/components/OffcanvasNav';
 import { navigationRef } from './src/navigation/ref';
@@ -25,6 +26,7 @@ import MartialArtDetailScreen from './src/screens/MartialArtDetailScreen';
 import SkillDetailScreen  from './src/screens/SkillDetailScreen';
 import ProfileScreen      from './src/screens/ProfileScreen';
 import SessionScreen      from './src/screens/SessionScreen';
+import GroupsScreen       from './src/screens/GroupsScreen';
 import AboutScreen from './src/screens/AboutScreen';
 import { initAudio, playSound } from './src/utils/sounds';
 
@@ -39,6 +41,7 @@ export type RootStackParamList = {
     | { mode: 'skill'; skillId: number; skillName: string };
   MartialArtDetail: { artId: number };
   SkillDetail:      { skillId: number };
+  Groups:           { kind?: GroupKind } | undefined;
   Guide:            undefined;
 };
 
@@ -283,6 +286,19 @@ const App: React.FC = () => {
               options={{
                 headerShown: true,
                 headerTitle: 'System Guide',
+                headerLeft: () => <HamburgerButton />,
+                headerStyle: styles.header,
+                headerTitleStyle: styles.headerTitle,
+                headerTintColor: COLORS.accentCyan,
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="Groups"
+              component={GroupsScreen}
+              options={{
+                headerShown: true,
+                headerTitle: 'Groups',
                 headerLeft: () => <HamburgerButton />,
                 headerStyle: styles.header,
                 headerTitleStyle: styles.headerTitle,

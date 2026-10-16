@@ -70,6 +70,7 @@ const MENU: { key: string; label: string; icon: IonName; iconOn: IonName; tab?: 
   { key: 'Exercises', label: 'Exercises', icon: 'barbell-outline',           iconOn: 'barbell',           tab: 'Exercises' },
   { key: 'Profile',   label: 'Profile',   icon: 'person-outline',            iconOn: 'person',            tab: 'Profile' },
   { key: 'Plans',     label: 'Plans',     icon: 'list-outline',              iconOn: 'list',              tab: 'Plans' },
+  { key: 'Groups',    label: 'Groups',    icon: 'pricetags-outline',         iconOn: 'pricetags' },
   { key: 'Dojo',      label: 'Dojo',      icon: 'hand-left-outline',         iconOn: 'hand-left',         tab: 'Dojo' },
   { key: 'Guide',     label: 'Guide',     icon: 'information-circle-outline', iconOn: 'information-circle' },
 ];
@@ -116,6 +117,8 @@ export const OffcanvasNav: React.FC = () => {
     closeNav();
     if (item.tab) {
       navigationRef.navigate('Main', { screen: item.tab });
+    } else if (item.key === 'Groups') {
+      navigationRef.navigate('Groups', { kind: 'exercise' });
     } else {
       navigationRef.navigate('Guide');
     }

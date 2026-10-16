@@ -16,8 +16,7 @@ import {
   createPlan, deletePlan, Plan, getPlans, updatePlan, cancelTodayPendingSessions,
   getGroups, setPlanGroups, Group,
 } from '../database/Database';
-import { SystemButton, SystemInput, SectionHeader, EmptyState, SystemMultiDropdown } from '../components/UIComponents';
-import GroupManagerModal, { GroupPicker } from '../components/GroupManagerModal';
+import { SystemButton, SystemInput, SectionHeader, EmptyState, SystemMultiDropdown, FilterSheet, FilterSection, FilterChip, FilterButton } from '../components/UIComponents';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, parseGroupIds } from '../constants/game';
 import { filterPlans } from '../utils/filterPlans';
@@ -33,7 +32,7 @@ const PlansScreen: React.FC = () => {
   const [plans, setPlans]             = useState<Plan[]>([]);
   const [groups, setGroups]           = useState<Group[]>([]);
   const [createModal, setCreateModal] = useState(false);
-  const [groupMgr, setGroupMgr]       = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   // List search / filters
   const [search, setSearch]           = useState('');
@@ -62,10 +61,12 @@ const PlansScreen: React.FC = () => {
     setGroups(grps);
   };
 
-  const groupOptions = groups.map(g => ({ value: String(g.id), label: g.name }));
+  const groupOptions = groups.map(g => ({ value: String(g.id), label: g.name, color: g.color }));
   const groupName = (id: number) => groups.find(g => g.id === id)?.name ?? '';
   const groupColor = (id: number) => groups.find(g => g.id === id)?.color ?? COLORS.textSecondary;
   const filtersActive = search.trim() !== '' || groupFilter.length > 0;
+  const filterCount = groupFilter.length > 0 ? 1 : 0;
+  const toggleGroupF = (v: string) => setGroupFilter(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
   const shown = filterPlans(plans, { search, groups: groupFilter.map(Number) });
 
   const openManage = (plan: Plan) => navigation.navigate('ManagePlan', { plan });
@@ -146,24 +147,15 @@ const PlansScreen: React.FC = () => {
           <>
             <SectionHeader title="Workout Plans"
               subtitle={filtersActive ? `${shown.length} / ${plans.length} shown` : `${plans.filter(p => p.is_active).length} active`}
+              secondary={{ label: 'Groups', onPress: () => navigation.navigate('Groups', { kind: 'plan' }) }}
               action={{ label: '+ Create', onPress: () => setCreateModal(true) }} />
 
             <View style={styles.searchRow}>
               <Ionicons name="search" size={16} color={COLORS.textMuted} />
               <TextInput style={styles.searchInput} value={search} onChangeText={setSearch}
                 placeholder="Search plans" placeholderTextColor={COLORS.textMuted} />
-              <TouchableOpacity onPress={() => setGroupMgr(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <Ionicons name="pricetags-outline" size={18} color={COLORS.accentCyan} />
-              </TouchableOpacity>
+              <FilterButton count={filterCount} onPress={() => setFiltersOpen(true)} />
             </View>
-
-            <SystemMultiDropdown
-              label="Groups"
-              options={groupOptions}
-              values={groupFilter}
-              onChange={setGroupFilter}
-              placeholder={groups.length === 0 ? 'No groups yet' : 'Any'}
-            />
           </>
         }
         ListEmptyComponent={<EmptyState icon="clipboard"
@@ -206,7 +198,13 @@ const PlansScreen: React.FC = () => {
                 placeholder="0 = no penalty"
               />
               <Text style={styles.hint}>EXP deducted if you skip this quest for the day.</Text>
-              <GroupPicker groups={groups} selected={createGroups} onChange={setCreateGroups} />
+              <SystemMultiDropdown
+                label="Groups"
+                options={groupOptions}
+                values={createGroups.map(String)}
+                onChange={ids => setCreateGroups(ids.map(Number))}
+                placeholder={groups.length === 0 ? 'No groups yet' : 'Any'}
+              />
               <View style={styles.row}>
                 <SystemButton title="Cancel" variant="ghost" style={styles.flex1} onPress={() => setCreateModal(false)} />
                 <SystemButton title="Create" style={styles.flex1} onPress={handleCreatePlan} />
@@ -246,7 +244,13 @@ const PlansScreen: React.FC = () => {
                 placeholder="0 = no penalty"
               />
 
-              <GroupPicker groups={groups} selected={editGroups} onChange={setEditGroups} />
+              <SystemMultiDropdown
+                label="Groups"
+                options={groupOptions}
+                values={editGroups.map(String)}
+                onChange={ids => setEditGroups(ids.map(Number))}
+                placeholder={groups.length === 0 ? 'No groups yet' : 'Any'}
+              />
 
               <View style={styles.row}>
                 <SystemButton title="Cancel" variant="ghost" style={styles.flex1}
@@ -258,13 +262,21 @@ const PlansScreen: React.FC = () => {
         </KeyboardAvoidingView>
       </Modal>
 
-      <GroupManagerModal
-        visible={groupMgr}
-        kind="plan"
-        title="Plan Groups"
-        onClose={() => setGroupMgr(false)}
-        onChanged={loadPlans}
-      />
+      <FilterSheet
+        visible={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        onReset={() => setGroupFilter([])}
+      >
+        <FilterSection label="Groups">
+          {groups.length === 0 ? (
+            <Text style={styles.filterEmpty}>No groups yet — create some from the Groups screen.</Text>
+          ) : groups.map(g => (
+            <FilterChip key={g.id} label={g.name} color={g.color}
+              active={groupFilter.includes(String(g.id))}
+              onPress={() => toggleGroupF(String(g.id))} />
+          ))}
+        </FilterSection>
+      </FilterSheet>
     </View>
   );
 };
@@ -373,6 +385,7 @@ const styles = StyleSheet.create({
 
   searchRow:   { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bgTertiary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 8, paddingHorizontal: 12, marginBottom: 14, gap: 8 },
   searchInput: { flex: 1, color: COLORS.textPrimary, fontSize: 14, paddingVertical: 11 },
+  filterEmpty: { color: COLORS.textMuted, fontSize: 12, fontStyle: 'italic' },
 
   groupRow:    { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 6 },
   groupTag:    { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 2 },
