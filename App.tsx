@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import { View, Text, ActivityIndicator, StyleSheet, Image } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { NavigationContainer } from '@react-navigation/native';
+import type { NavigatorScreenParams } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context'; // ← added useSafeAreaInsets
@@ -9,7 +10,10 @@ import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-cont
 import { initDatabase, getPlayer } from './src/database/Database';
 import type { Plan } from './src/database/Database';
 import { COLORS } from './src/constants/game';
+import type { GroupKind } from './src/constants/game';
 import { Ionicons } from '@expo/vector-icons';
+import { NavProvider, OffcanvasNav, HamburgerButton } from './src/components/OffcanvasNav';
+import { navigationRef } from './src/navigation/ref';
 
 import RegistrationScreen from './src/screens/RegistrationScreen';
 import DashboardScreen    from './src/screens/DashboardScreen';
@@ -22,12 +26,13 @@ import MartialArtDetailScreen from './src/screens/MartialArtDetailScreen';
 import SkillDetailScreen  from './src/screens/SkillDetailScreen';
 import ProfileScreen      from './src/screens/ProfileScreen';
 import SessionScreen      from './src/screens/SessionScreen';
+import GroupsScreen       from './src/screens/GroupsScreen';
 import AboutScreen from './src/screens/AboutScreen';
 import { initAudio, playSound } from './src/utils/sounds';
 
 export type RootStackParamList = {
   Registration: undefined;
-  Main:         undefined;
+  Main:         NavigatorScreenParams<TabParamList> | undefined;
   Session:      { sessionId: number };
   ManagePlan:   { plan: Plan };
   WorkoutSelect:
@@ -36,15 +41,16 @@ export type RootStackParamList = {
     | { mode: 'skill'; skillId: number; skillName: string };
   MartialArtDetail: { artId: number };
   SkillDetail:      { skillId: number };
+  Groups:           { kind?: GroupKind } | undefined;
+  Guide:            undefined;
 };
 
 export type TabParamList = {
-  Dashboard: undefined;
+  Home:      undefined;
   Exercises: undefined;
+  Profile:   undefined;
   Plans:     undefined;
   Dojo:      undefined;
-  Profile:   undefined;
-  About:     undefined; 
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -56,8 +62,13 @@ const MainTabs: React.FC = () => {
 
   return (
     <Tab.Navigator
+      initialRouteName="Home"
       screenOptions={{
-        headerShown: false,
+        headerShown: true,
+        headerLeft: () => <HamburgerButton />,
+        headerStyle: styles.header,
+        headerTitleStyle: styles.headerTitle,
+        headerTintColor: COLORS.accentCyan,
         tabBarStyle: {
           backgroundColor: COLORS.bgSecondary,
           borderTopWidth: 1,
@@ -72,54 +83,42 @@ const MainTabs: React.FC = () => {
       }}
     >
       <Tab.Screen
-        name="Dashboard"
-        component={DashboardScreen}
-        listeners={{ tabPress: () => playSound('navigate') }}
-        options={{
-          title: 'Status',
-          headerShown: true,
-          headerTitle: 'Beyond',           // ← app name
-          headerStyle: styles.header,
-          headerTitleStyle: styles.headerTitle,
-          headerTintColor: COLORS.accentCyan,
-          tabBarIcon: ({ focused }) => (
-            <Ionicons name={focused ? 'flash' : 'flash-outline'} size={22}
-              color={focused ? COLORS.accentCyan : COLORS.textMuted} />
-          ),
-        }}
-      />
-      
-      <Tab.Screen
         name="Exercises"
         component={ExercisesScreen}
         listeners={{ tabPress: () => playSound('navigate') }}
         options={{
           title: 'Exercises',
-          headerShown: true,
           headerTitle: 'Exercises',
-          headerStyle: styles.header,
-          headerTitleStyle: styles.headerTitle,
-          headerTintColor: COLORS.accentCyan,
           tabBarIcon: ({ focused }) => (
             <Ionicons name={focused ? 'barbell' : 'barbell-outline'} size={22}
               color={focused ? COLORS.accentCyan : COLORS.textMuted} />
           ),
         }}
       />
-      
+
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
         listeners={{ tabPress: () => playSound('navigate') }}
         options={{
           title: 'Profile',
-          headerShown: true,
           headerTitle: 'Profile',
-          headerStyle: styles.header,
-          headerTitleStyle: styles.headerTitle,
-          headerTintColor: COLORS.accentCyan,
           tabBarIcon: ({ focused }) => (
             <Ionicons name={focused ? 'person' : 'person-outline'} size={22}
+              color={focused ? COLORS.accentCyan : COLORS.textMuted} />
+          ),
+        }}
+      />
+
+      <Tab.Screen
+        name="Home"
+        component={DashboardScreen}
+        listeners={{ tabPress: () => playSound('navigate') }}
+        options={{
+          title: 'Home',
+          headerTitle: 'Beyond',           // ← app name
+          tabBarIcon: ({ focused }) => (
+            <Ionicons name={focused ? 'home' : 'home-outline'} size={22}
               color={focused ? COLORS.accentCyan : COLORS.textMuted} />
           ),
         }}
@@ -131,11 +130,7 @@ const MainTabs: React.FC = () => {
         listeners={{ tabPress: () => playSound('navigate') }}
         options={{
           title: 'Plans',
-          headerShown: true,
           headerTitle: 'Plans',
-          headerStyle: styles.header,
-          headerTitleStyle: styles.headerTitle,
-          headerTintColor: COLORS.accentCyan,
           tabBarIcon: ({ focused }) => (
             <Ionicons name={focused ? 'list' : 'list-outline'} size={22}
               color={focused ? COLORS.accentCyan : COLORS.textMuted} />
@@ -149,31 +144,9 @@ const MainTabs: React.FC = () => {
         listeners={{ tabPress: () => playSound('navigate') }}
         options={{
           title: 'Dojo',
-          headerShown: true,
           headerTitle: 'Martial Arts',
-          headerStyle: styles.header,
-          headerTitleStyle: styles.headerTitle,
-          headerTintColor: COLORS.accentCyan,
           tabBarIcon: ({ focused }) => (
             <Ionicons name={focused ? 'hand-left' : 'hand-left-outline'} size={22}
-              color={focused ? COLORS.accentCyan : COLORS.textMuted} />
-          ),
-        }}
-      />
-
-      <Tab.Screen
-        name="About"
-        component={AboutScreen}
-        listeners={{ tabPress: () => playSound('navigate') }}
-        options={{
-          title: 'Guide',
-          headerShown: true,
-          headerTitle: 'System Guide',
-          headerStyle: styles.header,
-          headerTitleStyle: styles.headerTitle,
-          headerTintColor: COLORS.accentCyan,
-          tabBarIcon: ({ focused }) => (
-            <Ionicons name={focused ? 'information-circle' : 'information-circle-outline'} size={22}
               color={focused ? COLORS.accentCyan : COLORS.textMuted} />
           ),
         }}
@@ -207,7 +180,10 @@ const App: React.FC = () => {
     return (
       <View style={styles.splash}>
         <StatusBar style="light" />
-        <ActivityIndicator color={COLORS.accentCyan} size="large" />
+        <Image source={require('./assets/images/logo.png')} style={styles.splashLogo} resizeMode="contain" />
+        <Text style={styles.splashName}>Beyond</Text>
+        <Text style={styles.splashTag}>Your Journey · Your Evolution</Text>
+        <ActivityIndicator color={COLORS.accentCyan} size="large" style={styles.splashSpinner} />
       </View>
     );
   }
@@ -228,83 +204,111 @@ const App: React.FC = () => {
   return (
     <SafeAreaProvider>
       <StatusBar style="light" />
-      <NavigationContainer>
-        <Stack.Navigator
-          initialRouteName={appState === 'register' ? 'Registration' : 'Main'}
-          screenOptions={{
-            headerShown: false,
-            contentStyle: { backgroundColor: COLORS.bgPrimary },
-            animation: 'fade',
-          }}
-        >
-          <Stack.Screen name="Registration" component={RegistrationScreen} />
-          <Stack.Screen name="Main"         component={MainTabs} />
-          <Stack.Screen
-            name="Session"
-            component={SessionScreen}
-            options={{
-              headerShown: true,
-              headerTitle: 'Quest In Progress',
-              headerStyle: styles.header,
-              headerTitleStyle: styles.headerTitle,
-              headerTintColor: COLORS.accentCyan,
-              animation: 'slide_from_bottom',
+      <NavProvider>
+        <NavigationContainer ref={navigationRef}>
+          <Stack.Navigator
+            initialRouteName={appState === 'register' ? 'Registration' : 'Main'}
+            screenOptions={{
+              headerShown: false,
+              contentStyle: { backgroundColor: COLORS.bgPrimary },
+              animation: 'fade',
             }}
-          />
-          <Stack.Screen
-            name="ManagePlan"
-            component={ManagePlanScreen}
-            options={({ route }) => ({
-              headerShown: true,
-              headerTitle: route.params.plan.name,
-              headerStyle: styles.header,
-              headerTitleStyle: styles.headerTitle,
-              headerTintColor: COLORS.accentCyan,
-              animation: 'slide_from_right',
-            })}
-          />
-          <Stack.Screen
-            name="WorkoutSelect"
-            component={WorkoutSelectScreen}
-            options={({ route }) => ({
-              headerShown: true,
-              headerTitle: route.params.mode === 'plan'
-                ? `Add to ${route.params.planName}`
-                : route.params.mode === 'skill'
-                  ? `Add to ${route.params.skillName}`
-                  : 'Add Bonus Quest',
-              headerStyle: styles.header,
-              headerTitleStyle: styles.headerTitle,
-              headerTintColor: COLORS.accentCyan,
-              animation: 'slide_from_right',
-            })}
-          />
-          <Stack.Screen
-            name="MartialArtDetail"
-            component={MartialArtDetailScreen}
-            options={{
-              headerShown: true,
-              headerTitle: 'Martial Art',
-              headerStyle: styles.header,
-              headerTitleStyle: styles.headerTitle,
-              headerTintColor: COLORS.accentCyan,
-              animation: 'slide_from_right',
-            }}
-          />
-          <Stack.Screen
-            name="SkillDetail"
-            component={SkillDetailScreen}
-            options={{
-              headerShown: true,
-              headerTitle: 'Skill',
-              headerStyle: styles.header,
-              headerTitleStyle: styles.headerTitle,
-              headerTintColor: COLORS.accentCyan,
-              animation: 'slide_from_right',
-            }}
-          />
-        </Stack.Navigator>
-      </NavigationContainer>
+          >
+            <Stack.Screen name="Registration" component={RegistrationScreen} />
+            <Stack.Screen name="Main"         component={MainTabs} />
+            <Stack.Screen
+              name="Session"
+              component={SessionScreen}
+              options={{
+                headerShown: true,
+                headerTitle: 'Quest In Progress',
+                headerStyle: styles.header,
+                headerTitleStyle: styles.headerTitle,
+                headerTintColor: COLORS.accentCyan,
+                animation: 'slide_from_bottom',
+              }}
+            />
+            <Stack.Screen
+              name="ManagePlan"
+              component={ManagePlanScreen}
+              options={({ route }) => ({
+                headerShown: true,
+                headerTitle: route.params.plan.name,
+                headerStyle: styles.header,
+                headerTitleStyle: styles.headerTitle,
+                headerTintColor: COLORS.accentCyan,
+                animation: 'slide_from_right',
+              })}
+            />
+            <Stack.Screen
+              name="WorkoutSelect"
+              component={WorkoutSelectScreen}
+              options={({ route }) => ({
+                headerShown: true,
+                headerTitle: route.params.mode === 'plan'
+                  ? `Add to ${route.params.planName}`
+                  : route.params.mode === 'skill'
+                    ? `Add to ${route.params.skillName}`
+                    : 'Add Bonus Quest',
+                headerStyle: styles.header,
+                headerTitleStyle: styles.headerTitle,
+                headerTintColor: COLORS.accentCyan,
+                animation: 'slide_from_right',
+              })}
+            />
+            <Stack.Screen
+              name="MartialArtDetail"
+              component={MartialArtDetailScreen}
+              options={{
+                headerShown: true,
+                headerTitle: 'Martial Art',
+                headerStyle: styles.header,
+                headerTitleStyle: styles.headerTitle,
+                headerTintColor: COLORS.accentCyan,
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="SkillDetail"
+              component={SkillDetailScreen}
+              options={{
+                headerShown: true,
+                headerTitle: 'Skill',
+                headerStyle: styles.header,
+                headerTitleStyle: styles.headerTitle,
+                headerTintColor: COLORS.accentCyan,
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="Guide"
+              component={AboutScreen}
+              options={{
+                headerShown: true,
+                headerTitle: 'System Guide',
+                headerLeft: () => <HamburgerButton />,
+                headerStyle: styles.header,
+                headerTitleStyle: styles.headerTitle,
+                headerTintColor: COLORS.accentCyan,
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="Groups"
+              component={GroupsScreen}
+              options={{
+                headerShown: true,
+                headerTitle: 'Groups',
+                headerStyle: styles.header,
+                headerTitleStyle: styles.headerTitle,
+                headerTintColor: COLORS.accentCyan,
+                animation: 'slide_from_right',
+              }}
+            />
+          </Stack.Navigator>
+        </NavigationContainer>
+        <OffcanvasNav />
+      </NavProvider>
     </SafeAreaProvider>
   );
 };
@@ -314,6 +318,10 @@ const styles = StyleSheet.create({
     flex: 1, backgroundColor: COLORS.bgPrimary,
     alignItems: 'center', justifyContent: 'center',
   },
+  splashLogo:    { width: 160, height: 160, marginBottom: 12 },
+  splashName:    { color: COLORS.textPrimary, fontSize: 30, fontWeight: '800', letterSpacing: 6, textTransform: 'uppercase' },
+  splashTag:     { color: COLORS.accentCyan, fontSize: 11, fontWeight: '600', letterSpacing: 2, marginTop: 6, textTransform: 'uppercase' },
+  splashSpinner: { marginTop: 28 },
   errorTitle: {
     color: COLORS.accentRed, fontSize: 18, fontWeight: '800', letterSpacing: 2,
     marginBottom: 12,

@@ -247,6 +247,38 @@ export const bodyPartLabel = (value: string): string =>
   BODY_PARTS.find(b => b.value === value)?.label ?? value;
 
 // ─────────────────────────────────────────────
+// GROUPS  (purely organizational buckets for workouts & plans)
+// ─────────────────────────────────────────────
+
+export type GroupKind = 'exercise' | 'plan';
+
+/** Auto-assigned palette for new groups (cycled by group count). */
+export const GROUP_COLORS = [
+  '#00D4FF', // cyan
+  '#1A7FD4', // blue
+  '#7B2FBE', // purple
+  '#FFD700', // gold
+  '#00FF87', // green
+  '#FF4757', // red
+  '#FF9F1C', // orange
+  '#2EC4B6', // teal
+] as const;
+
+/** Pick a palette colour for the group at `index` (wraps around). */
+export const groupColorForIndex = (index: number): string =>
+  GROUP_COLORS[((index % GROUP_COLORS.length) + GROUP_COLORS.length) % GROUP_COLORS.length];
+
+/** Parse a stored JSON array of group ids (from Exercise.groups / Plan.groups). Safe, always returns a number[]. */
+export const parseGroupIds = (json: string | null | undefined): number[] => {
+  try {
+    const arr = JSON.parse(json || '[]');
+    return Array.isArray(arr) ? arr.filter((n): n is number => typeof n === 'number') : [];
+  } catch {
+    return [];
+  }
+};
+
+// ─────────────────────────────────────────────
 // TITLE CONDITIONS
 // ─────────────────────────────────────────────
 

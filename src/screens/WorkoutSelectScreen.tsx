@@ -18,9 +18,9 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   getExercises, getPlanExercises, addExerciseToPlan,
   addBonusExerciseToSession, addExerciseToSkill,
-  getTaggedExerciseIdsForSkill, Exercise,
+  getTaggedExerciseIdsForSkill, Exercise, getGroups, Group,
 } from '../database/Database';
-import { SystemButton, SystemInput, SystemDropdown, SystemMultiDropdown, EmptyState } from '../components/UIComponents';
+import { SystemButton, SystemInput, EmptyState, FilterSheet, FilterSection, FilterChip, FilterButton } from '../components/UIComponents';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, EXERCISE_CATEGORIES, BODY_PARTS, parseBodyParts, bodyPartLabel, unitSuffix } from '../constants/game';
 import { expForUnits, UnitValue } from '../utils/math';
@@ -41,6 +41,7 @@ const WorkoutSelectScreen: React.FC = () => {
   const isSkill    = skillId !== null;
 
   const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [groups, setGroups]       = useState<Group[]>([]);
   const [loading, setLoading]     = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [selected, setSelected]   = useState<Exercise | null>(null);
@@ -53,15 +54,19 @@ const WorkoutSelectScreen: React.FC = () => {
   const [search, setSearch] = useState('');
   const [cat, setCat]       = useState('all');
   const [parts, setParts]   = useState<string[]>([]);
+  const [groupFilter, setGroupFilter] = useState<string[]>([]);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
-      const [exs, tagged] = await Promise.all([
+      const [exs, tagged, grps] = await Promise.all([
         getExercises(),
         isSkill ? getTaggedExerciseIdsForSkill(skillId!) : Promise.resolve<number[]>([]),
+        getGroups('exercise'),
       ]);
       setExercises(exs);
       setTaggedIds(tagged);
+      setGroups(grps);
       setLoading(false);
     })();
   }, [isSkill, skillId]);
@@ -136,7 +141,11 @@ const WorkoutSelectScreen: React.FC = () => {
     }
   };
 
-  const exShown = filterExercises(exercises, { search, category: cat, bodyParts: parts });
+  const exShown = filterExercises(exercises, { search, category: cat, bodyParts: parts, groups: groupFilter.map(Number) });
+  const filterCount = (cat !== 'all' ? 1 : 0) + (parts.length > 0 ? 1 : 0) + (groupFilter.length > 0 ? 1 : 0);
+  const resetFilters = () => { setCat('all'); setParts([]); setGroupFilter([]); };
+  const togglePart = (v: string) => setParts(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
+  const toggleGroupF = (v: string) => setGroupFilter(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
 
   return (
     <View style={styles.root}>
@@ -157,23 +166,7 @@ const WorkoutSelectScreen: React.FC = () => {
           <Ionicons name="search" size={16} color={COLORS.textMuted} />
           <TextInput style={styles.searchInput} value={search} onChangeText={setSearch}
             placeholder="Search workouts" placeholderTextColor={COLORS.textMuted} />
-        </View>
-
-        <View style={styles.dropRow}>
-          <SystemDropdown
-            label="Category"
-            options={[{ value: 'all', label: 'All' }, ...EXERCISE_CATEGORIES]}
-            value={cat}
-            onChange={setCat}
-            style={styles.flex1}
-          />
-          <SystemMultiDropdown
-            label="Body Parts"
-            options={BODY_PARTS}
-            values={parts}
-            onChange={setParts}
-            style={styles.flex1}
-          />
+          <FilterButton count={filterCount} onPress={() => setFiltersOpen(true)} />
         </View>
 
         <Text style={styles.selectLbl}>{isSkill ? 'SELECT WORKOUTS TO TAG' : 'SELECT WORKOUT'}</Text>
@@ -261,6 +254,38 @@ const WorkoutSelectScreen: React.FC = () => {
           />
         </View>
       </ScrollView>
+
+      <FilterSheet
+        visible={filtersOpen}
+        onClose={() => setFiltersOpen(false)}
+        onReset={resetFilters}
+      >
+        <FilterSection label="Category">
+          <FilterChip label="All" active={cat === 'all'} onPress={() => setCat('all')} />
+          {EXERCISE_CATEGORIES.map(c => (
+            <FilterChip key={c.value} label={c.label}
+              active={cat === c.value}
+              onPress={() => setCat(cat === c.value ? 'all' : c.value)} />
+          ))}
+        </FilterSection>
+
+        <FilterSection label="Body Parts">
+          {BODY_PARTS.map(b => (
+            <FilterChip key={b.value} label={b.label} active={parts.includes(b.value)}
+              onPress={() => togglePart(b.value)} />
+          ))}
+        </FilterSection>
+
+        <FilterSection label="Groups">
+          {groups.length === 0 ? (
+            <Text style={styles.filterEmpty}>No groups yet — create some from the Groups screen.</Text>
+          ) : groups.map(g => (
+            <FilterChip key={g.id} label={g.name} color={g.color}
+              active={groupFilter.includes(String(g.id))}
+              onPress={() => toggleGroupF(String(g.id))} />
+          ))}
+        </FilterSection>
+      </FilterSheet>
     </View>
   );
 };
@@ -273,6 +298,7 @@ const styles = StyleSheet.create({
 
   searchRow:   { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bgTertiary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 8, paddingHorizontal: 12, marginBottom: 14, gap: 8 },
   searchInput: { flex: 1, color: COLORS.textPrimary, fontSize: 14, paddingVertical: 11 },
+  filterEmpty: { color: COLORS.textMuted, fontSize: 12, fontStyle: 'italic' },
   dropRow:     { flexDirection: 'row', gap: 12 },
 
   selectLbl:   { color: COLORS.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 8, marginTop: 6, textTransform: 'uppercase' },
