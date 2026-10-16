@@ -18,7 +18,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   getExercises, getPlanExercises, addExerciseToPlan,
   addBonusExerciseToSession, addExerciseToSkill,
-  getTaggedExerciseIdsForSkill, Exercise,
+  getTaggedExerciseIdsForSkill, Exercise, getGroups, Group,
 } from '../database/Database';
 import { SystemButton, SystemInput, SystemDropdown, SystemMultiDropdown, EmptyState } from '../components/UIComponents';
 import { Ionicons } from '@expo/vector-icons';
@@ -41,6 +41,7 @@ const WorkoutSelectScreen: React.FC = () => {
   const isSkill    = skillId !== null;
 
   const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [groups, setGroups]       = useState<Group[]>([]);
   const [loading, setLoading]     = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [selected, setSelected]   = useState<Exercise | null>(null);
@@ -53,15 +54,18 @@ const WorkoutSelectScreen: React.FC = () => {
   const [search, setSearch] = useState('');
   const [cat, setCat]       = useState('all');
   const [parts, setParts]   = useState<string[]>([]);
+  const [groupFilter, setGroupFilter] = useState<string[]>([]);
 
   useEffect(() => {
     (async () => {
-      const [exs, tagged] = await Promise.all([
+      const [exs, tagged, grps] = await Promise.all([
         getExercises(),
         isSkill ? getTaggedExerciseIdsForSkill(skillId!) : Promise.resolve<number[]>([]),
+        getGroups('exercise'),
       ]);
       setExercises(exs);
       setTaggedIds(tagged);
+      setGroups(grps);
       setLoading(false);
     })();
   }, [isSkill, skillId]);
@@ -136,7 +140,8 @@ const WorkoutSelectScreen: React.FC = () => {
     }
   };
 
-  const exShown = filterExercises(exercises, { search, category: cat, bodyParts: parts });
+  const exShown = filterExercises(exercises, { search, category: cat, bodyParts: parts, groups: groupFilter.map(Number) });
+  const groupOptions = groups.map(g => ({ value: String(g.id), label: g.name }));
 
   return (
     <View style={styles.root}>
@@ -175,6 +180,16 @@ const WorkoutSelectScreen: React.FC = () => {
             style={styles.flex1}
           />
         </View>
+
+        {groups.length > 0 && (
+          <SystemMultiDropdown
+            label="Groups"
+            options={groupOptions}
+            values={groupFilter}
+            onChange={setGroupFilter}
+            placeholder="Any"
+          />
+        )}
 
         <Text style={styles.selectLbl}>{isSkill ? 'SELECT WORKOUTS TO TAG' : 'SELECT WORKOUT'}</Text>
         {loading ? (

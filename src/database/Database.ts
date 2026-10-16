@@ -259,6 +259,29 @@ export const initDatabase = async (): Promise<void> => {
       FOREIGN KEY (skill_id)    REFERENCES skills(id)    ON DELETE CASCADE,
       FOREIGN KEY (exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
     );
+
+    CREATE TABLE IF NOT EXISTS item_groups (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      kind        TEXT    NOT NULL,
+      name        TEXT    NOT NULL,
+      color       TEXT    DEFAULT '#00D4FF',
+      created_at  TEXT    DEFAULT (datetime('now')),
+      UNIQUE (kind, name)
+    );
+
+    CREATE TABLE IF NOT EXISTS exercise_groups (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      exercise_id INTEGER NOT NULL,
+      group_id    INTEGER NOT NULL,
+      UNIQUE (exercise_id, group_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS plan_groups (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      plan_id     INTEGER NOT NULL,
+      group_id    INTEGER NOT NULL,
+      UNIQUE (plan_id, group_id)
+    );
   `);
 
   // ─────────────────────────────────────────────
@@ -364,6 +387,7 @@ export interface Exercise {
   units?: string;        // JSON array of UnitSpec: [{ type, label, default }]
   primary_unit?: string; // unit type that drives EXP
   body_parts?: string;   // JSON array, populated by getExercises (join table, not a column)
+  groups?: string;       // JSON array of group ids, populated by getExercises (join table, not a column)
   created_at?: string;
 }
 
@@ -374,6 +398,15 @@ export interface Plan {
   is_active: number;
   repeat_days: string;
   penalty_exp: number;
+  groups?: string;       // JSON array of group ids, populated by getPlans (join table, not a column)
+  created_at?: string;
+}
+
+export interface Group {
+  id?: number;
+  kind: string;          // 'exercise' | 'plan'
+  name: string;
+  color: string;
   created_at?: string;
 }
 
@@ -541,8 +574,9 @@ export const updatePlayer = async (updates: Partial<Player>): Promise<void> => {
 // ─────────────────────────────────────────────
 
 export const createExercise = async (
-  ex: Omit<Exercise, 'id' | 'created_at' | 'body_parts'>,
-  bodyParts: string[] = []
+  ex: Omit<Exercise, 'id' | 'created_at' | 'body_parts' | 'groups'>,
+  bodyParts: string[] = [],
+  groupIds: number[] = []
 ): Promise<number> => {
   const db = await getDb();
   let id: number | undefined;
@@ -561,6 +595,12 @@ export const createExercise = async (
         [id, bp]
       );
     }
+    for (const gid of groupIds) {
+      await db.runAsync(
+        `INSERT OR IGNORE INTO exercise_groups (exercise_id, group_id) VALUES (?, ?)`,
+        [id, gid]
+      );
+    }
   });
   return id!;
 };
@@ -571,31 +611,46 @@ export const getExercises = async (): Promise<Exercise[]> => {
   const parts = await db.getAllAsync<{ exercise_id: number; body_part: string }>(
     `SELECT exercise_id, body_part FROM exercise_body_parts`
   );
+  const links = await db.getAllAsync<{ exercise_id: number; group_id: number }>(
+    `SELECT exercise_id, group_id FROM exercise_groups`
+  );
   const byExercise = new Map<number, string[]>();
   for (const p of parts) {
     const arr = byExercise.get(p.exercise_id) ?? [];
     arr.push(p.body_part);
     byExercise.set(p.exercise_id, arr);
   }
-  return exercises.map(ex => ({ ...ex, body_parts: JSON.stringify(byExercise.get(ex.id!) ?? []) }));
+  const groupsByExercise = new Map<number, number[]>();
+  for (const l of links) {
+    const arr = groupsByExercise.get(l.exercise_id) ?? [];
+    arr.push(l.group_id);
+    groupsByExercise.set(l.exercise_id, arr);
+  }
+  return exercises.map(ex => ({
+    ...ex,
+    body_parts: JSON.stringify(byExercise.get(ex.id!) ?? []),
+    groups: JSON.stringify(groupsByExercise.get(ex.id!) ?? []),
+  }));
 };
 
 export const deleteExercise = async (id: number): Promise<void> => {
   const db = await getDb();
   // FK enforcement is off — clean dependants explicitly.
   await db.runAsync(`DELETE FROM skill_exercises WHERE exercise_id = ?`, [id]);
+  await db.runAsync(`DELETE FROM exercise_groups WHERE exercise_id = ?`, [id]);
   await db.runAsync(`DELETE FROM exercises WHERE id = ?`, [id]);
 };
 
 export const updateExercise = async (
   id: number,
   updates: Partial<Exercise>,
-  bodyParts?: string[]
+  bodyParts?: string[],
+  groupIds?: number[]
 ): Promise<void> => {
   const db = await getDb();
-  const { body_parts, ...fields } = updates;
+  const { body_parts, groups, ...fields } = updates;
   const keys = Object.keys(fields);
-  if (keys.length === 0 && bodyParts === undefined) return;
+  if (keys.length === 0 && bodyParts === undefined && groupIds === undefined) return;
   await db.withTransactionAsync(async () => {
     if (keys.length > 0) {
       const setClause = keys.map(k => `${k} = ?`).join(', ');
@@ -610,6 +665,15 @@ export const updateExercise = async (
         );
       }
     }
+    if (groupIds !== undefined) {
+      await db.runAsync(`DELETE FROM exercise_groups WHERE exercise_id = ?`, [id]);
+      for (const gid of groupIds) {
+        await db.runAsync(
+          `INSERT OR IGNORE INTO exercise_groups (exercise_id, group_id) VALUES (?, ?)`,
+          [id, gid]
+        );
+      }
+    }
   });
 };
 
@@ -617,31 +681,105 @@ export const updateExercise = async (
 // PLANS
 // ─────────────────────────────────────────────
 
-export const createPlan = async (plan: Omit<Plan, 'id' | 'created_at'>): Promise<number> => {
+export const createPlan = async (plan: Omit<Plan, 'id' | 'created_at' | 'groups'>, groupIds: number[] = []): Promise<number> => {
   const db = await getDb();
-  const result = await db.runAsync(
-    `INSERT INTO plans (name, description, is_active, repeat_days, penalty_exp) VALUES (?, ?, ?, ?, ?)`,
-    [plan.name, plan.description, plan.is_active, plan.repeat_days, plan.penalty_exp]
-  );
-  return result.lastInsertRowId;
+  let id: number | undefined;
+  await db.withTransactionAsync(async () => {
+    const result = await db.runAsync(
+      `INSERT INTO plans (name, description, is_active, repeat_days, penalty_exp) VALUES (?, ?, ?, ?, ?)`,
+      [plan.name, plan.description, plan.is_active, plan.repeat_days, plan.penalty_exp]
+    );
+    id = result.lastInsertRowId;
+    for (const gid of groupIds) {
+      await db.runAsync(
+        `INSERT OR IGNORE INTO plan_groups (plan_id, group_id) VALUES (?, ?)`,
+        [id, gid]
+      );
+    }
+  });
+  return id!;
 };
 
 export const getPlans = async (): Promise<Plan[]> => {
   const db = await getDb();
-  return db.getAllAsync<Plan>(`SELECT * FROM plans ORDER BY created_at DESC`);
+  const plans = await db.getAllAsync<Plan>(`SELECT * FROM plans ORDER BY created_at DESC`);
+  const links = await db.getAllAsync<{ plan_id: number; group_id: number }>(
+    `SELECT plan_id, group_id FROM plan_groups`
+  );
+  const groupsByPlan = new Map<number, number[]>();
+  for (const l of links) {
+    const arr = groupsByPlan.get(l.plan_id) ?? [];
+    arr.push(l.group_id);
+    groupsByPlan.set(l.plan_id, arr);
+  }
+  return plans.map(p => ({ ...p, groups: JSON.stringify(groupsByPlan.get(p.id!) ?? []) }));
+};
+
+export const setPlanGroups = async (planId: number, groupIds: number[]): Promise<void> => {
+  const db = await getDb();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(`DELETE FROM plan_groups WHERE plan_id = ?`, [planId]);
+    for (const gid of groupIds) {
+      await db.runAsync(
+        `INSERT OR IGNORE INTO plan_groups (plan_id, group_id) VALUES (?, ?)`,
+        [planId, gid]
+      );
+    }
+  });
 };
 
 export const updatePlan = async (id: number, updates: Partial<Plan>): Promise<void> => {
   const db = await getDb();
-  const keys = Object.keys(updates);
+  const { groups, ...fields } = updates;
+  const keys = Object.keys(fields);
   if (keys.length === 0) return;
-  const fields = keys.map(k => `${k} = ?`).join(', ');
-  await db.runAsync(`UPDATE plans SET ${fields} WHERE id = ?`, [...Object.values(updates), id]);
+  const setClause = keys.map(k => `${k} = ?`).join(', ');
+  await db.runAsync(`UPDATE plans SET ${setClause} WHERE id = ?`, [...Object.values(fields), id]);
 };
 
 export const deletePlan = async (id: number): Promise<void> => {
   const db = await getDb();
+  await db.runAsync(`DELETE FROM plan_groups WHERE plan_id = ?`, [id]);
   await db.runAsync(`DELETE FROM plans WHERE id = ?`, [id]);
+};
+
+// ─────────────────────────────────────────────
+// GROUPS  (organizational only — never affect EXP/ranks)
+// ─────────────────────────────────────────────
+
+export const getGroups = async (kind: string): Promise<Group[]> => {
+  const db = await getDb();
+  return db.getAllAsync<Group>(
+    `SELECT * FROM item_groups WHERE kind = ? ORDER BY name COLLATE NOCASE ASC`,
+    [kind]
+  );
+};
+
+export const createGroup = async (kind: string, name: string, color: string): Promise<number> => {
+  const db = await getDb();
+  const trimmed = name.trim();
+  const existing = await db.getFirstAsync<{ id: number }>(
+    `SELECT id FROM item_groups WHERE kind = ? AND name = ? COLLATE NOCASE`,
+    [kind, trimmed]
+  );
+  if (existing) return existing.id;
+  const result = await db.runAsync(
+    `INSERT INTO item_groups (kind, name, color) VALUES (?, ?, ?)`,
+    [kind, trimmed, color]
+  );
+  return result.lastInsertRowId;
+};
+
+export const renameGroup = async (id: number, name: string): Promise<void> => {
+  const db = await getDb();
+  await db.runAsync(`UPDATE item_groups SET name = ? WHERE id = ?`, [name.trim(), id]);
+};
+
+export const deleteGroup = async (id: number): Promise<void> => {
+  const db = await getDb();
+  await db.runAsync(`DELETE FROM exercise_groups WHERE group_id = ?`, [id]);
+  await db.runAsync(`DELETE FROM plan_groups WHERE group_id = ?`, [id]);
+  await db.runAsync(`DELETE FROM item_groups WHERE id = ?`, [id]);
 };
 
 // Removes pending sessions for a plan from today — called when plan is deactivated or deleted
@@ -905,8 +1043,11 @@ export const resetAllData = async (): Promise<void> => {
     DELETE FROM bonus_exercises;
     DELETE FROM session_exercises;
     DELETE FROM sessions;
+    DELETE FROM plan_groups;
     DELETE FROM plan_exercises;
     DELETE FROM plans;
+    DELETE FROM exercise_groups;
+    DELETE FROM item_groups;
     DELETE FROM exercise_body_parts;
     DELETE FROM exercises;
     DELETE FROM titles;
@@ -914,7 +1055,7 @@ export const resetAllData = async (): Promise<void> => {
   `);
   await db.execAsync(`
     DELETE FROM sqlite_sequence WHERE name IN
-      ('player','exercises','exercise_body_parts','plans','plan_exercises','sessions','session_exercises','titles','bonus_exercises','martial_arts','skills','skill_exercises');
+      ('player','exercises','exercise_body_parts','plans','plan_exercises','sessions','session_exercises','titles','bonus_exercises','martial_arts','skills','skill_exercises','item_groups','exercise_groups','plan_groups');
   `);
 };
 

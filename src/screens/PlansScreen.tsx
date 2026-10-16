@@ -7,17 +7,20 @@
 import React, { useCallback, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
-  Modal, ScrollView, Alert, KeyboardAvoidingView, Platform,
+  Modal, ScrollView, Alert, KeyboardAvoidingView, Platform, TextInput,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  createPlan, deletePlan, Plan, getPlans, updatePlan, cancelTodayPendingSessions
+  createPlan, deletePlan, Plan, getPlans, updatePlan, cancelTodayPendingSessions,
+  getGroups, setPlanGroups, Group,
 } from '../database/Database';
-import { SystemButton, SystemInput, SectionHeader, EmptyState } from '../components/UIComponents';
+import { SystemButton, SystemInput, SectionHeader, EmptyState, SystemMultiDropdown } from '../components/UIComponents';
+import GroupManagerModal, { GroupPicker } from '../components/GroupManagerModal';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS } from '../constants/game';
+import { COLORS, parseGroupIds } from '../constants/game';
+import { filterPlans } from '../utils/filterPlans';
 import { RootStackParamList } from '../../App';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -28,13 +31,20 @@ const PlansScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
   const insets = useSafeAreaInsets();
   const [plans, setPlans]             = useState<Plan[]>([]);
+  const [groups, setGroups]           = useState<Group[]>([]);
   const [createModal, setCreateModal] = useState(false);
+  const [groupMgr, setGroupMgr]       = useState(false);
+
+  // List search / filters
+  const [search, setSearch]           = useState('');
+  const [groupFilter, setGroupFilter] = useState<string[]>([]);
 
   // Create plan form
   const [planName, setPlanName]     = useState('');
   const [planDesc, setPlanDesc]     = useState('');
   const [repeatDays, setRepeatDays] = useState<string[]>([]);
   const [penaltyExp, setPenaltyExp] = useState('0');
+  const [createGroups, setCreateGroups] = useState<number[]>([]);
 
   const [editPlanModal, setEditPlanModal]   = useState(false);
   const [editPlanTarget, setEditPlanTarget] = useState<Plan | null>(null);
@@ -42,10 +52,21 @@ const PlansScreen: React.FC = () => {
   const [editPlanDesc, setEditPlanDesc]     = useState('');
   const [editRepeatDays, setEditRepeatDays] = useState<string[]>([]);
   const [editPenaltyExp, setEditPenaltyExp] = useState('0');
+  const [editGroups, setEditGroups]         = useState<number[]>([]);
 
   useFocusEffect(useCallback(() => { loadPlans(); }, []));
 
-  const loadPlans = async () => setPlans(await getPlans());
+  const loadPlans = async () => {
+    const [pls, grps] = await Promise.all([getPlans(), getGroups('plan')]);
+    setPlans(pls);
+    setGroups(grps);
+  };
+
+  const groupOptions = groups.map(g => ({ value: String(g.id), label: g.name }));
+  const groupName = (id: number) => groups.find(g => g.id === id)?.name ?? '';
+  const groupColor = (id: number) => groups.find(g => g.id === id)?.color ?? COLORS.textSecondary;
+  const filtersActive = search.trim() !== '' || groupFilter.length > 0;
+  const shown = filterPlans(plans, { search, groups: groupFilter.map(Number) });
 
   const openManage = (plan: Plan) => navigation.navigate('ManagePlan', { plan });
 
@@ -57,8 +78,8 @@ const PlansScreen: React.FC = () => {
       is_active: 0,
       repeat_days: JSON.stringify(repeatDays),
       penalty_exp: Number(penaltyExp) || 0,
-    });
-    setPlanName(''); setPlanDesc(''); setRepeatDays([]); setPenaltyExp('0');
+    }, createGroups);
+    setPlanName(''); setPlanDesc(''); setRepeatDays([]); setPenaltyExp('0'); setCreateGroups([]);
     setCreateModal(false);
     await loadPlans();
   };
@@ -82,6 +103,7 @@ const PlansScreen: React.FC = () => {
     setEditPlanDesc(plan.description);
     setEditRepeatDays(JSON.parse(plan.repeat_days || '[]'));
     setEditPenaltyExp(String(plan.penalty_exp ?? 0));
+    setEditGroups(parseGroupIds(plan.groups));
     setEditPlanModal(true);
   };
 
@@ -93,6 +115,7 @@ const PlansScreen: React.FC = () => {
       repeat_days: JSON.stringify(editRepeatDays),
       penalty_exp: Number(editPenaltyExp) || 0,
     });
+    await setPlanGroups(editPlanTarget!.id!, editGroups);
     setEditPlanModal(false);
     setEditPlanTarget(null);
     await loadPlans();
@@ -116,17 +139,40 @@ const PlansScreen: React.FC = () => {
   return (
     <View style={styles.root}>
       <FlatList
-        data={plans}
+        data={shown}
         keyExtractor={item => String(item.id)}
         contentContainerStyle={styles.list}
         ListHeaderComponent={
-          <SectionHeader title="Workout Plans"
-            subtitle={`${plans.filter(p => p.is_active).length} active`}
-            action={{ label: '+ Create', onPress: () => setCreateModal(true) }} />
+          <>
+            <SectionHeader title="Workout Plans"
+              subtitle={filtersActive ? `${shown.length} / ${plans.length} shown` : `${plans.filter(p => p.is_active).length} active`}
+              action={{ label: '+ Create', onPress: () => setCreateModal(true) }} />
+
+            <View style={styles.searchRow}>
+              <Ionicons name="search" size={16} color={COLORS.textMuted} />
+              <TextInput style={styles.searchInput} value={search} onChangeText={setSearch}
+                placeholder="Search plans" placeholderTextColor={COLORS.textMuted} />
+              <TouchableOpacity onPress={() => setGroupMgr(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="pricetags-outline" size={18} color={COLORS.accentCyan} />
+              </TouchableOpacity>
+            </View>
+
+            <SystemMultiDropdown
+              label="Groups"
+              options={groupOptions}
+              values={groupFilter}
+              onChange={setGroupFilter}
+              placeholder={groups.length === 0 ? 'No groups yet' : 'Any'}
+            />
+          </>
         }
-        ListEmptyComponent={<EmptyState icon="clipboard" title="No plans yet" subtitle="Create a plan and assign exercises." />}
+        ListEmptyComponent={<EmptyState icon="clipboard"
+          title={filtersActive ? 'No matching plans' : 'No plans yet'}
+          subtitle={filtersActive ? 'Try a different search or filter.' : 'Create a plan and assign exercises.'} />}
         renderItem={({ item }) => (
           <PlanCard plan={item}
+            groupName={groupName}
+            groupColor={groupColor}
             onManage={() => openManage(item)}
             onToggle={() => handleToggleActive(item)}
             onDelete={() => handleDeletePlan(item)}
@@ -160,6 +206,7 @@ const PlansScreen: React.FC = () => {
                 placeholder="0 = no penalty"
               />
               <Text style={styles.hint}>EXP deducted if you skip this quest for the day.</Text>
+              <GroupPicker groups={groups} selected={createGroups} onChange={setCreateGroups} />
               <View style={styles.row}>
                 <SystemButton title="Cancel" variant="ghost" style={styles.flex1} onPress={() => setCreateModal(false)} />
                 <SystemButton title="Create" style={styles.flex1} onPress={handleCreatePlan} />
@@ -199,6 +246,8 @@ const PlansScreen: React.FC = () => {
                 placeholder="0 = no penalty"
               />
 
+              <GroupPicker groups={groups} selected={editGroups} onChange={setEditGroups} />
+
               <View style={styles.row}>
                 <SystemButton title="Cancel" variant="ghost" style={styles.flex1}
                   onPress={() => { setEditPlanModal(false); setEditPlanTarget(null); }} />
@@ -208,15 +257,29 @@ const PlansScreen: React.FC = () => {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <GroupManagerModal
+        visible={groupMgr}
+        kind="plan"
+        title="Plan Groups"
+        onClose={() => setGroupMgr(false)}
+        onChanged={loadPlans}
+      />
     </View>
   );
 };
 
 // ── PlanCard ──────────────────────────────────
 
-const PlanCard: React.FC<{ plan: Plan; onManage: () => void; onToggle: () => void; onDelete: () => void; onEdit: () => void }> =
-  ({ plan, onManage, onToggle, onDelete, onEdit }) => {
+const PlanCard: React.FC<{
+  plan: Plan;
+  groupName: (id: number) => string;
+  groupColor: (id: number) => string;
+  onManage: () => void; onToggle: () => void; onDelete: () => void; onEdit: () => void;
+}> =
+  ({ plan, groupName, groupColor, onManage, onToggle, onDelete, onEdit }) => {
     const days: string[] = JSON.parse(plan.repeat_days || '[]');
+    const groupIds = parseGroupIds(plan.groups);
     return (
       <View style={[styles.planCard, plan.is_active ? styles.planCardOn : null]}>
         <TouchableOpacity style={styles.planMain} onPress={onManage} activeOpacity={0.8}>
@@ -229,6 +292,16 @@ const PlanCard: React.FC<{ plan: Plan; onManage: () => void; onToggle: () => voi
             </View>
           </View>
           {!!plan.description && <Text style={styles.planDesc}>{plan.description}</Text>}
+          {groupIds.length > 0 && (
+            <View style={styles.groupRow}>
+              {groupIds.map(gid => (
+                <View key={gid} style={[styles.groupTag, { borderColor: groupColor(gid) }]}>
+                  <View style={[styles.groupTagDot, { backgroundColor: groupColor(gid) }]} />
+                  <Text style={[styles.groupTagTxt, { color: groupColor(gid) }]}>{groupName(gid)}</Text>
+                </View>
+              ))}
+            </View>
+          )}
           <View style={styles.planDays}>
             {days.length > 0
               ? days.map(d => <View key={d} style={styles.dayPill}><Text style={styles.dayPillTxt}>{d}</Text></View>)
@@ -297,6 +370,14 @@ const styles = StyleSheet.create({
 
   penaltyRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 },
   penaltyTxt: { color: COLORS.accentRed, fontSize: 11, fontWeight: '600' },
+
+  searchRow:   { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bgTertiary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 8, paddingHorizontal: 12, marginBottom: 14, gap: 8 },
+  searchInput: { flex: 1, color: COLORS.textPrimary, fontSize: 14, paddingVertical: 11 },
+
+  groupRow:    { flexDirection: 'row', flexWrap: 'wrap', gap: 5, marginTop: 6 },
+  groupTag:    { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 2 },
+  groupTagDot: { width: 6, height: 6, borderRadius: 3 },
+  groupTagTxt: { fontSize: 10, fontWeight: '700' },
 });
 
 export default PlansScreen;

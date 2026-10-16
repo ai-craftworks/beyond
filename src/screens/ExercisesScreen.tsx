@@ -5,10 +5,11 @@ import {
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { createExercise, deleteExercise, updateExercise, Exercise, getExercises } from '../database/Database';
+import { createExercise, deleteExercise, updateExercise, Exercise, getExercises, getGroups, Group } from '../database/Database';
 import { SystemButton, SystemInput, SectionHeader, EmptyState, SystemDropdown, SystemMultiDropdown } from '../components/UIComponents';
+import GroupManagerModal, { GroupPicker } from '../components/GroupManagerModal';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, EXERCISE_CATEGORIES, STATS, UNIT_TYPES, BODY_PARTS, bodyPartLabel, parseBodyParts, parseUnits, unitSuffix } from '../constants/game';
+import { COLORS, EXERCISE_CATEGORIES, STATS, UNIT_TYPES, BODY_PARTS, bodyPartLabel, parseBodyParts, parseUnits, parseGroupIds, unitSuffix } from '../constants/game';
 import { filterExercises } from '../utils/filterExercises';
 
 const emptyDefaults = (): Record<string, string> => ({ reps: '10' });
@@ -16,8 +17,10 @@ const emptyDefaults = (): Record<string, string> => ({ reps: '10' });
 const ExercisesScreen: React.FC = () => {
   const insets = useSafeAreaInsets();
   const [exercises, setExercises] = useState<Exercise[]>([]);
+  const [groups, setGroups]       = useState<Group[]>([]);
   const [modal, setModal]         = useState(false);
   const [loading, setLoading]     = useState(false);
+  const [groupMgr, setGroupMgr]   = useState(false);
 
   const [editModal, setEditModal]     = useState(false);
   const [editTarget, setEditTarget]   = useState<Exercise | null>(null);
@@ -32,6 +35,7 @@ const ExercisesScreen: React.FC = () => {
   const [editExpPerStatPt, setEditExpPerStatPt] = useState('20');
   const [editCategory, setEditCategory]   = useState('strength');
   const [editBodyParts, setEditBodyParts] = useState<string[]>([]);
+  const [editGroups, setEditGroups]       = useState<number[]>([]);
   const [editLoading, setEditLoading] = useState(false);
 
   const [name, setName]               = useState('');
@@ -44,21 +48,31 @@ const ExercisesScreen: React.FC = () => {
   const [statType, setStatType]       = useState('strength');
   const [category, setCategory]       = useState('strength');
   const [bodyParts, setBodyParts]     = useState<string[]>([]);
+  const [selGroups, setSelGroups]     = useState<number[]>([]);
   const [expPerStatPt, setExpPerStatPt] = useState('20');
 
   // List search / filters
   const [search, setSearch]         = useState('');
   const [catFilter, setCatFilter]   = useState('all');
   const [partFilter, setPartFilter] = useState<string[]>([]);
+  const [groupFilter, setGroupFilter] = useState<string[]>([]);
 
   useFocusEffect(useCallback(() => { load(); }, []));
-  const load = async () => setExercises(await getExercises());
+  const load = async () => {
+    const [exs, grps] = await Promise.all([getExercises(), getGroups('exercise')]);
+    setExercises(exs);
+    setGroups(grps);
+  };
+
+  const groupOptions = groups.map(g => ({ value: String(g.id), label: g.name }));
+  const groupName = (id: number) => groups.find(g => g.id === id)?.name ?? '';
+  const groupColor = (id: number) => groups.find(g => g.id === id)?.color ?? COLORS.textSecondary;
 
   const resetForm = () => {
     setName(''); setDesc(''); setUnits(['reps']); setUnitDefaults(emptyDefaults());
     setPrimaryUnit('reps'); setExpPerUnit('2'); setExpUnitCount('1');
     setExpPerStatPt('20');
-    setStatType('strength'); setCategory('strength'); setBodyParts([]);
+    setStatType('strength'); setCategory('strength'); setBodyParts([]); setSelGroups([]);
   };
 
   const toggleUnit = (
@@ -110,7 +124,7 @@ const ExercisesScreen: React.FC = () => {
         exp_per_stat_point: Number(expPerStatPt) || 20,  
         stat_type:      statType,
         category,
-      }, bodyParts);
+      }, bodyParts, selGroups);
       resetForm();
       setModal(false);
       await load();
@@ -147,6 +161,7 @@ const ExercisesScreen: React.FC = () => {
     setEditStatType(ex.stat_type);
     setEditCategory(ex.category);
     setEditBodyParts(parseBodyParts(ex.body_parts));
+    setEditGroups(parseGroupIds(ex.groups));
     setEditModal(true);
   };
 
@@ -171,7 +186,7 @@ const ExercisesScreen: React.FC = () => {
         stat_type:    editStatType,
         category:     editCategory,
         exp_per_stat_point: Number(editExpPerStatPt) || 20,
-      }, editBodyParts);
+      }, editBodyParts, editGroups);
       setEditModal(false);
       setEditTarget(null);
       await load();
@@ -194,8 +209,9 @@ const ExercisesScreen: React.FC = () => {
     if (parsed.length > 0) return parsed;
     return [{ type: ex.unit_type ?? 'reps', label: ex.unit_label ?? 'reps', default: 0 }];
   };
-  const filtersActive = search.trim() !== '' || catFilter !== 'all' || partFilter.length > 0;
-  const shown = filterExercises(exercises, { search, category: catFilter, bodyParts: partFilter });
+  const filtersActive = search.trim() !== '' || catFilter !== 'all' || partFilter.length > 0 || groupFilter.length > 0;
+  const shown = filterExercises(exercises, { search, category: catFilter, bodyParts: partFilter, groups: groupFilter.map(Number) });
+  const cardGroups = (ex: Exercise) => parseGroupIds(ex.groups);
 
   return (
     <View style={styles.root}>
@@ -213,6 +229,9 @@ const ExercisesScreen: React.FC = () => {
               <Ionicons name="search" size={16} color={COLORS.textMuted} />
               <TextInput style={styles.searchInput} value={search} onChangeText={setSearch}
                 placeholder="Search name or description" placeholderTextColor={COLORS.textMuted} />
+              <TouchableOpacity onPress={() => setGroupMgr(true)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <Ionicons name="pricetags-outline" size={18} color={COLORS.accentCyan} />
+              </TouchableOpacity>
             </View>
 
             <View style={styles.dropRow}>
@@ -232,6 +251,14 @@ const ExercisesScreen: React.FC = () => {
                 style={styles.flex1}
               />
             </View>
+
+            <SystemMultiDropdown
+              label="Groups"
+              options={groupOptions}
+              values={groupFilter}
+              onChange={setGroupFilter}
+              placeholder={groups.length === 0 ? 'No groups yet' : 'Any'}
+            />
           </>
         }
         ListEmptyComponent={<EmptyState icon="barbell"
@@ -278,6 +305,16 @@ const ExercisesScreen: React.FC = () => {
                 {partsOf(item).map(p => (
                   <View key={p} style={styles.partTag}>
                     <Text style={styles.partTagTxt}>{bodyPartLabel(p)}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+            {cardGroups(item).length > 0 && (
+              <View style={styles.tags}>
+                {cardGroups(item).map(gid => (
+                  <View key={gid} style={[styles.groupTag, { borderColor: groupColor(gid) }]}>
+                    <View style={[styles.groupTagDot, { backgroundColor: groupColor(gid) }]} />
+                    <Text style={[styles.groupTagTxt, { color: groupColor(gid) }]}>{groupName(gid)}</Text>
                   </View>
                 ))}
               </View>
@@ -427,6 +464,8 @@ const ExercisesScreen: React.FC = () => {
               />
               <Text style={styles.expHint}>Select every muscle group this exercise targets.</Text>
 
+              <GroupPicker groups={groups} selected={selGroups} onChange={setSelGroups} />
+
               <View style={styles.row}>
                 <SystemButton title="Cancel" variant="ghost" style={styles.flex1}
                   onPress={() => { resetForm(); setModal(false); }} />
@@ -555,6 +594,8 @@ const ExercisesScreen: React.FC = () => {
               />
               <Text style={styles.expHint}>Select every muscle group this exercise targets.</Text>
 
+              <GroupPicker groups={groups} selected={editGroups} onChange={setEditGroups} />
+
               <View style={styles.row}>
                 <SystemButton title="Cancel" variant="ghost" style={styles.flex1}
                   onPress={() => { setEditModal(false); setEditTarget(null); }} />
@@ -565,6 +606,14 @@ const ExercisesScreen: React.FC = () => {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+
+      <GroupManagerModal
+        visible={groupMgr}
+        kind="exercise"
+        title="Workout Groups"
+        onClose={() => setGroupMgr(false)}
+        onChanged={load}
+      />
     </View>
   );
 };
@@ -583,6 +632,9 @@ const styles = StyleSheet.create({
   tagTxtPrimary: { color: COLORS.accentGold },
   partTag:    { borderWidth: 1, borderColor: COLORS.borderDim, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 2 },
   partTagTxt: { color: COLORS.textMuted, fontSize: 10, fontWeight: '600' },
+  groupTag:   { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 2 },
+  groupTagDot: { width: 6, height: 6, borderRadius: 3 },
+  groupTagTxt: { fontSize: 10, fontWeight: '700' },
 
   searchRow:  { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bgTertiary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 8, paddingHorizontal: 12, marginBottom: 14, gap: 8 },
   searchInput: { flex: 1, color: COLORS.textPrimary, fontSize: 14, paddingVertical: 11 },
