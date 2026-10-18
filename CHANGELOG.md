@@ -39,3 +39,14 @@
 
 - Modified modals into individual screens for worouts.
 - Added martial arts and skills functionalities.
+
+### 18 Oct, 2026
+
+- Added skill groups (create/manage groups per martial art, assign skills to multiple groups).
+- Added group filter chips and tag chips on the martial art detail screen.
+- Redesigned the dashboard rank ring into a level badge.
+- Removed the sidebar open sound and its skyblue right border.
+- Added media (image/GIF/video) support for workouts — pick demos in create/edit forms, tappable thumbnails in the exercise library, auto file cleanup on delete.
+- Added shared media picker and viewer components, now used by both skills and workouts.
+- Added fullscreen landscape video playback with screen orientation unlock while open.
+- Tapping skill demos now opens them fullscreen.
