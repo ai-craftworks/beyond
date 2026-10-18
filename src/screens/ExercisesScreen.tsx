@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useRef, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
   Modal, ScrollView, Alert, KeyboardAvoidingView, Platform, TextInput,
@@ -6,8 +6,11 @@ import {
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { createExercise, deleteExercise, updateExercise, Exercise, getExercises, getGroups, Group } from '../database/Database';
+import { createExercise, deleteExercise, updateExercise, Exercise, MediaType, getExercises, getGroups, Group } from '../database/Database';
 import { SystemButton, SystemInput, SectionHeader, EmptyState, SystemDropdown, SystemMultiDropdown, FilterSheet, FilterSection, FilterChip, FilterButton } from '../components/UIComponents';
+import MediaField from '../components/MediaField';
+import { MediaThumb } from '../components/MediaViewer';
+import { deleteMedia } from '../utils/media';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, EXERCISE_CATEGORIES, STATS, UNIT_TYPES, BODY_PARTS, bodyPartLabel, parseBodyParts, parseUnits, parseGroupIds, unitSuffix } from '../constants/game';
 import { filterExercises } from '../utils/filterExercises';
@@ -40,7 +43,10 @@ const ExercisesScreen: React.FC = () => {
   const [editCategory, setEditCategory]   = useState('strength');
   const [editBodyParts, setEditBodyParts] = useState<string[]>([]);
   const [editGroups, setEditGroups]       = useState<number[]>([]);
+  const [editMediaType, setEditMediaType] = useState<MediaType>('none');
+  const [editMediaUri, setEditMediaUri]   = useState('');
   const [editLoading, setEditLoading] = useState(false);
+  const editOriginalUri = useRef('');
 
   const [name, setName]               = useState('');
   const [desc, setDesc]               = useState('');
@@ -54,6 +60,8 @@ const ExercisesScreen: React.FC = () => {
   const [bodyParts, setBodyParts]     = useState<string[]>([]);
   const [selGroups, setSelGroups]     = useState<number[]>([]);
   const [expPerStatPt, setExpPerStatPt] = useState('20');
+  const [mediaType, setMediaType]     = useState<MediaType>('none');
+  const [mediaUri, setMediaUri]       = useState('');
 
   // List search / filters
   const [search, setSearch]         = useState('');
@@ -77,6 +85,24 @@ const ExercisesScreen: React.FC = () => {
     setPrimaryUnit('reps'); setExpPerUnit('2'); setExpUnitCount('1');
     setExpPerStatPt('20');
     setStatType('strength'); setCategory('strength'); setBodyParts([]); setSelGroups([]);
+    setMediaType('none'); setMediaUri('');
+  };
+
+  // Create mode has no DB-stored original — any current pick is uncommitted.
+  const discardCreateMedia = () => {
+    if (mediaUri) deleteMedia(mediaUri);
+  };
+
+  const closeCreateModal = () => {
+    discardCreateMedia();
+    resetForm();
+    setModal(false);
+  };
+
+  const handleCreateMediaChange = (next: { type: MediaType; uri: string }) => {
+    if (mediaUri && next.uri !== mediaUri) deleteMedia(mediaUri);
+    setMediaType(next.type);
+    setMediaUri(next.uri);
   };
 
   const toggleUnit = (
@@ -128,8 +154,10 @@ const ExercisesScreen: React.FC = () => {
         exp_per_stat_point: Number(expPerStatPt) || 20,  
         stat_type:      statType,
         category,
+        media_type:     mediaType,
+        media_uri:      mediaUri,
       }, bodyParts, selGroups);
-      resetForm();
+      resetForm(); // media file is now committed to the DB — do not delete it
       setModal(false);
       await load();
     } catch (e) {
@@ -143,7 +171,14 @@ const ExercisesScreen: React.FC = () => {
   const handleDelete = (ex: Exercise) =>
     Alert.alert('Delete', `Remove "${ex.name}"?`, [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => { await deleteExercise(ex.id!); await load(); } },
+      {
+        text: 'Delete', style: 'destructive',
+        onPress: async () => {
+          const mediaFile = await deleteExercise(ex.id!);
+          deleteMedia(mediaFile);
+          await load();
+        },
+      },
     ]);
 
   const openEdit = (ex: Exercise) => {
@@ -166,7 +201,25 @@ const ExercisesScreen: React.FC = () => {
     setEditCategory(ex.category);
     setEditBodyParts(parseBodyParts(ex.body_parts));
     setEditGroups(parseGroupIds(ex.groups));
+    setEditMediaType(ex.media_type ?? 'none');
+    setEditMediaUri(ex.media_uri ?? '');
+    editOriginalUri.current = ex.media_uri ?? '';
     setEditModal(true);
+  };
+
+  const closeEditModal = () => {
+    // Discard an uncommitted pick; the DB-stored original is never touched here.
+    if (editMediaUri && editMediaUri !== editOriginalUri.current) deleteMedia(editMediaUri);
+    setEditModal(false);
+    setEditTarget(null);
+  };
+
+  const handleEditMediaChange = (next: { type: MediaType; uri: string }) => {
+    if (editMediaUri && editMediaUri !== editOriginalUri.current && next.uri !== editMediaUri) {
+      deleteMedia(editMediaUri);
+    }
+    setEditMediaType(next.type);
+    setEditMediaUri(next.uri);
   };
 
   const handleSaveEdit = async () => {
@@ -190,7 +243,13 @@ const ExercisesScreen: React.FC = () => {
         stat_type:    editStatType,
         category:     editCategory,
         exp_per_stat_point: Number(editExpPerStatPt) || 20,
+        media_type:   editMediaType,
+        media_uri:    editMediaUri,
       }, editBodyParts, editGroups);
+      // The replaced original is no longer referenced — clean it up.
+      if (editOriginalUri.current && editOriginalUri.current !== editMediaUri) {
+        deleteMedia(editOriginalUri.current);
+      }
       setEditModal(false);
       setEditTarget(null);
       await load();
@@ -259,6 +318,11 @@ const ExercisesScreen: React.FC = () => {
               </View>
             </View>
             {!!item.description && <Text style={styles.cardDesc}>{item.description}</Text>}
+            {!!item.media_uri && (item.media_type === 'image' || item.media_type === 'video') && (
+              <View style={styles.mediaRow}>
+                <MediaThumb mediaType={item.media_type} mediaUri={item.media_uri} />
+              </View>
+            )}
             <View style={styles.tags}>
               <View style={styles.tag}>
                 <Text style={styles.tagTxt}>
@@ -304,7 +368,7 @@ const ExercisesScreen: React.FC = () => {
         )}
       />
 
-      <Modal visible={modal} animationType="slide" transparent onRequestClose={() => setModal(false)}>
+      <Modal visible={modal} animationType="slide" transparent onRequestClose={closeCreateModal}>
         <KeyboardAvoidingView
           style={styles.overlay}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -453,9 +517,15 @@ const ExercisesScreen: React.FC = () => {
                 placeholder={groups.length === 0 ? 'No groups yet' : 'Any'}
               />
 
+              <MediaField
+                mediaType={mediaType}
+                mediaUri={mediaUri}
+                onChange={handleCreateMediaChange}
+              />
+
               <View style={styles.row}>
                 <SystemButton title="Cancel" variant="ghost" style={styles.flex1}
-                  onPress={() => { resetForm(); setModal(false); }} />
+                  onPress={closeCreateModal} />
                 <SystemButton title="Create" style={styles.flex1}
                   onPress={handleCreate} loading={loading} />
               </View>
@@ -465,7 +535,7 @@ const ExercisesScreen: React.FC = () => {
       </Modal>
 
       {/* ── EDIT EXERCISE MODAL ── */}
-      <Modal visible={editModal} animationType="slide" transparent onRequestClose={() => setEditModal(false)}>
+      <Modal visible={editModal} animationType="slide" transparent onRequestClose={closeEditModal}>
         <KeyboardAvoidingView
           style={styles.overlay}
           behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -589,9 +659,15 @@ const ExercisesScreen: React.FC = () => {
                 placeholder={groups.length === 0 ? 'No groups yet' : 'Any'}
               />
 
+              <MediaField
+                mediaType={editMediaType}
+                mediaUri={editMediaUri}
+                onChange={handleEditMediaChange}
+              />
+
               <View style={styles.row}>
                 <SystemButton title="Cancel" variant="ghost" style={styles.flex1}
-                  onPress={() => { setEditModal(false); setEditTarget(null); }} />
+                  onPress={closeEditModal} />
                 <SystemButton title="Save" style={styles.flex1}
                   onPress={handleSaveEdit} loading={editLoading} />
               </View>
@@ -642,6 +718,7 @@ const styles = StyleSheet.create({
   cardTop:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 },
   cardName:   { color: COLORS.textPrimary, fontSize: 15, fontWeight: '700', flex: 1 },
   cardDesc:   { color: COLORS.textSecondary, fontSize: 12, marginBottom: 7 },
+  mediaRow:   { marginTop: 8, marginBottom: 2 },
   tags:       { flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 6 },
   tag:        { borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 2 },
   tagTxt:     { color: COLORS.accentCyan, fontSize: 10, fontWeight: '700' },

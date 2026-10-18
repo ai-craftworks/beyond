@@ -1,24 +1,27 @@
 /**
  * src/utils/media.ts
  * ===================
- * Local media handling for martial-art skills.
+ * Local media handling for skills and workouts (exercises).
  * Pick an image/GIF/video, copy it into the app's document directory (files
  * returned by the picker live in a cache that the OS may purge), and delete
- * files when a skill is updated or removed.
+ * files when an item is updated or removed.
+ *
+ * GIFs are picked as `image` assets — React Native's Image renders them
+ * animated inline and in the fullscreen viewer.
  */
 
 import * as ImagePicker from 'expo-image-picker';
 import { Directory, File, Paths } from 'expo-file-system';
-import { SkillMediaType } from '../database/Database';
+import { MediaType } from '../database/Database';
 
-export type PickedMediaKind = Exclude<SkillMediaType, 'none'>;
+export type PickedMediaKind = Exclude<MediaType, 'none'>;
 
 export interface PickedMedia {
   type: PickedMediaKind;
   uri: string;
 }
 
-const MEDIA_DIR_NAME = 'martial-media';
+const MEDIA_DIR_NAME = 'media';
 
 const mediaDir = (): Directory => new Directory(Paths.document, MEDIA_DIR_NAME);
 
@@ -50,7 +53,7 @@ export const persistMedia = async (
 };
 
 /** Opens the system library picker and persists the chosen image/GIF/video. */
-export const pickSkillMedia = async (): Promise<PickedMedia | null> => {
+export const pickMedia = async (): Promise<PickedMedia | null> => {
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
   if (!permission.granted) return null;
 

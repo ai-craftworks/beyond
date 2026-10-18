@@ -10,11 +10,15 @@ import { View, Text, ScrollView, StyleSheet, TouchableOpacity, ActivityIndicator
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { getMartialArt, getSkills, MartialArt, Skill } from '../database/Database';
-import { SystemPanel, SystemButton, SectionHeader, ExpBar, EmptyState } from '../components/UIComponents';
+import {
+  getMartialArt, getSkills, getSkillGroups,
+  MartialArt, Skill, SkillGroup,
+} from '../database/Database';
+import { SystemPanel, SystemButton, SectionHeader, ExpBar, EmptyState, FilterChip } from '../components/UIComponents';
 import SkillFormModal from '../components/SkillFormModal';
+import SkillGroupSheet from '../components/SkillGroupSheet';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, getBeltForLevel } from '../constants/game';
+import { COLORS, getBeltForLevel, parseGroupIds } from '../constants/game';
 import { playSound } from '../utils/sounds';
 import { RootStackParamList } from '../../App';
 
@@ -29,15 +33,25 @@ const MartialArtDetailScreen: React.FC = () => {
 
   const [art, setArt]         = useState<MartialArt | null>(null);
   const [skills, setSkills]   = useState<Skill[]>([]);
+  const [skillGroups, setSkillGroups] = useState<SkillGroup[]>([]);
+  const [groupFilter, setGroupFilter] = useState<number | 'all' | 'ungrouped'>('all');
   const [loading, setLoading] = useState(true);
   const [skillModal, setSkillModal] = useState(false);
+  const [groupSheet, setGroupSheet] = useState(false);
 
   useFocusEffect(useCallback(() => { load(); }, [artId]));
 
   const load = async () => {
-    const [a, s] = await Promise.all([getMartialArt(artId), getSkills(artId)]);
+    const [a, s, g] = await Promise.all([
+      getMartialArt(artId), getSkills(artId), getSkillGroups(artId),
+    ]);
     setArt(a);
     setSkills(s);
+    setSkillGroups(g);
+    // A group may have just been deleted — fall back to "All" if the filter vanished.
+    setGroupFilter(prev =>
+      typeof prev === 'number' && !g.some(x => x.id === prev) ? 'all' : prev
+    );
     setLoading(false);
   };
 
@@ -50,6 +64,17 @@ const MartialArtDetailScreen: React.FC = () => {
   }
 
   const belt = getBeltForLevel(art.level);
+
+  const groupsOf = (s: Skill): SkillGroup[] => {
+    const ids = parseGroupIds(s.groups);
+    return skillGroups.filter(g => ids.includes(g.id!));
+  };
+
+  const visibleSkills = skills.filter(s => {
+    if (groupFilter === 'all') return true;
+    const ids = parseGroupIds(s.groups);
+    return groupFilter === 'ungrouped' ? ids.length === 0 : ids.includes(groupFilter);
+  });
 
   return (
     <View style={styles.root}>
@@ -78,14 +103,32 @@ const MartialArtDetailScreen: React.FC = () => {
         <SectionHeader
           title="Skills"
           subtitle={`${skills.length} skill${skills.length === 1 ? '' : 's'}`}
+          secondary={{ label: 'Groups', onPress: () => setGroupSheet(true) }}
           action={{ label: '+ Add Skill', onPress: () => setSkillModal(true) }}
         />
 
-        {skills.length === 0 ? (
-          <EmptyState icon="layers-outline" title="No skills yet"
-            subtitle="Add a skill, then tag workouts so training levels it up." />
+        {skillGroups.length > 0 && (
+          <View style={styles.chipRow}>
+            <FilterChip label="All" active={groupFilter === 'all'} onPress={() => setGroupFilter('all')} />
+            {skillGroups.map(g => (
+              <FilterChip key={g.id} label={g.name} color={g.color}
+                active={groupFilter === g.id} onPress={() => setGroupFilter(g.id!)} />
+            ))}
+            <FilterChip label="Ungrouped" active={groupFilter === 'ungrouped'}
+              onPress={() => setGroupFilter('ungrouped')} />
+          </View>
+        )}
+
+        {visibleSkills.length === 0 ? (
+          <EmptyState icon="layers-outline"
+            title={groupFilter === 'all' ? 'No skills yet' : 'No matching skills'}
+            subtitle={groupFilter === 'all'
+              ? 'Add a skill, then tag workouts so training levels it up.'
+              : 'Try another group filter, or assign skills via edit.'} />
         ) : (
-          skills.map(skill => (
+          visibleSkills.map(skill => {
+            const tags = groupsOf(skill);
+            return (
             <TouchableOpacity
               key={skill.id}
               style={styles.skillCard}
@@ -96,6 +139,17 @@ const MartialArtDetailScreen: React.FC = () => {
                 <Text style={styles.skillName}>{skill.name}</Text>
                 {!!skill.description && (
                   <Text style={styles.skillDesc} numberOfLines={1}>{skill.description}</Text>
+                )}
+                {tags.length > 0 && (
+                  <View style={styles.tagRow}>
+                    {tags.slice(0, 2).map(t => (
+                      <View key={t.id} style={[styles.tag, { borderColor: t.color, backgroundColor: `${t.color}18` }]}>
+                        <View style={[styles.tagDot, { backgroundColor: t.color }]} />
+                        <Text style={[styles.tagTxt, { color: t.color }]} numberOfLines={1}>{t.name}</Text>
+                      </View>
+                    ))}
+                    {tags.length > 2 && <Text style={styles.tagMore}>+{tags.length - 2}</Text>}
+                  </View>
                 )}
                 <View style={styles.skillMeta}>
                   <Ionicons name="barbell-outline" size={12} color={COLORS.textMuted} />
@@ -115,7 +169,8 @@ const MartialArtDetailScreen: React.FC = () => {
                 <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
               </View>
             </TouchableOpacity>
-          ))
+            );
+          })
         )}
 
         <SystemButton title="Add Skill" icon="add" variant="ghost"
@@ -127,6 +182,13 @@ const MartialArtDetailScreen: React.FC = () => {
         martialArtId={artId}
         initial={null}
         onClose={() => setSkillModal(false)}
+        onSaved={load}
+      />
+
+      <SkillGroupSheet
+        visible={groupSheet}
+        martialArtId={artId}
+        onClose={() => setGroupSheet(false)}
         onSaved={load}
       />
     </View>
@@ -153,6 +215,12 @@ const styles = StyleSheet.create({
   skillLeft: { flex: 1 },
   skillName: { color: COLORS.textPrimary, fontSize: 14, fontWeight: '600', marginBottom: 2 },
   skillDesc: { color: COLORS.textSecondary, fontSize: 12, marginBottom: 4 },
+  chipRow:   { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 12 },
+  tagRow:    { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 5 },
+  tag:       { flexDirection: 'row', alignItems: 'center', gap: 4, borderWidth: 1, borderRadius: 6, paddingHorizontal: 7, paddingVertical: 2, maxWidth: 120 },
+  tagDot:    { width: 6, height: 6, borderRadius: 3 },
+  tagTxt:    { fontSize: 10, fontWeight: '700', letterSpacing: 0.3 },
+  tagMore:   { color: COLORS.textMuted, fontSize: 10, fontWeight: '700' },
   skillMeta: { flexDirection: 'row', alignItems: 'center', gap: 4 },
   skillMetaTxt: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600' },
   skillRight:{ flexDirection: 'row', alignItems: 'center', gap: 6 },

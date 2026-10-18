@@ -8,16 +8,17 @@
 import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, Modal, ScrollView, Alert,
-  KeyboardAvoidingView, Platform, TouchableOpacity, ActivityIndicator,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import { SystemButton, SystemInput } from './UIComponents';
-import MediaViewer from './MediaViewer';
+import { SystemButton, SystemInput, SystemMultiDropdown } from './UIComponents';
+import MediaField from './MediaField';
 import { COLORS } from '../constants/game';
-import { Skill, SkillMediaType, createSkill, updateSkill } from '../database/Database';
-import { pickSkillMedia, deleteMedia } from '../utils/media';
-import { playSound } from '../utils/sounds';
+import {
+  Skill, MediaType, SkillGroup, createSkill, updateSkill,
+  getSkillGroups, getSkillGroupIds, setSkillGroupIds,
+} from '../database/Database';
+import { deleteMedia } from '../utils/media';
 
 interface SkillFormModalProps {
   visible: boolean;
@@ -34,10 +35,11 @@ const SkillFormModal: React.FC<SkillFormModalProps> = ({
 
   const [name, setName]         = useState('');
   const [desc, setDesc]         = useState('');
-  const [mediaType, setMedia]   = useState<SkillMediaType>('none');
+  const [mediaType, setMedia]   = useState<MediaType>('none');
   const [mediaUri, setMediaUri] = useState('');
-  const [picking, setPicking]   = useState(false);
   const [saving, setSaving]     = useState(false);
+  const [groupOptions, setGroupOptions] = useState<SkillGroup[]>([]);
+  const [selGroups, setSelGroups]       = useState<string[]>([]);
 
   // The media URI currently stored in the DB (edit mode) — never delete on cancel.
   const originalUri = initial?.media_uri ?? '';
@@ -48,7 +50,12 @@ const SkillFormModal: React.FC<SkillFormModalProps> = ({
     setDesc(initial?.description ?? '');
     setMedia(initial?.media_type ?? 'none');
     setMediaUri(initial?.media_uri ?? '');
-  }, [visible, initial]);
+    setSelGroups([]);
+    getSkillGroups(martialArtId).then(setGroupOptions).catch(() => setGroupOptions([]));
+    if (initial?.id) {
+      getSkillGroupIds(initial.id).then(ids => setSelGroups(ids.map(String))).catch(() => {});
+    }
+  }, [visible, initial, martialArtId]);
 
   // Discard an uncommitted picked file when the sheet closes without saving.
   const discardPending = () => {
@@ -60,47 +67,32 @@ const SkillFormModal: React.FC<SkillFormModalProps> = ({
     onClose();
   };
 
-  const handlePick = async () => {
-    if (picking) return;
-    playSound('click');
-    setPicking(true);
-    try {
-      const picked = await pickSkillMedia();
-      if (picked) {
-        if (mediaUri && mediaUri !== originalUri) deleteMedia(mediaUri);
-        setMedia(picked.type);
-        setMediaUri(picked.uri);
-      }
-    } catch (e) {
-      console.error('pick media error:', e);
-      Alert.alert('Error', 'Could not attach that media file.');
-    } finally {
-      setPicking(false);
-    }
-  };
-
-  const handleRemoveMedia = () => {
-    playSound('click');
-    if (mediaUri && mediaUri !== originalUri) deleteMedia(mediaUri);
-    setMedia('none');
-    setMediaUri('');
+  // Replacing or clearing an uncommitted pick deletes it; the DB-stored
+  // original is never touched here (it is handled on save).
+  const handleMediaChange = (next: { type: MediaType; uri: string }) => {
+    if (mediaUri && mediaUri !== originalUri && next.uri !== mediaUri) deleteMedia(mediaUri);
+    setMedia(next.type);
+    setMediaUri(next.uri);
   };
 
   const handleSave = async () => {
     if (!name.trim()) return Alert.alert('System', 'Skill name required.');
     setSaving(true);
     try {
+      let skillId: number;
       if (initial) {
         if (originalUri && originalUri !== mediaUri) deleteMedia(originalUri);
         await updateSkill(initial.id!, {
           name: name.trim(), description: desc.trim(), media_type: mediaType, media_uri: mediaUri,
         });
+        skillId = initial.id!;
       } else {
-        await createSkill({
+        skillId = await createSkill({
           martial_art_id: martialArtId,
           name: name.trim(), description: desc.trim(), media_type: mediaType, media_uri: mediaUri,
         });
       }
+      await setSkillGroupIds(skillId, selGroups.map(Number));
       onSaved();
       onClose();
     } catch (e) {
@@ -123,33 +115,19 @@ const SkillFormModal: React.FC<SkillFormModalProps> = ({
             <SystemInput label="Description" value={desc} onChangeText={setDesc}
               placeholder="Optional..." multiline />
 
-            <Text style={styles.selectLbl}>DEMO MEDIA</Text>
-            {mediaUri ? (
-              <>
-                <MediaViewer mediaType={mediaType} mediaUri={mediaUri} />
-                <View style={styles.mediaActions}>
-                  <TouchableOpacity style={styles.mediaBtn} onPress={handlePick} disabled={picking}>
-                    <Ionicons name="swap-horizontal" size={15} color={COLORS.accentCyan} />
-                    <Text style={styles.mediaBtnTxt}>Replace</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.mediaBtn} onPress={handleRemoveMedia}>
-                    <Ionicons name="trash-outline" size={15} color={COLORS.accentRed} />
-                    <Text style={[styles.mediaBtnTxt, { color: COLORS.accentRed }]}>Remove</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            ) : (
-              <TouchableOpacity style={styles.pickBox} onPress={handlePick} disabled={picking} activeOpacity={0.75}>
-                {picking
-                  ? <ActivityIndicator color={COLORS.accentCyan} />
-                  : (
-                    <>
-                      <Ionicons name="cloud-upload-outline" size={26} color={COLORS.accentCyan} />
-                      <Text style={styles.pickBoxTxt}>Pick image, GIF or video</Text>
-                    </>
-                  )}
-              </TouchableOpacity>
-            )}
+            <SystemMultiDropdown
+              label="Groups"
+              placeholder="None"
+              options={groupOptions.map(g => ({ value: String(g.id), label: g.name, color: g.color }))}
+              values={selGroups}
+              onChange={setSelGroups}
+            />
+
+            <MediaField
+              mediaType={mediaType}
+              mediaUri={mediaUri}
+              onChange={handleMediaChange}
+            />
 
             <View style={styles.row}>
               <SystemButton title="Cancel" variant="ghost" style={styles.flex1} onPress={handleClose} />
@@ -168,15 +146,6 @@ const styles = StyleSheet.create({
   sheet:        { backgroundColor: COLORS.bgPanel, borderTopLeftRadius: 20, borderTopRightRadius: 20, borderTopWidth: 1, borderColor: COLORS.accentCyan, padding: 20, maxHeight: '92%' },
   handle:       { width: 40, height: 4, backgroundColor: COLORS.borderMain, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
   sheetTitle:   { color: COLORS.accentCyan, fontSize: 13, fontWeight: '700', letterSpacing: 2, marginBottom: 18 },
-
-  selectLbl:    { color: COLORS.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 8, textTransform: 'uppercase' },
-
-  pickBox:      { height: 130, borderWidth: 1, borderStyle: 'dashed', borderColor: COLORS.borderMain, borderRadius: 10, alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: COLORS.bgTertiary, marginBottom: 8 },
-  pickBoxTxt:   { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
-
-  mediaActions: { flexDirection: 'row', gap: 12, marginTop: 8, marginBottom: 4 },
-  mediaBtn:     { flexDirection: 'row', alignItems: 'center', gap: 5, paddingVertical: 6 },
-  mediaBtnTxt:  { color: COLORS.accentCyan, fontSize: 13, fontWeight: '600' },
 
   row:          { flexDirection: 'row', gap: 12, marginTop: 14 },
   flex1:        { flex: 1 },

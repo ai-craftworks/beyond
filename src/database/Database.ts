@@ -67,6 +67,8 @@ export const initDatabase = async (): Promise<void> => {
       category    TEXT    DEFAULT 'strength',
       units       TEXT    DEFAULT '[]',
       primary_unit TEXT   DEFAULT 'reps',
+      media_type  TEXT    DEFAULT 'none',
+      media_uri   TEXT    DEFAULT '',
       created_at  TEXT    DEFAULT (datetime('now'))
     );
 
@@ -199,6 +201,8 @@ export const initDatabase = async (): Promise<void> => {
   await safeAlter(`ALTER TABLE bonus_exercises ADD COLUMN primary_unit TEXT DEFAULT 'reps'`);
   await safeAlter(`ALTER TABLE bonus_exercises ADD COLUMN unit_values TEXT DEFAULT '[]'`);
   await safeAlter(`ALTER TABLE bonus_exercises ADD COLUMN actual_units TEXT DEFAULT '[]'`);
+  await safeAlter(`ALTER TABLE exercises ADD COLUMN media_type TEXT DEFAULT 'none'`);
+  await safeAlter(`ALTER TABLE exercises ADD COLUMN media_uri TEXT DEFAULT ''`);
 
   // Create bonus_exercises table if it doesn't exist
   await db.execAsync(`
@@ -281,6 +285,25 @@ export const initDatabase = async (): Promise<void> => {
       plan_id     INTEGER NOT NULL,
       group_id    INTEGER NOT NULL,
       UNIQUE (plan_id, group_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS skill_groups (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      martial_art_id INTEGER NOT NULL,
+      name           TEXT    NOT NULL,
+      color          TEXT    DEFAULT '#00D4FF',
+      created_at     TEXT    DEFAULT (datetime('now')),
+      FOREIGN KEY (martial_art_id) REFERENCES martial_arts(id) ON DELETE CASCADE,
+      UNIQUE (martial_art_id, name)
+    );
+
+    CREATE TABLE IF NOT EXISTS skill_group_links (
+      id       INTEGER PRIMARY KEY AUTOINCREMENT,
+      skill_id INTEGER NOT NULL,
+      group_id INTEGER NOT NULL,
+      UNIQUE (skill_id, group_id),
+      FOREIGN KEY (skill_id) REFERENCES skills(id)         ON DELETE CASCADE,
+      FOREIGN KEY (group_id) REFERENCES skill_groups(id)   ON DELETE CASCADE
     );
   `);
 
@@ -386,6 +409,8 @@ export interface Exercise {
   category: string;
   units?: string;        // JSON array of UnitSpec: [{ type, label, default }]
   primary_unit?: string; // unit type that drives EXP
+  media_type: MediaType;
+  media_uri: string;
   body_parts?: string;   // JSON array, populated by getExercises (join table, not a column)
   groups?: string;       // JSON array of group ids, populated by getExercises (join table, not a column)
   created_at?: string;
@@ -408,6 +433,16 @@ export interface Group {
   name: string;
   color: string;
   created_at?: string;
+}
+
+/** A per-martial-art skill group (e.g. Punching, Kicks). Not global. */
+export interface SkillGroup {
+  id?: number;
+  martial_art_id: number;
+  name: string;
+  color: string;
+  created_at?: string;
+  member_count?: number; // populated by getSkillGroups
 }
 
 export interface PlanExercise {
@@ -507,14 +542,14 @@ export interface MartialArt {
   skill_count?: number;
 }
 
-export type SkillMediaType = 'none' | 'image' | 'video';
+export type MediaType = 'none' | 'image' | 'video';
 
 export interface Skill {
   id?: number;
   martial_art_id: number;
   name: string;
   description: string;
-  media_type: SkillMediaType;
+  media_type: MediaType;
   media_uri: string;
   total_exp: number;
   level: number;
@@ -522,6 +557,7 @@ export interface Skill {
   exp_to_next: number;
   created_at?: string;
   exercise_count?: number;
+  groups?: string;       // JSON array of skill-group ids, populated by getSkills (join table, not a column)
 }
 
 export interface SkillExercise {
@@ -582,11 +618,12 @@ export const createExercise = async (
   let id: number | undefined;
   await db.withTransactionAsync(async () => {
     const result = await db.runAsync(
-      `INSERT INTO exercises (name, description, exp_reward, unit_type, exp_per_unit, exp_unit_count, unit_label, exp_per_stat_point, stat_type, stat_reward, category, units, primary_unit)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO exercises (name, description, exp_reward, unit_type, exp_per_unit, exp_unit_count, unit_label, exp_per_stat_point, stat_type, stat_reward, category, units, primary_unit, media_type, media_uri)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [ex.name, ex.description, ex.exp_reward, ex.unit_type, ex.exp_per_unit,
        ex.exp_unit_count ?? 1, ex.unit_label, ex.exp_per_stat_point ?? 20,
-       ex.stat_type, 0, ex.category, ex.units ?? '[]', ex.primary_unit ?? ex.unit_type]
+       ex.stat_type, 0, ex.category, ex.units ?? '[]', ex.primary_unit ?? ex.unit_type,
+       ex.media_type ?? 'none', ex.media_uri ?? '']
     );
     id = result.lastInsertRowId;
     for (const bp of bodyParts) {
@@ -633,12 +670,17 @@ export const getExercises = async (): Promise<Exercise[]> => {
   }));
 };
 
-export const deleteExercise = async (id: number): Promise<void> => {
+/** Deletes an exercise and its dependants. Returns its media URI to remove from disk (if any). */
+export const deleteExercise = async (id: number): Promise<string | null> => {
   const db = await getDb();
+  const ex = await db.getFirstAsync<{ media_uri: string; media_type: string }>(
+    `SELECT media_uri, media_type FROM exercises WHERE id = ?`, [id]
+  );
   // FK enforcement is off — clean dependants explicitly.
   await db.runAsync(`DELETE FROM skill_exercises WHERE exercise_id = ?`, [id]);
   await db.runAsync(`DELETE FROM exercise_groups WHERE exercise_id = ?`, [id]);
   await db.runAsync(`DELETE FROM exercises WHERE id = ?`, [id]);
+  return ex && ex.media_type !== 'none' && ex.media_uri ? ex.media_uri : null;
 };
 
 export const updateExercise = async (
@@ -795,6 +837,91 @@ export const deleteGroup = async (id: number): Promise<void> => {
   await db.runAsync(`DELETE FROM exercise_groups WHERE group_id = ?`, [id]);
   await db.runAsync(`DELETE FROM plan_groups WHERE group_id = ?`, [id]);
   await db.runAsync(`DELETE FROM item_groups WHERE id = ?`, [id]);
+};
+
+// ─────────────────────────────────────────────
+// SKILL GROUPS  (per-martial-art; organizational only)
+// ─────────────────────────────────────────────
+
+export const getSkillGroups = async (martialArtId: number): Promise<SkillGroup[]> => {
+  const db = await getDb();
+  const groups = await db.getAllAsync<SkillGroup>(
+    `SELECT * FROM skill_groups WHERE martial_art_id = ? ORDER BY name COLLATE NOCASE ASC`,
+    [martialArtId]
+  );
+  const counts = await db.getAllAsync<{ group_id: number; count: number }>(
+    `SELECT l.group_id, COUNT(*) as count FROM skill_group_links l
+       JOIN skill_groups g ON l.group_id = g.id
+      WHERE g.martial_art_id = ? GROUP BY l.group_id`, [martialArtId]
+  );
+  const byGroup: Record<number, number> = {};
+  for (const c of counts) byGroup[c.group_id] = c.count;
+  return groups.map(g => ({ ...g, member_count: byGroup[g.id!] ?? 0 }));
+};
+
+export const createSkillGroup = async (
+  martialArtId: number, name: string, color: string
+): Promise<number> => {
+  const db = await getDb();
+  const trimmed = name.trim();
+  const existing = await db.getFirstAsync<{ id: number }>(
+    `SELECT id FROM skill_groups WHERE martial_art_id = ? AND name = ? COLLATE NOCASE`,
+    [martialArtId, trimmed]
+  );
+  if (existing) return existing.id;
+  const result = await db.runAsync(
+    `INSERT INTO skill_groups (martial_art_id, name, color) VALUES (?, ?, ?)`,
+    [martialArtId, trimmed, color]
+  );
+  return result.lastInsertRowId;
+};
+
+/**
+ * Rename a skill group. Returns false when another group of the same martial
+ * art already uses that name (case-insensitive) so callers can show feedback
+ * instead of hitting the UNIQUE (martial_art_id, name) constraint.
+ */
+export const renameSkillGroup = async (id: number, name: string): Promise<boolean> => {
+  const db = await getDb();
+  const trimmed = name.trim();
+  const clash = await db.getFirstAsync<{ id: number }>(
+    `SELECT id FROM skill_groups
+      WHERE name = ? COLLATE NOCASE
+        AND id != ?
+        AND martial_art_id = (SELECT martial_art_id FROM skill_groups WHERE id = ?)`,
+    [trimmed, id, id],
+  );
+  if (clash) return false;
+  await db.runAsync(`UPDATE skill_groups SET name = ? WHERE id = ?`, [trimmed, id]);
+  return true;
+};
+
+export const deleteSkillGroup = async (id: number): Promise<void> => {
+  const db = await getDb();
+  await db.runAsync(`DELETE FROM skill_group_links WHERE group_id = ?`, [id]);
+  await db.runAsync(`DELETE FROM skill_groups WHERE id = ?`, [id]);
+};
+
+/** Replaces a skill's group assignments with the given ids. */
+export const setSkillGroupIds = async (skillId: number, groupIds: number[]): Promise<void> => {
+  const db = await getDb();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(`DELETE FROM skill_group_links WHERE skill_id = ?`, [skillId]);
+    for (const gid of groupIds) {
+      await db.runAsync(
+        `INSERT OR IGNORE INTO skill_group_links (skill_id, group_id) VALUES (?, ?)`,
+        [skillId, gid]
+      );
+    }
+  });
+};
+
+export const getSkillGroupIds = async (skillId: number): Promise<number[]> => {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ group_id: number }>(
+    `SELECT group_id FROM skill_group_links WHERE skill_id = ?`, [skillId]
+  );
+  return rows.map(r => r.group_id);
 };
 
 // Removes pending sessions for a plan from today — called when plan is deactivated or deleted
@@ -1052,6 +1179,8 @@ export const applyMissedSessionPenalty = async (sessionId: number): Promise<numb
 export const resetAllData = async (): Promise<void> => {
   const db = await getDb();
   await db.execAsync(`
+    DELETE FROM skill_group_links;
+    DELETE FROM skill_groups;
     DELETE FROM skill_exercises;
     DELETE FROM skills;
     DELETE FROM martial_arts;
@@ -1070,7 +1199,7 @@ export const resetAllData = async (): Promise<void> => {
   `);
   await db.execAsync(`
     DELETE FROM sqlite_sequence WHERE name IN
-      ('player','exercises','exercise_body_parts','plans','plan_exercises','sessions','session_exercises','titles','bonus_exercises','martial_arts','skills','skill_exercises','item_groups','exercise_groups','plan_groups');
+      ('player','exercises','exercise_body_parts','plans','plan_exercises','sessions','session_exercises','titles','bonus_exercises','martial_arts','skills','skill_exercises','item_groups','exercise_groups','plan_groups','skill_groups','skill_group_links');
   `);
 };
 
@@ -1168,13 +1297,19 @@ export const updateMartialArt = async (id: number, updates: Partial<MartialArt>)
   await db.runAsync(`UPDATE martial_arts SET ${setClause} WHERE id = ?`, [...Object.values(fields), id]);
 };
 
-/** Deletes an art, its skills and all tags. Returns media URIs to remove from disk. */
+/** Deletes an art, its skills, skill groups and all tags. Returns media URIs to remove from disk. */
 export const deleteMartialArt = async (id: number): Promise<string[]> => {
   const db = await getDb();
   const skills = await db.getAllAsync<{ id: number; media_uri: string; media_type: string }>(
     `SELECT id, media_uri, media_type FROM skills WHERE martial_art_id = ?`, [id]
   );
   await db.withTransactionAsync(async () => {
+    // FK enforcement is off — clean dependants explicitly.
+    await db.runAsync(
+      `DELETE FROM skill_group_links WHERE group_id IN (SELECT id FROM skill_groups WHERE martial_art_id = ?)`,
+      [id]
+    );
+    await db.runAsync(`DELETE FROM skill_groups WHERE martial_art_id = ?`, [id]);
     await db.runAsync(
       `DELETE FROM skill_exercises WHERE skill_id IN (SELECT id FROM skills WHERE martial_art_id = ?)`,
       [id]
@@ -1211,7 +1346,22 @@ export const getSkills = async (martialArtId: number): Promise<Skill[]> => {
   );
   const bySkill: Record<number, number> = {};
   for (const c of counts) bySkill[c.skill_id] = c.count;
-  return skills.map(s => ({ ...s, exercise_count: bySkill[s.id!] ?? 0 }));
+  const links = await db.getAllAsync<{ skill_id: number; group_id: number }>(
+    `SELECT l.skill_id, l.group_id FROM skill_group_links l
+       JOIN skill_groups g ON l.group_id = g.id
+      WHERE g.martial_art_id = ?`, [martialArtId]
+  );
+  const groupsBySkill = new Map<number, number[]>();
+  for (const l of links) {
+    const arr = groupsBySkill.get(l.skill_id) ?? [];
+    arr.push(l.group_id);
+    groupsBySkill.set(l.skill_id, arr);
+  }
+  return skills.map(s => ({
+    ...s,
+    exercise_count: bySkill[s.id!] ?? 0,
+    groups: JSON.stringify(groupsBySkill.get(s.id!) ?? []),
+  }));
 };
 
 export const getSkill = async (id: number): Promise<Skill | null> => {
@@ -1228,7 +1378,7 @@ export const updateSkill = async (id: number, updates: Partial<Skill>): Promise<
   await db.runAsync(`UPDATE skills SET ${setClause} WHERE id = ?`, [...Object.values(fields), id]);
 };
 
-/** Deletes a skill and its tags. Returns the media URI to remove from disk (if any). */
+/** Deletes a skill, its workout/group tags. Returns the media URI to remove from disk (if any). */
 export const deleteSkill = async (id: number): Promise<string | null> => {
   const db = await getDb();
   const skill = await db.getFirstAsync<{ media_uri: string; media_type: string }>(
@@ -1236,6 +1386,7 @@ export const deleteSkill = async (id: number): Promise<string | null> => {
   );
   await db.withTransactionAsync(async () => {
     await db.runAsync(`DELETE FROM skill_exercises WHERE skill_id = ?`, [id]);
+    await db.runAsync(`DELETE FROM skill_group_links WHERE skill_id = ?`, [id]);
     await db.runAsync(`DELETE FROM skills WHERE id = ?`, [id]);
   });
   return skill && skill.media_type !== 'none' && skill.media_uri ? skill.media_uri : null;
