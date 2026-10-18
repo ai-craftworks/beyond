@@ -67,6 +67,8 @@ export const initDatabase = async (): Promise<void> => {
       category    TEXT    DEFAULT 'strength',
       units       TEXT    DEFAULT '[]',
       primary_unit TEXT   DEFAULT 'reps',
+      media_type  TEXT    DEFAULT 'none',
+      media_uri   TEXT    DEFAULT '',
       created_at  TEXT    DEFAULT (datetime('now'))
     );
 
@@ -199,6 +201,8 @@ export const initDatabase = async (): Promise<void> => {
   await safeAlter(`ALTER TABLE bonus_exercises ADD COLUMN primary_unit TEXT DEFAULT 'reps'`);
   await safeAlter(`ALTER TABLE bonus_exercises ADD COLUMN unit_values TEXT DEFAULT '[]'`);
   await safeAlter(`ALTER TABLE bonus_exercises ADD COLUMN actual_units TEXT DEFAULT '[]'`);
+  await safeAlter(`ALTER TABLE exercises ADD COLUMN media_type TEXT DEFAULT 'none'`);
+  await safeAlter(`ALTER TABLE exercises ADD COLUMN media_uri TEXT DEFAULT ''`);
 
   // Create bonus_exercises table if it doesn't exist
   await db.execAsync(`
@@ -405,6 +409,8 @@ export interface Exercise {
   category: string;
   units?: string;        // JSON array of UnitSpec: [{ type, label, default }]
   primary_unit?: string; // unit type that drives EXP
+  media_type: MediaType;
+  media_uri: string;
   body_parts?: string;   // JSON array, populated by getExercises (join table, not a column)
   groups?: string;       // JSON array of group ids, populated by getExercises (join table, not a column)
   created_at?: string;
@@ -536,14 +542,14 @@ export interface MartialArt {
   skill_count?: number;
 }
 
-export type SkillMediaType = 'none' | 'image' | 'video';
+export type MediaType = 'none' | 'image' | 'video';
 
 export interface Skill {
   id?: number;
   martial_art_id: number;
   name: string;
   description: string;
-  media_type: SkillMediaType;
+  media_type: MediaType;
   media_uri: string;
   total_exp: number;
   level: number;
@@ -612,11 +618,12 @@ export const createExercise = async (
   let id: number | undefined;
   await db.withTransactionAsync(async () => {
     const result = await db.runAsync(
-      `INSERT INTO exercises (name, description, exp_reward, unit_type, exp_per_unit, exp_unit_count, unit_label, exp_per_stat_point, stat_type, stat_reward, category, units, primary_unit)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      `INSERT INTO exercises (name, description, exp_reward, unit_type, exp_per_unit, exp_unit_count, unit_label, exp_per_stat_point, stat_type, stat_reward, category, units, primary_unit, media_type, media_uri)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [ex.name, ex.description, ex.exp_reward, ex.unit_type, ex.exp_per_unit,
        ex.exp_unit_count ?? 1, ex.unit_label, ex.exp_per_stat_point ?? 20,
-       ex.stat_type, 0, ex.category, ex.units ?? '[]', ex.primary_unit ?? ex.unit_type]
+       ex.stat_type, 0, ex.category, ex.units ?? '[]', ex.primary_unit ?? ex.unit_type,
+       ex.media_type ?? 'none', ex.media_uri ?? '']
     );
     id = result.lastInsertRowId;
     for (const bp of bodyParts) {
@@ -663,12 +670,17 @@ export const getExercises = async (): Promise<Exercise[]> => {
   }));
 };
 
-export const deleteExercise = async (id: number): Promise<void> => {
+/** Deletes an exercise and its dependants. Returns its media URI to remove from disk (if any). */
+export const deleteExercise = async (id: number): Promise<string | null> => {
   const db = await getDb();
+  const ex = await db.getFirstAsync<{ media_uri: string; media_type: string }>(
+    `SELECT media_uri, media_type FROM exercises WHERE id = ?`, [id]
+  );
   // FK enforcement is off — clean dependants explicitly.
   await db.runAsync(`DELETE FROM skill_exercises WHERE exercise_id = ?`, [id]);
   await db.runAsync(`DELETE FROM exercise_groups WHERE exercise_id = ?`, [id]);
   await db.runAsync(`DELETE FROM exercises WHERE id = ?`, [id]);
+  return ex && ex.media_type !== 'none' && ex.media_uri ? ex.media_uri : null;
 };
 
 export const updateExercise = async (
