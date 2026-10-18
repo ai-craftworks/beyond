@@ -52,7 +52,7 @@ export const HamburgerButton: React.FC<{ color?: string }> = ({ color = COLORS.a
   return (
     <TouchableOpacity
       style={styles.hamburger}
-      onPress={() => { playSound('click'); openNav(); }}
+      onPress={openNav}
       activeOpacity={0.7}
       hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
     >
@@ -203,7 +203,7 @@ export const OffcanvasNav: React.FC = () => {
 const styles = StyleSheet.create({
   root:       { flex: 1, flexDirection: 'row' },
   backdrop:   { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.65)' },
-  panel:      { backgroundColor: COLORS.bgSecondary, borderRightWidth: 1, borderRightColor: COLORS.accentCyan, paddingHorizontal: 18 },
+  panel:      { backgroundColor: COLORS.bgSecondary, paddingHorizontal: 18 },
 
   hamburger:  { paddingHorizontal: 12, paddingVertical: 4 },
 

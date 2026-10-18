@@ -12,10 +12,13 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { SystemButton, SystemInput } from './UIComponents';
+import { SystemButton, SystemInput, SystemMultiDropdown } from './UIComponents';
 import MediaViewer from './MediaViewer';
 import { COLORS } from '../constants/game';
-import { Skill, SkillMediaType, createSkill, updateSkill } from '../database/Database';
+import {
+  Skill, SkillMediaType, SkillGroup, createSkill, updateSkill,
+  getSkillGroups, getSkillGroupIds, setSkillGroupIds,
+} from '../database/Database';
 import { pickSkillMedia, deleteMedia } from '../utils/media';
 import { playSound } from '../utils/sounds';
 
@@ -38,6 +41,8 @@ const SkillFormModal: React.FC<SkillFormModalProps> = ({
   const [mediaUri, setMediaUri] = useState('');
   const [picking, setPicking]   = useState(false);
   const [saving, setSaving]     = useState(false);
+  const [groupOptions, setGroupOptions] = useState<SkillGroup[]>([]);
+  const [selGroups, setSelGroups]       = useState<string[]>([]);
 
   // The media URI currently stored in the DB (edit mode) — never delete on cancel.
   const originalUri = initial?.media_uri ?? '';
@@ -48,7 +53,12 @@ const SkillFormModal: React.FC<SkillFormModalProps> = ({
     setDesc(initial?.description ?? '');
     setMedia(initial?.media_type ?? 'none');
     setMediaUri(initial?.media_uri ?? '');
-  }, [visible, initial]);
+    setSelGroups([]);
+    getSkillGroups(martialArtId).then(setGroupOptions).catch(() => setGroupOptions([]));
+    if (initial?.id) {
+      getSkillGroupIds(initial.id).then(ids => setSelGroups(ids.map(String))).catch(() => {});
+    }
+  }, [visible, initial, martialArtId]);
 
   // Discard an uncommitted picked file when the sheet closes without saving.
   const discardPending = () => {
@@ -90,17 +100,20 @@ const SkillFormModal: React.FC<SkillFormModalProps> = ({
     if (!name.trim()) return Alert.alert('System', 'Skill name required.');
     setSaving(true);
     try {
+      let skillId: number;
       if (initial) {
         if (originalUri && originalUri !== mediaUri) deleteMedia(originalUri);
         await updateSkill(initial.id!, {
           name: name.trim(), description: desc.trim(), media_type: mediaType, media_uri: mediaUri,
         });
+        skillId = initial.id!;
       } else {
-        await createSkill({
+        skillId = await createSkill({
           martial_art_id: martialArtId,
           name: name.trim(), description: desc.trim(), media_type: mediaType, media_uri: mediaUri,
         });
       }
+      await setSkillGroupIds(skillId, selGroups.map(Number));
       onSaved();
       onClose();
     } catch (e) {
@@ -122,6 +135,14 @@ const SkillFormModal: React.FC<SkillFormModalProps> = ({
             <SystemInput label="Name" value={name} onChangeText={setName} placeholder="e.g. Roundhouse Kick" />
             <SystemInput label="Description" value={desc} onChangeText={setDesc}
               placeholder="Optional..." multiline />
+
+            <SystemMultiDropdown
+              label="Groups"
+              placeholder="None"
+              options={groupOptions.map(g => ({ value: String(g.id), label: g.name, color: g.color }))}
+              values={selGroups}
+              onChange={setSelGroups}
+            />
 
             <Text style={styles.selectLbl}>DEMO MEDIA</Text>
             {mediaUri ? (

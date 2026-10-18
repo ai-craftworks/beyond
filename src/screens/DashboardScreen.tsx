@@ -162,8 +162,8 @@ const DashboardScreen: React.FC = () => {
       {/* Player card */}
       <SystemPanel glow>
         <View style={styles.playerRow}>
-          <View style={styles.avatar}>
-            <Text style={styles.avatarTxt}>{player.name[0].toUpperCase()}</Text>
+          <View style={[styles.avatar, { borderColor: rank.color, backgroundColor: `${rank.color}18` }]}>
+            <Text style={[styles.avatarTxt, { color: rank.color }]}>{player.name[0].toUpperCase()}</Text>
           </View>
           <View style={styles.playerInfo}>
             <Text style={styles.playerName}>{player.name}</Text>
@@ -173,7 +173,7 @@ const DashboardScreen: React.FC = () => {
             </View>
             <Text style={styles.playerTitle}>「{player.title}」</Text>
           </View>
-          <View style={styles.levelBlock}>
+          <View style={[styles.levelBadge, { borderColor: rank.color, backgroundColor: `${rank.color}14` }]}>
             <Text style={styles.levelLbl}>LV</Text>
             <Text style={[styles.levelNum, { color: rank.color }]}>{player.level}</Text>
           </View>
@@ -350,16 +350,16 @@ const styles = StyleSheet.create({
   dateText:  { color: COLORS.textMuted, fontSize: 12 },
 
   playerRow:   { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
-  avatar:      { width: 52, height: 52, borderRadius: 26, backgroundColor: `${COLORS.accentCyan}18`, borderWidth: 1.5, borderColor: COLORS.accentCyan, alignItems: 'center', justifyContent: 'center' },
-  avatarTxt:   { color: COLORS.accentCyan, fontSize: 22, fontWeight: '800' },
+  avatar:      { width: 52, height: 52, borderRadius: 26, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },
+  avatarTxt:   { fontSize: 22, fontWeight: '800' },
   playerInfo:  { flex: 1 },
-  playerName:  { color: COLORS.textPrimary, fontSize: 17, fontWeight: '700', marginBottom: 3 },
-  rankRow:     { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 3 },
+  playerName:  { color: COLORS.textPrimary, fontSize: 17, fontWeight: '700', marginBottom: 2 },
+  rankRow:     { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 2 },
   rankLabel:   { fontSize: 11, fontWeight: '600' },
   playerTitle: { color: COLORS.textMuted, fontSize: 11, fontStyle: 'italic' },
-  levelBlock:  { alignItems: 'center' },
-  levelLbl:    { color: COLORS.textMuted, fontSize: 10, fontWeight: '700', letterSpacing: 1 },
-  levelNum:    { fontSize: 38, fontWeight: '900', lineHeight: 44 },
+  levelBadge:  { width: 56, height: 56, borderRadius: 28, borderWidth: 2, alignItems: 'center', justifyContent: 'center' },
+  levelLbl:    { color: COLORS.textMuted, fontSize: 9, fontWeight: '700', letterSpacing: 1.5, marginBottom: -1 },
+  levelNum:    { fontSize: 21, fontWeight: '900', lineHeight: 24 },
 
   questCard:   { flexDirection: 'row', alignItems: 'center', paddingVertical: 13, paddingHorizontal: 2, borderBottomWidth: 1, borderBottomColor: COLORS.borderDim },
   questLeft:   { flex: 1 },
