@@ -247,6 +247,47 @@ export const bodyPartLabel = (value: string): string =>
   BODY_PARTS.find(b => b.value === value)?.label ?? value;
 
 // ─────────────────────────────────────────────
+// WORKOUT LISTING  (shared display helpers for every workout list surface)
+// ─────────────────────────────────────────────
+
+/** Accent colour for an exercise category (resolved through its underlying stat). */
+export const statAccent = (category: string | null | undefined): string => {
+  const stat = EXERCISE_CATEGORIES.find(c => c.value === category)?.stat;
+  return STATS.find(s => s.key === stat)?.color ?? COLORS.textSecondary;
+};
+
+/** Accent colour for a bare stat key (rows whose join lacks `category`). */
+export const statColor = (stat: string | null | undefined): string =>
+  STATS.find(s => s.key === stat)?.color ?? COLORS.textSecondary;
+
+export interface ExpBadgeSource {
+  exp_per_unit?: number | null;
+  exp_reward?: number | null;
+  exp_unit_count?: number | null;
+  primary_unit?: string | null;
+  unit_type?: string | null;
+}
+
+/** Canonical EXP badge text — `+2 EXP / 1 reps`. */
+export const expBadgeLabel = (ex: ExpBadgeSource): string =>
+  `+${ex.exp_per_unit ?? ex.exp_reward ?? 0} EXP / ${ex.exp_unit_count ?? 1} ${unitSuffix(ex.primary_unit ?? ex.unit_type ?? 'reps')}`;
+
+export interface MetaLineSource {
+  stat_type?: string | null;
+  body_parts?: string | null;
+}
+
+/** Canonical row-2 meta line — `STRENGTH · Chest, Triceps` (max 3 parts, then `+n`). */
+export const workoutMetaLine = (ex: MetaLineSource): string => {
+  const parts = parseBodyParts(ex.body_parts);
+  const shown = parts.slice(0, 3).map(bodyPartLabel);
+  if (parts.length > 3) shown.push(`+${parts.length - 3}`);
+  const tail = shown.join(', ');
+  const stat = ex.stat_type ? ex.stat_type.toUpperCase() : '';
+  return stat && tail ? `${stat} · ${tail}` : stat || tail;
+};
+
+// ─────────────────────────────────────────────
 // GROUPS  (purely organizational buckets for workouts & plans)
 // ─────────────────────────────────────────────
 

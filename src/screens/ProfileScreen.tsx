@@ -9,6 +9,7 @@ import { View, Text, ScrollView, StyleSheet, Alert, TouchableOpacity } from 'rea
 import { useFocusEffect } from '@react-navigation/native';
 import { getPlayer, Player, getTitles, EarnedTitle, getRecentSessions, Session, getSessionSummary, resetAllData, getMartialArts, MartialArt } from '../database/Database';
 import { SystemPanel, SectionHeader, StatRow, ExpBar, IonName } from '../components/UIComponents';
+import WorkoutRow, { ExpBadge } from '../components/WorkoutRow';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, getRankForLevel, getBeltForLevel, STATS, parseUnitValues, formatUnitValues } from '../constants/game';
 import { sumExp, expToNextRemaining } from '../utils/math';
@@ -180,73 +181,69 @@ const ProfileScreen: React.FC = () => {
             const detail = sessionDetails[s.id!];
             return (
               <View key={s.id}>
-                <TouchableOpacity
-                  style={styles.sessionRow}
-                  onPress={() => toggleSession(s.id!)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.sessionInfo}>
-                    <Text style={styles.sessionPlan}>{s.plan_name}</Text>
-                    <Text style={styles.sessionDate}>{s.date}</Text>
-                  </View>
-                  <View style={styles.sessionRight}>
-                    {s.total_exp > 0 && <Text style={styles.sessionExp}>+{s.total_exp} EXP</Text>}
-                    <Text style={[styles.sessionStatus,
-                      { color: s.status === 'completed' ? COLORS.accentGreen : COLORS.textMuted }]}>
+                <WorkoutRow
+                  title={s.plan_name}
+                  meta={s.date}
+                  metaAccessory={
+                    <Text style={[styles.sessionStatus, { color: s.status === 'completed' ? COLORS.accentGreen : COLORS.textMuted }]}>
                       {s.status.toUpperCase()}
                     </Text>
+                  }
+                  accent={s.status === 'completed' ? COLORS.accentGreen : s.status === 'in_progress' ? COLORS.accentCyan : COLORS.borderMain}
+                  exp={s.total_exp > 0 ? `+${s.total_exp} EXP` : undefined}
+                  badgeColor={s.status === 'completed' ? COLORS.accentGreen : COLORS.accentCyan}
+                  onPress={() => toggleSession(s.id!)}
+                  trailing={
                     <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.textMuted} />
-                  </View>
-                </TouchableOpacity>
+                  }
+                />
 
                 {/* Expanded exercise detail */}
                 {isExpanded && detail && (
                   <View style={styles.sessionDetail}>
                     {detail.exercises.map((ex: any, i: number) => (
-                      <View key={i} style={styles.sessionExRow}>
-                        <View style={styles.sessionExDot}>
-                          {ex.is_completed
-                            ? <Ionicons name="checkmark" size={12} color={COLORS.accentGreen} />
-                            : <Ionicons name="ellipse" size={12} color={COLORS.textMuted} />}
-                        </View>
-                        <Text style={[styles.sessionExName,
-                          !ex.is_completed && { color: COLORS.textMuted }]}>
-                          {ex.name}
-                        </Text>
-                        {ex.is_completed && (
-                          <Text style={styles.sessionExAmt}>
-                            {amountLabel(ex)}  +{ex.exp_reward} EXP
-                          </Text>
-                        )}
-                      </View>
+                      <WorkoutRow
+                        key={i}
+                        state={ex.is_completed ? 'done' : 'pending'}
+                        title={ex.name}
+                        meta={ex.is_completed ? amountLabel(ex) : 'Not completed'}
+                        accent={COLORS.accentGreen}
+                        exp={ex.is_completed ? `+${ex.exp_reward} EXP` : undefined}
+                        badgeColor={COLORS.accentGreen}
+                        leading={
+                          <View style={styles.sessionExDot}>
+                            {ex.is_completed
+                              ? <Ionicons name="checkmark" size={12} color={COLORS.accentGreen} />
+                              : <Ionicons name="ellipse" size={12} color={COLORS.textMuted} />}
+                          </View>
+                        }
+                      />
                     ))}
                     <View style={styles.sessionExRow}>
                       <Text style={[styles.sessionExDot, { color: COLORS.accentCyan }]}>Σ</Text>
                       <Text style={[styles.sessionExName, { color: COLORS.textSecondary }]}>Session Total (incl. bonus)</Text>
-                      <Text style={[styles.sessionExAmt, { color: COLORS.accentCyan }]}>
-                        +{s.total_exp} EXP
-                      </Text>
+                      <ExpBadge text={`+${s.total_exp} EXP`} color={COLORS.accentCyan} />
                     </View>
                     {detail.bonuses.length > 0 && (
                       <>
                         <Text style={styles.sessionBonusLabel}>BONUS</Text>
                         {detail.bonuses.map((ex: any, i: number) => (
-                          <View key={i} style={styles.sessionExRow}>
-                            <View style={styles.sessionExDot}>
-                              {ex.is_completed
-                                ? <Ionicons name="star" size={12} color={COLORS.accentGold} />
-                                : <Ionicons name="star-outline" size={12} color={COLORS.textMuted} />}
-                            </View>
-                            <Text style={[styles.sessionExName,
-                              !ex.is_completed && { color: COLORS.textMuted }]}>
-                              {ex.name}
-                            </Text>
-                            {ex.is_completed && (
-                              <Text style={styles.sessionExAmt}>
-                                {amountLabel(ex)}  +{ex.exp_reward} EXP
-                              </Text>
-                            )}
-                          </View>
+                          <WorkoutRow
+                            key={i}
+                            state={ex.is_completed ? 'done' : 'pending'}
+                            title={ex.name}
+                            meta={ex.is_completed ? amountLabel(ex) : 'Not completed'}
+                            accent={COLORS.accentGold}
+                            exp={ex.is_completed ? `+${ex.exp_reward} EXP` : undefined}
+                            badgeColor={COLORS.accentGold}
+                            leading={
+                              <View style={styles.sessionExDot}>
+                                {ex.is_completed
+                                  ? <Ionicons name="star" size={12} color={COLORS.accentGold} />
+                                  : <Ionicons name="star-outline" size={12} color={COLORS.textMuted} />}
+                              </View>
+                            }
+                          />
                         ))}
                       </>
                     )}
@@ -293,19 +290,12 @@ const styles = StyleSheet.create({
   titleDesc:    { color: COLORS.textSecondary, fontSize: 12, lineHeight: 18 },
   titleDate:    { color: COLORS.textMuted, fontSize: 11 },
 
-  sessionRow:   { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.borderDim },
-  sessionInfo:  { flex: 1 },
-  sessionPlan:  { color: COLORS.textPrimary, fontSize: 13, fontWeight: '600' },
-  sessionDate:  { color: COLORS.textMuted, fontSize: 11, marginTop: 1 },
-  sessionRight: { alignItems: 'flex-end', gap: 2 },
-  sessionExp:   { color: COLORS.accentCyan, fontSize: 12, fontWeight: '700' },
   sessionStatus:{ fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
 
   sessionDetail:      { backgroundColor: COLORS.bgTertiary, borderRadius: 8, padding: 10, marginBottom: 6, marginTop: -4 },
   sessionExRow:       { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, gap: 8 },
   sessionExDot:       { width: 16, alignItems: 'center' },
   sessionExName:      { color: COLORS.textSecondary, fontSize: 12, flex: 1 },
-  sessionExAmt:       { color: COLORS.accentCyan, fontSize: 11, fontWeight: '600' },
   sessionBonusLabel:  { color: COLORS.accentGold, fontSize: 10, fontWeight: '700', letterSpacing: 1, marginTop: 6, marginBottom: 2 },
 
   resetBtn: {
