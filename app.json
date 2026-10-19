@@ -2,13 +2,13 @@
   "expo": {
     "name": "Beyond",
     "slug": "beyond",
-    "version": "2.2.0",
+    "version": "2.3.0",
     "orientation": "portrait",
     "icon": "./assets/images/logo.png",
     "userInterfaceStyle": "dark",
     "backgroundColor": "#0A0E1A",
     "android": {
-      "versionCode": 7,
+      "versionCode": 8,
       "package": "com.beyond.app",
       "permissions": [
         "android.permission.RECORD_AUDIO",
