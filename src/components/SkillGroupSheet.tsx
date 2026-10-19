@@ -38,11 +38,6 @@ const SkillGroupSheet: React.FC<SkillGroupSheetProps> = ({
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName]   = useState('');
 
-  useEffect(() => {
-    if (visible) load();
-    else { setNewName(''); setEditingId(null); setEditName(''); }
-  }, [visible, martialArtId]);
-
   const load = async () => {
     try {
       setGroups(await getSkillGroups(martialArtId));
@@ -50,6 +45,11 @@ const SkillGroupSheet: React.FC<SkillGroupSheetProps> = ({
       console.error('getSkillGroups error:', e);
     }
   };
+
+  useEffect(() => {
+    if (visible) load();
+    else { setNewName(''); setEditingId(null); setEditName(''); }
+  }, [visible, martialArtId]);
 
   const handleAdd = async () => {
     const name = newName.trim();
@@ -124,7 +124,7 @@ const SkillGroupSheet: React.FC<SkillGroupSheetProps> = ({
             </TouchableOpacity>
           </View>
           <Text style={styles.hint}>
-            Groups are just labels for finding skills — they don't affect EXP or belts.
+            Groups are just labels for finding skills — they don’t affect EXP or belts.
           </Text>
 
           <View style={styles.addRow}>

@@ -9,10 +9,11 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createExercise, deleteExercise, updateExercise, Exercise, MediaType, getExercises, getGroups, Group } from '../database/Database';
 import { SystemButton, SystemInput, SectionHeader, EmptyState, SystemDropdown, SystemMultiDropdown, FilterSheet, FilterSection, FilterChip, FilterButton } from '../components/UIComponents';
 import MediaField from '../components/MediaField';
-import { MediaThumb } from '../components/MediaViewer';
+import WorkoutRow from '../components/WorkoutRow';
+import ExerciseDetailSheet from '../components/ExerciseDetailSheet';
 import { deleteMedia } from '../utils/media';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, EXERCISE_CATEGORIES, STATS, UNIT_TYPES, BODY_PARTS, bodyPartLabel, parseBodyParts, parseUnits, parseGroupIds, unitSuffix } from '../constants/game';
+import { COLORS, EXERCISE_CATEGORIES, STATS, UNIT_TYPES, BODY_PARTS, parseBodyParts, parseUnits, parseGroupIds, unitSuffix, statAccent, expBadgeLabel, prLabel, workoutMetaLine } from '../constants/game';
 import { filterExercises } from '../utils/filterExercises';
 import type { RootStackParamList } from '../../App';
 
@@ -28,6 +29,7 @@ const ExercisesScreen: React.FC = () => {
   const [modal, setModal]         = useState(false);
   const [loading, setLoading]     = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [detail, setDetail]         = useState<Exercise | null>(null);
 
   const [editModal, setEditModal]     = useState(false);
   const [editTarget, setEditTarget]   = useState<Exercise | null>(null);
@@ -69,15 +71,15 @@ const ExercisesScreen: React.FC = () => {
   const [partFilter, setPartFilter] = useState<string[]>([]);
   const [groupFilter, setGroupFilter] = useState<string[]>([]);
 
-  useFocusEffect(useCallback(() => { load(); }, []));
   const load = async () => {
     const [exs, grps] = await Promise.all([getExercises(), getGroups('exercise')]);
     setExercises(exs);
     setGroups(grps);
   };
 
+  useFocusEffect(useCallback(() => { load(); }, []));
+
   const groupOptions = groups.map(g => ({ value: String(g.id), label: g.name, color: g.color }));
-  const groupName = (id: number) => groups.find(g => g.id === id)?.name ?? '';
   const groupColor = (id: number) => groups.find(g => g.id === id)?.color ?? COLORS.textSecondary;
 
   const resetForm = () => {
@@ -174,9 +176,14 @@ const ExercisesScreen: React.FC = () => {
       {
         text: 'Delete', style: 'destructive',
         onPress: async () => {
-          const mediaFile = await deleteExercise(ex.id!);
-          deleteMedia(mediaFile);
-          await load();
+          try {
+            const mediaFile = await deleteExercise(ex.id!);
+            deleteMedia(mediaFile);
+            await load();
+          } catch (e) {
+            console.error('delete exercise error:', e);
+            Alert.alert('Error', 'Could not delete the exercise. Please try again.');
+          }
         },
       },
     ]);
@@ -253,24 +260,26 @@ const ExercisesScreen: React.FC = () => {
       setEditModal(false);
       setEditTarget(null);
       await load();
-    } catch (e) {
+    } catch {
       Alert.alert('Error', 'Failed to update exercise.');
     } finally {
       setEditLoading(false);
     }
   };
 
-  const accentForCat = (cat: string) => {
-    const stat = EXERCISE_CATEGORIES.find(c => c.value === cat)?.stat;
-    return STATS.find(s => s.key === stat)?.color ?? COLORS.textSecondary;
-  };
-
   const selectedUnit = UNIT_TYPES.find(u => u.value === primaryUnit);
-  const partsOf = (ex: Exercise) => parseBodyParts(ex.body_parts);
-  const cardUnits = (ex: Exercise) => {
-    const parsed = parseUnits(ex.units);
-    if (parsed.length > 0) return parsed;
-    return [{ type: ex.unit_type ?? 'reps', label: ex.unit_label ?? 'reps', default: 0 }];
+  /** Up to 3 group colour dots, shown after the meta line. */
+  const groupDots = (ex: Exercise) => {
+    const ids = parseGroupIds(ex.groups);
+    if (ids.length === 0) return null;
+    return (
+      <View style={styles.dotsRow}>
+        {ids.slice(0, 3).map(id => (
+          <View key={id} style={[styles.dot, { backgroundColor: groupColor(id) }]} />
+        ))}
+        {ids.length > 3 && <Text style={styles.dotMore}>+{ids.length - 3}</Text>}
+      </View>
+    );
   };
   const filtersActive = search.trim() !== '' || catFilter !== 'all' || partFilter.length > 0 || groupFilter.length > 0;
   const filterCount = (catFilter !== 'all' ? 1 : 0) + (partFilter.length > 0 ? 1 : 0) + (groupFilter.length > 0 ? 1 : 0);
@@ -278,7 +287,6 @@ const ExercisesScreen: React.FC = () => {
   const togglePart = (v: string) => setPartFilter(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
   const toggleGroupF = (v: string) => setGroupFilter(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
   const shown = filterExercises(exercises, { search, category: catFilter, bodyParts: partFilter, groups: groupFilter.map(Number) });
-  const cardGroups = (ex: Exercise) => parseGroupIds(ex.groups);
 
   return (
     <View style={styles.root}>
@@ -305,66 +313,23 @@ const ExercisesScreen: React.FC = () => {
           title={filtersActive ? 'No matching exercises' : 'No exercises yet'}
           subtitle={filtersActive ? 'Try a different search or filter.' : 'Create your first exercise.'} />}
         renderItem={({ item }) => (
-          <View style={[styles.card, { borderLeftColor: accentForCat(item.category) }]}>
-            <View style={styles.cardTop}>
-              <Text style={styles.cardName}>{item.name}</Text>
-              <View style={styles.cardActions}>
-                <TouchableOpacity onPress={() => openEdit(item)} style={styles.editBtn}>
-                  <Ionicons name="create" size={16} color={COLORS.accentCyan} />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => handleDelete(item)}>
-                  <Ionicons name="close" size={18} color={COLORS.accentRed} />
-                </TouchableOpacity>
-              </View>
-            </View>
-            {!!item.description && <Text style={styles.cardDesc}>{item.description}</Text>}
-            {!!item.media_uri && (item.media_type === 'image' || item.media_type === 'video') && (
-              <View style={styles.mediaRow}>
-                <MediaThumb mediaType={item.media_type} mediaUri={item.media_uri} />
-              </View>
-            )}
-            <View style={styles.tags}>
-              <View style={styles.tag}>
-                <Text style={styles.tagTxt}>
-                  +{item.exp_per_unit ?? item.exp_reward} EXP / {item.exp_unit_count ?? 1} {unitSuffix(item.primary_unit ?? item.unit_type ?? 'reps')}
-                </Text>
-              </View>
-              <View style={[styles.tag, { borderColor: accentForCat(item.category) }]}>
-                <Text style={[styles.tagTxt, { color: accentForCat(item.category) }]}>
-                  {item.stat_type.toUpperCase()}
-                </Text>
-              </View>
-              {cardUnits(item).map(u => {
-                const isPrimary = (item.primary_unit ?? item.unit_type) === u.type;
-                return (
-                  <View key={u.type} style={[styles.tag, isPrimary && styles.tagPrimary]}>
-                    <Text style={[styles.tagTxt, isPrimary && styles.tagTxtPrimary]}>
-                      {u.label}{u.default > 0 ? ` · ${u.default}` : ''}
-                    </Text>
+          <WorkoutRow
+            title={item.name}
+            meta={workoutMetaLine(item)}
+            metaAccessory={
+              <>
+                {groupDots(item)}
+                {prLabel(item) && (
+                  <View style={styles.prPill}>
+                    <Text style={styles.prPillTxt}>★ {prLabel(item)}</Text>
                   </View>
-                );
-              })}
-            </View>
-            {partsOf(item).length > 0 && (
-              <View style={styles.tags}>
-                {partsOf(item).map(p => (
-                  <View key={p} style={styles.partTag}>
-                    <Text style={styles.partTagTxt}>{bodyPartLabel(p)}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
-            {cardGroups(item).length > 0 && (
-              <View style={styles.tags}>
-                {cardGroups(item).map(gid => (
-                  <View key={gid} style={[styles.groupTag, { borderColor: groupColor(gid) }]}>
-                    <View style={[styles.groupTagDot, { backgroundColor: groupColor(gid) }]} />
-                    <Text style={[styles.groupTagTxt, { color: groupColor(gid) }]}>{groupName(gid)}</Text>
-                  </View>
-                ))}
-              </View>
-            )}
-          </View>
+                )}
+              </>
+            }
+            accent={statAccent(item.category)}
+            exp={expBadgeLabel(item)}
+            onPress={() => setDetail(item)}
+          />
         )}
       />
 
@@ -676,6 +641,14 @@ const ExercisesScreen: React.FC = () => {
         </KeyboardAvoidingView>
       </Modal>
 
+      <ExerciseDetailSheet
+        exercise={detail}
+        groups={groups}
+        onClose={() => setDetail(null)}
+        onEdit={ex => { setDetail(null); openEdit(ex); }}
+        onDelete={ex => { setDetail(null); handleDelete(ex); }}
+      />
+
       <FilterSheet
         visible={filtersOpen}
         onClose={() => setFiltersOpen(false)}
@@ -684,7 +657,7 @@ const ExercisesScreen: React.FC = () => {
         <FilterSection label="Category">
           <FilterChip label="All" active={catFilter === 'all'} onPress={() => setCatFilter('all')} />
           {EXERCISE_CATEGORIES.map(c => (
-            <FilterChip key={c.value} label={c.label} color={accentForCat(c.value)}
+            <FilterChip key={c.value} label={c.label} color={statAccent(c.value)}
               active={catFilter === c.value}
               onPress={() => setCatFilter(catFilter === c.value ? 'all' : c.value)} />
           ))}
@@ -714,21 +687,12 @@ const ExercisesScreen: React.FC = () => {
 const styles = StyleSheet.create({
   root:       { flex: 1, backgroundColor: COLORS.bgPrimary },
   list:       { padding: 16, paddingBottom: 100 },
-  card:       { backgroundColor: COLORS.bgSecondary, borderRadius: 10, borderWidth: 1, borderColor: COLORS.borderMain, borderLeftWidth: 3, padding: 13, marginBottom: 9 },
-  cardTop:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 },
-  cardName:   { color: COLORS.textPrimary, fontSize: 15, fontWeight: '700', flex: 1 },
-  cardDesc:   { color: COLORS.textSecondary, fontSize: 12, marginBottom: 7 },
-  mediaRow:   { marginTop: 8, marginBottom: 2 },
-  tags:       { flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginTop: 6 },
-  tag:        { borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 2 },
-  tagTxt:     { color: COLORS.accentCyan, fontSize: 10, fontWeight: '700' },
-  tagPrimary: { borderColor: COLORS.accentGold },
-  tagTxtPrimary: { color: COLORS.accentGold },
-  partTag:    { borderWidth: 1, borderColor: COLORS.borderDim, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 2 },
-  partTagTxt: { color: COLORS.textMuted, fontSize: 10, fontWeight: '600' },
-  groupTag:   { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderRadius: 4, paddingHorizontal: 7, paddingVertical: 2 },
-  groupTagDot: { width: 6, height: 6, borderRadius: 3 },
-  groupTagTxt: { fontSize: 10, fontWeight: '700' },
+
+  dotsRow:    { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  dot:        { width: 7, height: 7, borderRadius: 3.5 },
+  dotMore:    { color: COLORS.textMuted, fontSize: 10, fontWeight: '700' },
+  prPill:     { alignSelf: 'flex-start', borderWidth: 1, borderColor: COLORS.accentGold, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 1, marginTop: 4 },
+  prPillTxt:  { color: COLORS.accentGold, fontSize: 10, fontWeight: '800', letterSpacing: 0.4 },
 
   searchRow:  { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bgTertiary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 8, paddingHorizontal: 12, marginBottom: 14, gap: 8 },
   searchInput: { flex: 1, color: COLORS.textPrimary, fontSize: 14, paddingVertical: 11 },
@@ -752,9 +716,6 @@ const styles = StyleSheet.create({
 
   row:        { flexDirection: 'row', gap: 12, marginBottom: 6 },
   flex1:      { flex: 1 },
-
-  cardActions: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  editBtn:     { padding: 4 },
 
   perLabel:    { justifyContent: 'flex-end', paddingBottom: 14, alignItems: 'center', paddingHorizontal: 6 },
   perLabelTxt: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },

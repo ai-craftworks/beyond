@@ -110,7 +110,7 @@ const preloadAll = async () => {
         player.volume = VOLUMES[name] ?? 0.7;
         cache.set(name, player);
       }
-    } catch (_) {}
+    } catch {}
   }
 };
 

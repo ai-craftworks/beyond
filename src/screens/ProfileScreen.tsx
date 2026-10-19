@@ -5,40 +5,55 @@
  */
 
 import React, { useCallback, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert, TouchableOpacity } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
-import { getPlayer, Player, getTitles, EarnedTitle, getRecentSessions, Session, getSessionSummary, resetAllData, getMartialArts, MartialArt } from '../database/Database';
-import { SystemPanel, SectionHeader, StatRow, ExpBar, IonName } from '../components/UIComponents';
+import { View, Text, ScrollView, StyleSheet, Alert, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { getPlayer, Player, getTitles, EarnedTitle, getRecentSessions, Session, getSessionSummary, resetAllData, getMartialArts, MartialArt, getLifetimeStats, LifetimeStats, exportAllData, importAllData, ImportBackupError } from '../database/Database';
+import { File, Paths } from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+import * as DocumentPicker from 'expo-document-picker';
+import { SystemPanel, SectionHeader, StatRow, ExpBar, SystemButton, IonName } from '../components/UIComponents';
+import WorkoutRow, { ExpBadge } from '../components/WorkoutRow';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, getRankForLevel, getBeltForLevel, STATS, parseUnitValues, formatUnitValues } from '../constants/game';
-import { sumExp, expToNextRemaining } from '../utils/math';
+import { expToNextRemaining } from '../utils/math';
+import { computeStreaks } from '../utils/stats';
+import { navigationRef } from '../navigation/ref';
+import { RootStackParamList } from '../../App';
+import { playSound } from '../utils/sounds';
+import { hapticSuccess } from '../utils/haptics';
+import { fmtShortDate, fmtLocalShortDate } from '../utils/dates';
 
 const amountLabel = (ex: any): string =>
   formatUnitValues(parseUnitValues(ex.actual_units)) || `${ex.actual_amount} ${ex.unit_label ?? 'reps'}`;
 
-import { useNavigation } from '@react-navigation/native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../../App';
-
 const ProfileScreen: React.FC = () => {
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
   const [player,   setPlayer]   = useState<Player | null>(null);
   const [titles,   setTitles]   = useState<EarnedTitle[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [arts,     setArts]     = useState<MartialArt[]>([]);
-  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
+  const [lifetime, setLifetime] = useState<LifetimeStats | null>(null);
 
   const [expandedSession, setExpandedSession] = useState<number | null>(null);
   const [sessionDetails, setSessionDetails] = useState<Record<number, any>>({});
-
-  useFocusEffect(useCallback(() => { loadAll(); }, []));
+  const [busy, setBusy] = useState<'export' | 'import' | null>(null);
 
   const loadAll = async () => {
-    const [p, t, s, a] = await Promise.all([getPlayer(), getTitles(), getRecentSessions(15), getMartialArts()]);
+    const [p, t, s, a, life] = await Promise.all([
+      getPlayer(), getTitles(), getRecentSessions(15), getMartialArts(), getLifetimeStats(),
+    ]);
     setPlayer(p);
     setTitles(t);
     setSessions(s);
     setArts(a);
+    setLifetime(life);
   };
+
+  useFocusEffect(useCallback(() => {
+    playSound('profile'); // ambient system scan — the one place this sound fires
+    loadAll();
+  }, []));
 
   const toggleSession = async (sessionId: number) => {
     if (expandedSession === sessionId) {
@@ -51,12 +66,17 @@ const ProfileScreen: React.FC = () => {
     setSessionDetails(prev => ({ ...prev, [sessionId]: detail }));
   };
 
-  if (!player) return null;
+  if (!player || !lifetime) {
+    return (
+      <View style={styles.loadRoot}>
+        <ActivityIndicator size="large" color={COLORS.accentCyan} />
+      </View>
+    );
+  }
 
   const rank       = getRankForLevel(player.level);
-  const completed  = sessions.filter(s => s.status === 'completed').length;
-  const totalExp   = sumExp(sessions);
   const skillCount = arts.reduce((n, a) => n + (a.skill_count ?? 0), 0);
+  const streaks    = computeStreaks(lifetime.completedDates);
 
   const handleReset = () => {
     Alert.alert(
@@ -69,11 +89,97 @@ const ProfileScreen: React.FC = () => {
           style: 'destructive',
           onPress: async () => {
             await resetAllData();
-            navigation.replace('Registration');
+            // Tab screens have no `replace` — reset the root stack instead
+            // (the nav cast hid this call from tsc and it crashed at runtime).
+            if (navigationRef.isReady()) {
+              navigationRef.reset({ index: 0, routes: [{ name: 'Registration' }] });
+            }
           },
         },
       ]
     );
+  };
+
+  const handleExport = async () => {
+    if (busy) return;
+    setBusy('export');
+    try {
+      const backup = await exportAllData();
+      const name = `beyond-backup-${new Date().toISOString().slice(0, 10)}.json`;
+      const file = new File(Paths.cache, name);
+      file.write(JSON.stringify(backup, null, 2));
+      if (!(await Sharing.isAvailableAsync())) {
+        Alert.alert('System', 'Sharing is not available on this device.');
+        return;
+      }
+      await Sharing.shareAsync(file.uri, {
+        mimeType: 'application/json',
+        dialogTitle: 'Export Beyond backup',
+        UTI: 'public.json',
+      });
+    } catch (e) {
+      console.error('export backup error:', e);
+      Alert.alert('Error', 'Could not export your backup. Please try again.');
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleImport = async () => {
+    if (busy) return;
+    setBusy('import');
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/json', 'text/plain', 'application/octet-stream'],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+      if (result.canceled || !result.assets || result.assets.length === 0) return;
+
+      const raw = await new File(result.assets[0].uri).text();
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        Alert.alert('Not a backup', 'That file is not a valid Beyond backup (it is not readable JSON).');
+        return;
+      }
+
+      // Read first, warn second, wipe last — never touch data before consent.
+      Alert.alert(
+        'Replace All Data',
+        'Importing a backup permanently replaces your current player, workouts, plans, sessions, titles, and dojo. This cannot be undone.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Replace',
+            style: 'destructive',
+            onPress: async () => {
+              try {
+                const count = await importAllData(parsed);
+                setExpandedSession(null);
+                setSessionDetails({});
+                await loadAll();
+                hapticSuccess();
+                Alert.alert('Backup Restored', `${count} records imported.`);
+              } catch (e) {
+                const kind = e instanceof ImportBackupError ? e.kind : 'failed';
+                console.error('import backup error:', e);
+                const msg = kind === 'not-backup' || kind === 'bad-shape' || kind === 'no-player'
+                  ? 'That file does not look like a valid Beyond backup.'
+                  : 'The import failed partway through and your data was not changed.';
+                Alert.alert('Import Failed', msg);
+              }
+            },
+          },
+        ]
+      );
+    } catch (e) {
+      console.error('pick backup error:', e);
+      Alert.alert('Error', 'Could not read the selected file. Please try again.');
+    } finally {
+      setBusy(null);
+    }
   };
 
   return (
@@ -137,12 +243,24 @@ const ProfileScreen: React.FC = () => {
 
       {/* Achievements summary */}
       <SystemPanel>
-        <SectionHeader title="Achievements" />
+        <SectionHeader title="Achievements" subtitle="All time" />
         <View style={styles.achieveRow}>
           {[
-            { label: 'Sessions\nCompleted', value: completed,    color: COLORS.accentCyan   },
-            { label: 'Total EXP\nEarned',  value: totalExp,     color: COLORS.accentGold   },
-            { label: 'Titles\nEarned',     value: titles.length, color: COLORS.accentPurple },
+            { label: 'Sessions\nCompleted', value: lifetime.completed,      color: COLORS.accentCyan   },
+            { label: 'Total EXP\nEarned',   value: lifetime.totalExp,       color: COLORS.accentGold   },
+            { label: 'Titles\nEarned',      value: titles.length,           color: COLORS.accentPurple },
+          ].map(item => (
+            <View key={item.label} style={styles.achieveBox}>
+              <Text style={[styles.achieveVal, { color: item.color }]}>{item.value}</Text>
+              <Text style={styles.achieveLbl}>{item.label}</Text>
+            </View>
+          ))}
+        </View>
+        <View style={styles.achieveRow}>
+          {[
+            { label: 'Current\nStreak', value: `${streaks.current}d`, color: COLORS.accentGreen },
+            { label: 'Best\nStreak',    value: `${streaks.best}d`,    color: COLORS.accentGold   },
+            { label: 'Training\nDays',  value: lifetime.completedDates.length, color: COLORS.accentCyan },
           ].map(item => (
             <View key={item.label} style={styles.achieveBox}>
               <Text style={[styles.achieveVal, { color: item.color }]}>{item.value}</Text>
@@ -164,7 +282,7 @@ const ProfileScreen: React.FC = () => {
                 <Text style={styles.titleDesc}>{t.description}</Text>
               </View>
               <Text style={styles.titleDate}>
-                {new Date(t.earned_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                {fmtLocalShortDate(t.earned_at)}
               </Text>
             </View>
           ))}
@@ -172,7 +290,11 @@ const ProfileScreen: React.FC = () => {
 
       {/* Session history */}
       <SystemPanel>
-        <SectionHeader title="Recent Sessions" subtitle="Last 15" />
+        <SectionHeader
+          title="Recent Sessions"
+          subtitle="Last 15"
+          action={{ label: 'View All', onPress: () => navigation.navigate('History') }}
+        />
         {sessions.length === 0
           ? <Text style={styles.noData}>No sessions yet.</Text>
           : sessions.map(s => {
@@ -180,73 +302,69 @@ const ProfileScreen: React.FC = () => {
             const detail = sessionDetails[s.id!];
             return (
               <View key={s.id}>
-                <TouchableOpacity
-                  style={styles.sessionRow}
-                  onPress={() => toggleSession(s.id!)}
-                  activeOpacity={0.7}
-                >
-                  <View style={styles.sessionInfo}>
-                    <Text style={styles.sessionPlan}>{s.plan_name}</Text>
-                    <Text style={styles.sessionDate}>{s.date}</Text>
-                  </View>
-                  <View style={styles.sessionRight}>
-                    {s.total_exp > 0 && <Text style={styles.sessionExp}>+{s.total_exp} EXP</Text>}
-                    <Text style={[styles.sessionStatus,
-                      { color: s.status === 'completed' ? COLORS.accentGreen : COLORS.textMuted }]}>
+                <WorkoutRow
+                  title={s.plan_name}
+                  meta={fmtShortDate(s.date)}
+                  metaAccessory={
+                    <Text style={[styles.sessionStatus, { color: s.status === 'completed' ? COLORS.accentGreen : COLORS.textMuted }]}>
                       {s.status.toUpperCase()}
                     </Text>
+                  }
+                  accent={s.status === 'completed' ? COLORS.accentGreen : s.status === 'in_progress' ? COLORS.accentCyan : COLORS.borderMain}
+                  exp={s.total_exp > 0 ? `+${s.total_exp} EXP` : undefined}
+                  badgeColor={s.status === 'completed' ? COLORS.accentGreen : COLORS.accentCyan}
+                  onPress={() => toggleSession(s.id!)}
+                  trailing={
                     <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={16} color={COLORS.textMuted} />
-                  </View>
-                </TouchableOpacity>
+                  }
+                />
 
                 {/* Expanded exercise detail */}
                 {isExpanded && detail && (
                   <View style={styles.sessionDetail}>
                     {detail.exercises.map((ex: any, i: number) => (
-                      <View key={i} style={styles.sessionExRow}>
-                        <View style={styles.sessionExDot}>
-                          {ex.is_completed
-                            ? <Ionicons name="checkmark" size={12} color={COLORS.accentGreen} />
-                            : <Ionicons name="ellipse" size={12} color={COLORS.textMuted} />}
-                        </View>
-                        <Text style={[styles.sessionExName,
-                          !ex.is_completed && { color: COLORS.textMuted }]}>
-                          {ex.name}
-                        </Text>
-                        {ex.is_completed && (
-                          <Text style={styles.sessionExAmt}>
-                            {amountLabel(ex)}  +{ex.exp_reward} EXP
-                          </Text>
-                        )}
-                      </View>
+                      <WorkoutRow
+                        key={i}
+                        state={ex.is_completed ? 'done' : 'pending'}
+                        title={ex.name}
+                        meta={ex.is_completed ? amountLabel(ex) : 'Not completed'}
+                        accent={COLORS.accentGreen}
+                        exp={ex.is_completed ? `+${ex.exp_reward} EXP` : undefined}
+                        badgeColor={COLORS.accentGreen}
+                        leading={
+                          <View style={styles.sessionExDot}>
+                            {ex.is_completed
+                              ? <Ionicons name="checkmark" size={12} color={COLORS.accentGreen} />
+                              : <Ionicons name="ellipse" size={12} color={COLORS.textMuted} />}
+                          </View>
+                        }
+                      />
                     ))}
                     <View style={styles.sessionExRow}>
                       <Text style={[styles.sessionExDot, { color: COLORS.accentCyan }]}>Σ</Text>
                       <Text style={[styles.sessionExName, { color: COLORS.textSecondary }]}>Session Total (incl. bonus)</Text>
-                      <Text style={[styles.sessionExAmt, { color: COLORS.accentCyan }]}>
-                        +{s.total_exp} EXP
-                      </Text>
+                      <ExpBadge text={`+${s.total_exp} EXP`} color={COLORS.accentCyan} />
                     </View>
                     {detail.bonuses.length > 0 && (
                       <>
                         <Text style={styles.sessionBonusLabel}>BONUS</Text>
                         {detail.bonuses.map((ex: any, i: number) => (
-                          <View key={i} style={styles.sessionExRow}>
-                            <View style={styles.sessionExDot}>
-                              {ex.is_completed
-                                ? <Ionicons name="star" size={12} color={COLORS.accentGold} />
-                                : <Ionicons name="star-outline" size={12} color={COLORS.textMuted} />}
-                            </View>
-                            <Text style={[styles.sessionExName,
-                              !ex.is_completed && { color: COLORS.textMuted }]}>
-                              {ex.name}
-                            </Text>
-                            {ex.is_completed && (
-                              <Text style={styles.sessionExAmt}>
-                                {amountLabel(ex)}  +{ex.exp_reward} EXP
-                              </Text>
-                            )}
-                          </View>
+                          <WorkoutRow
+                            key={i}
+                            state={ex.is_completed ? 'done' : 'pending'}
+                            title={ex.name}
+                            meta={ex.is_completed ? amountLabel(ex) : 'Not completed'}
+                            accent={COLORS.accentGold}
+                            exp={ex.is_completed ? `+${ex.exp_reward} EXP` : undefined}
+                            badgeColor={COLORS.accentGold}
+                            leading={
+                              <View style={styles.sessionExDot}>
+                                {ex.is_completed
+                                  ? <Ionicons name="star" size={12} color={COLORS.accentGold} />
+                                  : <Ionicons name="star-outline" size={12} color={COLORS.textMuted} />}
+                              </View>
+                            }
+                          />
                         ))}
                       </>
                     )}
@@ -257,8 +375,35 @@ const ProfileScreen: React.FC = () => {
           })}
       </SystemPanel>
 
+      {/* Backup & restore */}
+      <SystemPanel>
+        <SectionHeader title="Backup" subtitle="Export or restore your save data" />
+        <Text style={styles.backupHint}>
+          Backups contain all game data — player, workouts, plans, sessions, titles, dojo.
+          Demo media files are not included.
+        </Text>
+        <View style={styles.backupRow}>
+          <SystemButton
+            title="Export"
+            variant="ghost"
+            style={styles.flex1}
+            loading={busy === 'export'}
+            disabled={busy !== null}
+            onPress={handleExport}
+          />
+          <SystemButton
+            title="Import"
+            variant="ghost"
+            style={styles.flex1}
+            loading={busy === 'import'}
+            disabled={busy !== null}
+            onPress={handleImport}
+          />
+        </View>
+      </SystemPanel>
+
       {/* Reset button */}
-      <TouchableOpacity style={styles.resetBtn} onPress={handleReset}>
+      <TouchableOpacity style={styles.resetBtn} onPress={() => { playSound('click'); handleReset(); }}>
         <Ionicons name="warning" size={16} color={COLORS.accentRed} />
         <Text style={styles.resetBtnText}>Reset All Data & Start Fresh</Text>
       </TouchableOpacity>
@@ -268,6 +413,7 @@ const ProfileScreen: React.FC = () => {
 
 const styles = StyleSheet.create({
   root:         { flex: 1, backgroundColor: COLORS.bgPrimary },
+  loadRoot:     { flex: 1, backgroundColor: COLORS.bgPrimary, alignItems: 'center', justifyContent: 'center' },
   content:      { padding: 16, paddingBottom: 100 },
 
   rankBanner:   { backgroundColor: COLORS.bgSecondary, borderWidth: 1.5, borderRadius: 14, padding: 20, flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
@@ -287,25 +433,22 @@ const styles = StyleSheet.create({
 
   noData:       { color: COLORS.textMuted, fontSize: 13, fontStyle: 'italic', textAlign: 'center', paddingVertical: 16 },
 
+  backupHint:   { color: COLORS.textMuted, fontSize: 12, lineHeight: 17, marginBottom: 12 },
+  backupRow:    { flexDirection: 'row', gap: 12 },
+  flex1:        { flex: 1 },
+
   titleRow:     { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 11, borderBottomWidth: 1, borderBottomColor: COLORS.borderDim, gap: 8 },
   titleLeft:    { flex: 1 },
   titleName:    { color: COLORS.accentGold, fontSize: 14, fontWeight: '700', marginBottom: 2 },
   titleDesc:    { color: COLORS.textSecondary, fontSize: 12, lineHeight: 18 },
   titleDate:    { color: COLORS.textMuted, fontSize: 11 },
 
-  sessionRow:   { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.borderDim },
-  sessionInfo:  { flex: 1 },
-  sessionPlan:  { color: COLORS.textPrimary, fontSize: 13, fontWeight: '600' },
-  sessionDate:  { color: COLORS.textMuted, fontSize: 11, marginTop: 1 },
-  sessionRight: { alignItems: 'flex-end', gap: 2 },
-  sessionExp:   { color: COLORS.accentCyan, fontSize: 12, fontWeight: '700' },
   sessionStatus:{ fontSize: 10, fontWeight: '700', letterSpacing: 0.5 },
 
   sessionDetail:      { backgroundColor: COLORS.bgTertiary, borderRadius: 8, padding: 10, marginBottom: 6, marginTop: -4 },
   sessionExRow:       { flexDirection: 'row', alignItems: 'center', paddingVertical: 4, gap: 8 },
   sessionExDot:       { width: 16, alignItems: 'center' },
   sessionExName:      { color: COLORS.textSecondary, fontSize: 12, flex: 1 },
-  sessionExAmt:       { color: COLORS.accentCyan, fontSize: 11, fontWeight: '600' },
   sessionBonusLabel:  { color: COLORS.accentGold, fontSize: 10, fontWeight: '700', letterSpacing: 1, marginTop: 6, marginBottom: 2 },
 
   resetBtn: {

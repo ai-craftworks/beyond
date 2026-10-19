@@ -6,9 +6,8 @@
  */
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, RefreshControl, TouchableOpacity, Animated, Alert, Modal } from 'react-native';
-import { useFocusEffect } from '@react-navigation/native';
-import { CompositeNavigationProp, useNavigation } from '@react-navigation/native';
+import { View, Text, ScrollView, StyleSheet, RefreshControl, TouchableOpacity, Animated, Alert, Modal, ActivityIndicator } from 'react-native';
+import { CompositeNavigationProp, useFocusEffect, useNavigation } from '@react-navigation/native';
 import { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -17,13 +16,16 @@ import {
   getPlans, createSession, populateSessionExercises,
   getMissedSessions, applyMissedSessionPenalty,
   Plan, getPlanExerciseCounts, hasSessionToday,
-  getMartialArts, MartialArt,
+  getMartialArts, MartialArt, getLifetimeStats,
 } from '../database/Database';
 import { SystemPanel, SectionHeader, StatRow, ExpBar, RankBadge, EmptyState, IonName } from '../components/UIComponents';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, getRankForLevel, getBeltForLevel, STATS } from '../constants/game';
 import { RootStackParamList, TabParamList } from '../../App';
 import { playSound } from '../utils/sounds';
+import { hapticWarning, hapticTap } from '../utils/haptics';
+import { fmtLongDay } from '../utils/dates';
+import { computeStreaks } from '../utils/stats';
 
 type Nav = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList>,
@@ -43,24 +45,36 @@ const DashboardScreen: React.FC = () => {
   const [refreshing, setRefreshing] = useState(false);
   const [pickerVisible, setPickerVisible] = useState(false);
   const [pickerPlans, setPickerPlans]     = useState<PickerPlan[]>([]);
+  const [loadError, setLoadError]         = useState(false);
+  const [streak, setStreak]               = useState<{ current: number; best: number } | null>(null);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
   useEffect(() => {
-    Animated.loop(
+    const loop = Animated.loop(
       Animated.sequence([
         Animated.timing(pulseAnim, { toValue: 0.5, duration: 1200, useNativeDriver: true }),
         Animated.timing(pulseAnim, { toValue: 1,   duration: 1200, useNativeDriver: true }),
       ])
-    ).start();
-  }, []);
+    );
+    loop.start();
+    return () => loop.stop();
+  }, [pulseAnim]);
 
   const loadData = async () => {
-    const p = await getPlayer();
-    setPlayer(p);
-    await checkMissedPenalties();
-    await generateTodaySessions();
-    setSessions(await getTodaySessions());
-    setArts(await getMartialArts());
+    try {
+      setLoadError(false);
+      const p = await getPlayer();
+      setPlayer(p);
+      await checkMissedPenalties();
+      await generateTodaySessions();
+      setSessions(await getTodaySessions());
+      setArts(await getMartialArts());
+      setStreak(computeStreaks((await getLifetimeStats()).completedDates));
+    } catch (e) {
+      // Never leave the dashboard permanently blank on a transient DB error.
+      console.warn('Dashboard loadData failed', e);
+      setLoadError(true);
+    }
   };
 
   // Finds sessions from previous days still marked 'pending' and applies their penalty
@@ -78,6 +92,7 @@ const DashboardScreen: React.FC = () => {
     }
     if (penalisedCount > 0) {
       playSound('penalty');
+      hapticWarning();
       Alert.alert(
         '⚠ Quest Missed',
         `You missed ${penalisedCount} quest${penalisedCount > 1 ? 's' : ''}.\n-${totalDeducted} EXP penalty applied.`,
@@ -94,7 +109,13 @@ const DashboardScreen: React.FC = () => {
 
     for (const plan of plans) {
       if (!plan.is_active) continue;
-      const days: string[] = JSON.parse(plan.repeat_days || '[]');
+      let days: string[] = [];
+      try {
+        days = JSON.parse(plan.repeat_days || '[]');
+        if (!Array.isArray(days)) days = [];
+      } catch {
+        days = []; // corrupt schedule row — treat as manual-only instead of crashing
+      }
       // No days = manual-only plan; never auto-generate (add via "+ Add Plan").
       if (days.length === 0) continue;
       // skip if today not in schedule
@@ -140,10 +161,29 @@ const DashboardScreen: React.FC = () => {
     setRefreshing(false);
   };
 
-  if (!player) return null;
+  if (loadError && !player) {
+    return (
+      <View style={styles.loadRoot}>
+        <Ionicons name="warning-outline" size={40} color={COLORS.accentGold} />
+        <Text style={styles.loadErrTxt}>Could not reach the system.</Text>
+        <TouchableOpacity style={styles.retryBtn} onPress={loadData}>
+          <Text style={styles.retryTxt}>RETRY</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
+  if (!player) {
+    return (
+      <View style={styles.loadRoot}>
+        <ActivityIndicator size="large" color={COLORS.accentCyan} />
+      </View>
+    );
+  }
 
   const rank     = getRankForLevel(player.level);
-  const todayStr = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  // Same UTC "today" the quest generator uses — header always matches the list.
+  const todayStr = fmtLongDay(new Date().toISOString().split('T')[0]);
   const doneCount = sessions.filter(s => s.status === 'completed').length;
   const skillCount = arts.reduce((n, a) => n + (a.skill_count ?? 0), 0);
 
@@ -157,6 +197,20 @@ const DashboardScreen: React.FC = () => {
       <View style={styles.header}>
         <Animated.Text style={[styles.sysTag, { opacity: pulseAnim }]}>◈ SYSTEM STATUS ◈</Animated.Text>
         <Text style={styles.dateText}>{todayStr}</Text>
+        {!!streak && streak.current >= 1 && (
+          <TouchableOpacity
+            style={styles.streakPill}
+            onPress={() => { playSound('click'); hapticTap(); navigation.navigate('History'); }}
+            accessibilityRole="button"
+            accessibilityLabel={`Streak ${streak.current} days, open quest log`}
+          >
+            <Ionicons name="flame" size={13} color={COLORS.accentGold} />
+            <Text style={styles.streakPillTxt}>
+              {streak.current} day streak
+              {streak.best > streak.current ? ` · best ${streak.best}` : ''}
+            </Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       {/* Player card */}
@@ -251,7 +305,9 @@ const DashboardScreen: React.FC = () => {
           { icon: 'person',  label: 'Profile',   screen: 'Profile'   as const },
         ] as const).map(item => (
           <TouchableOpacity key={item.label} style={styles.quickBtn}
-            onPress={() => navigation.navigate(item.screen)}>
+            onPress={() => { playSound('click'); navigation.navigate(item.screen); }}
+            accessibilityRole="button"
+            accessibilityLabel={item.label}>
             <Ionicons name={item.icon} size={22} color={COLORS.accentCyan} />
             <Text style={styles.quickLabel}>{item.label}</Text>
           </TouchableOpacity>
@@ -334,9 +390,11 @@ const QuestCard: React.FC<{ session: Session; onPress: () => void }> = ({ sessio
           {!!session.is_manual && <Text style={styles.questManual}>· MANUAL</Text>}
         </View>
       </View>
-      {done
-        ? <Text style={styles.questExp}>+{session.total_exp} EXP</Text>
-        : <Ionicons name="chevron-forward" size={18} color={COLORS.textSecondary} />}
+      {session.status === 'skipped'
+        ? null
+        : session.total_exp > 0
+          ? <Text style={styles.questExp}>+{session.total_exp} EXP</Text>
+          : <Ionicons name="chevron-forward" size={18} color={COLORS.textSecondary} />}
     </TouchableOpacity>
   );
 };
@@ -345,9 +403,16 @@ const styles = StyleSheet.create({
   root:    { flex: 1, backgroundColor: COLORS.bgPrimary },
   content: { padding: 16, paddingBottom: 100 },
 
+  loadRoot:   { flex: 1, backgroundColor: COLORS.bgPrimary, alignItems: 'center', justifyContent: 'center', gap: 10 },
+  loadErrTxt: { color: COLORS.textMuted, fontSize: 13 },
+  retryBtn:   { marginTop: 6, paddingHorizontal: 26, paddingVertical: 11, borderWidth: 1, borderColor: COLORS.accentCyan, borderRadius: 8 },
+  retryTxt:   { color: COLORS.accentCyan, fontSize: 13, fontWeight: '700', letterSpacing: 1.5 },
+
   header:    { alignItems: 'center', paddingVertical: 14, marginBottom: 4 },
   sysTag:    { color: COLORS.accentCyan, fontSize: 11, fontWeight: '700', letterSpacing: 4, marginBottom: 3 },
   dateText:  { color: COLORS.textMuted, fontSize: 12 },
+  streakPill:{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8, backgroundColor: COLORS.bgTertiary, borderWidth: 1, borderColor: `${COLORS.accentGold}55`, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5 },
+  streakPillTxt:{ color: COLORS.accentGold, fontSize: 11, fontWeight: '800', letterSpacing: 0.4 },
 
   playerRow:   { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },
   avatar:      { width: 52, height: 52, borderRadius: 26, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center' },

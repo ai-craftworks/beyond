@@ -15,10 +15,11 @@ import {
   deleteSkill, Skill, MartialArt, Exercise,
 } from '../database/Database';
 import { SystemPanel, SystemButton, SectionHeader, ExpBar, EmptyState } from '../components/UIComponents';
+import WorkoutRow from '../components/WorkoutRow';
 import MediaViewer from '../components/MediaViewer';
 import SkillFormModal from '../components/SkillFormModal';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, getBeltForLevel, parseBodyParts, bodyPartLabel, unitSuffix } from '../constants/game';
+import { COLORS, getBeltForLevel, statAccent, expBadgeLabel, workoutMetaLine } from '../constants/game';
 import { deleteMedia } from '../utils/media';
 import { playSound } from '../utils/sounds';
 import { RootStackParamList } from '../../App';
@@ -38,8 +39,6 @@ const SkillDetailScreen: React.FC = () => {
   const [loading, setLoading]     = useState(true);
   const [editModal, setEditModal] = useState(false);
 
-  useFocusEffect(useCallback(() => { load(); }, [skillId]));
-
   const load = async () => {
     const s = await getSkill(skillId);
     setSkill(s);
@@ -51,6 +50,8 @@ const SkillDetailScreen: React.FC = () => {
     setLoading(false);
   };
 
+  useFocusEffect(useCallback(() => { load(); }, [skillId]));
+
   const handleRemoveWorkout = (ex: Exercise) =>
     Alert.alert('Untag Workout', `Remove "${ex.name}" from this skill?`, [
       { text: 'Cancel', style: 'cancel' },
@@ -58,8 +59,13 @@ const SkillDetailScreen: React.FC = () => {
         text: 'Remove',
         style: 'destructive',
         onPress: async () => {
-          await removeExerciseFromSkill(skillId, ex.id!);
-          await load();
+          try {
+            await removeExerciseFromSkill(skillId, ex.id!);
+            await load();
+          } catch (e) {
+            console.error('untag workout error:', e);
+            Alert.alert('Error', 'Could not remove the workout. Please try again.');
+          }
         },
       },
     ]);
@@ -71,17 +77,32 @@ const SkillDetailScreen: React.FC = () => {
         text: 'Delete',
         style: 'destructive',
         onPress: async () => {
-          const mediaUri = await deleteSkill(skillId);
-          deleteMedia(mediaUri);
-          navigation.goBack();
+          try {
+            const mediaUri = await deleteSkill(skillId);
+            deleteMedia(mediaUri);
+            navigation.goBack();
+          } catch (e) {
+            console.error('delete skill error:', e);
+            Alert.alert('Error', 'Could not delete the skill. Please try again.');
+          }
         },
       },
     ]);
 
-  if (loading || !skill) {
+  if (loading) {
     return (
       <View style={styles.loadRoot}>
         <ActivityIndicator color={COLORS.accentCyan} size="large" />
+      </View>
+    );
+  }
+
+  if (!skill) {
+    return (
+      <View style={styles.loadRoot}>
+        <Ionicons name="help-circle-outline" size={44} color={COLORS.textMuted} />
+        <Text style={styles.missingTxt}>This skill no longer exists.</Text>
+        <SystemButton title="Go Back" variant="ghost" onPress={() => navigation.goBack()} />
       </View>
     );
   }
@@ -136,24 +157,20 @@ const SkillDetailScreen: React.FC = () => {
           <EmptyState icon="barbell" title="No workouts tagged"
             subtitle="Tag workouts so completing them raises this skill's proficiency." />
         ) : (
-          workouts.map(ex => {
-            const parts = parseBodyParts(ex.body_parts);
-            return (
-              <View key={ex.id} style={styles.workoutRow}>
-                <View style={styles.workoutInfo}>
-                  <Text style={styles.workoutName}>{ex.name}</Text>
-                  <Text style={styles.workoutMeta}>
-                    +{ex.exp_per_unit ?? ex.exp_reward} EXP / {ex.exp_unit_count ?? 1}{' '}
-                    {unitSuffix(ex.primary_unit ?? ex.unit_type ?? 'reps')}
-                    {parts.length > 0 ? `  ·  ${parts.map(bodyPartLabel).join(' · ')}` : ''}
-                  </Text>
-                </View>
+          workouts.map(ex => (
+            <WorkoutRow
+              key={ex.id}
+              title={ex.name}
+              meta={workoutMetaLine(ex)}
+              accent={statAccent(ex.category)}
+              exp={expBadgeLabel(ex)}
+              trailing={
                 <TouchableOpacity onPress={() => { playSound('click'); handleRemoveWorkout(ex); }} style={styles.removeBtn}>
                   <Ionicons name="close" size={18} color={COLORS.accentRed} />
                 </TouchableOpacity>
-              </View>
-            );
-          })
+              }
+            />
+          ))
         )}
       </ScrollView>
 
@@ -171,7 +188,8 @@ const SkillDetailScreen: React.FC = () => {
 const styles = StyleSheet.create({
   root:     { flex: 1, backgroundColor: COLORS.bgPrimary },
   content:  { padding: 16 },
-  loadRoot: { flex: 1, backgroundColor: COLORS.bgPrimary, alignItems: 'center', justifyContent: 'center' },
+  loadRoot: { flex: 1, backgroundColor: COLORS.bgPrimary, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  missingTxt: { color: COLORS.textMuted, fontSize: 14, marginBottom: 4 },
 
   artTag:   { fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: 4 },
   skillName:{ color: COLORS.textPrimary, fontSize: 22, fontWeight: '800', marginBottom: 6 },
@@ -187,10 +205,6 @@ const styles = StyleSheet.create({
   actions:  { flexDirection: 'row', gap: 12, marginBottom: 4 },
   flex1:    { flex: 1 },
 
-  workoutRow:  { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bgSecondary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 10, padding: 12, marginBottom: 8, gap: 10 },
-  workoutInfo: { flex: 1 },
-  workoutName: { color: COLORS.textPrimary, fontSize: 14, fontWeight: '600', marginBottom: 2 },
-  workoutMeta: { color: COLORS.textMuted, fontSize: 11 },
   removeBtn:   { padding: 4 },
 });
 

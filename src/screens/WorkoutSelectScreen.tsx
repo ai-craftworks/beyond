@@ -9,7 +9,7 @@
 
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, ScrollView, StyleSheet, TouchableOpacity,
+  View, Text, FlatList, StyleSheet,
   TextInput, Alert, ActivityIndicator,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -21,8 +21,9 @@ import {
   getTaggedExerciseIdsForSkill, Exercise, getGroups, Group,
 } from '../database/Database';
 import { SystemButton, SystemInput, EmptyState, FilterSheet, FilterSection, FilterChip, FilterButton } from '../components/UIComponents';
+import WorkoutRow from '../components/WorkoutRow';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, EXERCISE_CATEGORIES, BODY_PARTS, parseBodyParts, bodyPartLabel, unitSuffix } from '../constants/game';
+import { COLORS, EXERCISE_CATEGORIES, BODY_PARTS, unitSuffix, statAccent, expBadgeLabel, workoutMetaLine } from '../constants/game';
 import { expForUnits, UnitValue } from '../utils/math';
 import { specsOf, primarySpecOf } from '../utils/units';
 import { filterExercises } from '../utils/filterExercises';
@@ -147,113 +148,115 @@ const WorkoutSelectScreen: React.FC = () => {
   const togglePart = (v: string) => setParts(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
   const toggleGroupF = (v: string) => setGroupFilter(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
 
+  const listHeader = (
+    <View>
+      {/* The native header already names the target plan/skill */}
+      {mode === 'bonus' && (
+        <Text style={styles.planTag}>BONUS QUEST</Text>
+      )}
+
+      {/* Filters */}
+      <View style={styles.searchRow}>
+        <Ionicons name="search" size={16} color={COLORS.textMuted} />
+        <TextInput style={styles.searchInput} value={search} onChangeText={setSearch}
+          placeholder="Search workouts" placeholderTextColor={COLORS.textMuted} />
+        <FilterButton count={filterCount} onPress={() => setFiltersOpen(true)} />
+      </View>
+
+      <Text style={styles.selectLbl}>{isSkill ? 'SELECT WORKOUTS TO TAG' : 'SELECT WORKOUT'}</Text>
+    </View>
+  );
+
+  const listFooter = (
+    <View>
+      {/* Values (plan / bonus only) */}
+      {!isSkill && selected && (
+        <>
+          <Text style={styles.selectLbl}>TARGET</Text>
+          {isPlan && (
+            <SystemInput label="Sets" value={sets} onChangeText={setSets} keyboardType="numeric" />
+          )}
+          {specs.map(s => {
+            const isPrimary = s.type === primary;
+            return (
+              <View key={s.type} style={styles.unitRow}>
+                <Text style={styles.unitRowLbl}>{unitSuffix(s.type)}{isPrimary ? ' · EXP' : ''}</Text>
+                <TextInput
+                  style={styles.unitRowInput}
+                  value={unitVals[s.type] ?? ''}
+                  onChangeText={v => setUnitVals(prev => ({ ...prev, [s.type]: v }))}
+                  keyboardType="decimal-pad"
+                  placeholder="0"
+                  placeholderTextColor={COLORS.textMuted}
+                />
+              </View>
+            );
+          })}
+          <Text style={styles.expPreview}>
+            ≈ {previewExp} EXP{isPlan && Number(sets) > 1 ? ` · ${Number(sets)} sets` : ''}
+          </Text>
+        </>
+      )}
+
+      <View style={styles.row}>
+        <SystemButton title="Cancel" variant="ghost" style={styles.flex1} onPress={() => navigation.goBack()} />
+        <SystemButton
+          title={isSkill
+            ? `Add ${pickedIds.length} Workout${pickedIds.length === 1 ? '' : 's'}`
+            : isPlan ? 'Add' : 'Add Bonus'}
+          style={styles.flex1}
+          onPress={handleConfirm}
+          loading={submitting}
+          disabled={isSkill ? pickedIds.length === 0 : !selected}
+        />
+      </View>
+    </View>
+  );
+
   return (
     <View style={styles.root}>
-      <ScrollView
+      <FlatList
+        data={exShown}
+        keyExtractor={item => String(item.id)}
         contentContainerStyle={[styles.content, { paddingBottom: 40 + insets.bottom }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
-      >
-        {isPlan && (
-          <Text style={styles.planTag}>PLAN · {route.params.planName}</Text>
-        )}
-        {mode === 'skill' && (
-          <Text style={styles.planTag}>TAG WORKOUTS · {route.params.skillName}</Text>
-        )}
-
-        {/* Filters */}
-        <View style={styles.searchRow}>
-          <Ionicons name="search" size={16} color={COLORS.textMuted} />
-          <TextInput style={styles.searchInput} value={search} onChangeText={setSearch}
-            placeholder="Search workouts" placeholderTextColor={COLORS.textMuted} />
-          <FilterButton count={filterCount} onPress={() => setFiltersOpen(true)} />
-        </View>
-
-        <Text style={styles.selectLbl}>{isSkill ? 'SELECT WORKOUTS TO TAG' : 'SELECT WORKOUT'}</Text>
-        {loading ? (
-          <ActivityIndicator color={COLORS.accentCyan} style={{ marginVertical: 24 }} />
-        ) : exShown.length === 0 ? (
-          <EmptyState icon="barbell" title="No workouts match" subtitle="Try a different search or filter." />
-        ) : (
-          exShown.map(ex => {
-            const tagged = isSkill && taggedIds.includes(ex.id!);
-            const picked = isSkill && pickedIds.includes(ex.id!);
-            const isOn   = isSkill ? (tagged || picked) : selected?.id === ex.id;
-            return (
-              <TouchableOpacity
-                key={ex.id}
-                style={[styles.exPickItem, isOn && styles.exPickItemOn, tagged && styles.exPickItemTagged]}
-                onPress={() => selectExercise(ex)}
-                disabled={tagged}
-                activeOpacity={0.75}
-              >
-                <View style={styles.exPickInfo}>
-                  <Text style={[styles.exPickTxt, isOn && styles.exPickTxtOn]}>{ex.name}</Text>
-                  {parseBodyParts(ex.body_parts).length > 0 && (
-                    <Text style={styles.exPickParts}>
-                      {parseBodyParts(ex.body_parts).map(p => bodyPartLabel(p)).join(' · ')}
-                    </Text>
-                  )}
-                </View>
-                {isSkill ? (
-                  <View style={styles.checkWrap}>
-                    {tagged
-                      ? <Ionicons name="checkmark-circle" size={20} color={COLORS.accentGreen} />
-                      : <Ionicons name={picked ? 'checkbox' : 'square-outline'} size={20}
-                          color={picked ? COLORS.accentCyan : COLORS.textMuted} />}
-                  </View>
-                ) : (
-                  <Text style={styles.exPickExp}>
-                    +{ex.exp_per_unit} EXP/{ex.exp_unit_count ?? 1} {unitSuffix(ex.primary_unit ?? ex.unit_type ?? 'reps')}
-                  </Text>
-                )}
-              </TouchableOpacity>
-            );
-          })
-        )}
-
-        {/* Values (plan / bonus only) */}
-        {!isSkill && selected && (
-          <>
-            <Text style={styles.selectLbl}>TARGET</Text>
-            {isPlan && (
-              <SystemInput label="Sets" value={sets} onChangeText={setSets} keyboardType="numeric" />
-            )}
-            {specs.map(s => {
-              const isPrimary = s.type === primary;
-              return (
-                <View key={s.type} style={styles.unitRow}>
-                  <Text style={styles.unitRowLbl}>{unitSuffix(s.type)}{isPrimary ? ' · EXP' : ''}</Text>
-                  <TextInput
-                    style={styles.unitRowInput}
-                    value={unitVals[s.type] ?? ''}
-                    onChangeText={v => setUnitVals(prev => ({ ...prev, [s.type]: v }))}
-                    keyboardType="decimal-pad"
-                    placeholder="0"
-                    placeholderTextColor={COLORS.textMuted}
+        ListHeaderComponent={listHeader}
+        ListFooterComponent={listFooter}
+        ListEmptyComponent={
+          loading ? (
+            <ActivityIndicator color={COLORS.accentCyan} style={{ marginVertical: 24 }} />
+          ) : (
+            <EmptyState icon="barbell" title="No workouts match" subtitle="Try a different search or filter." />
+          )
+        }
+        renderItem={({ item: ex }) => {
+          const tagged = isSkill && taggedIds.includes(ex.id!);
+          const picked = isSkill && pickedIds.includes(ex.id!);
+          const isOn   = isSkill ? (tagged || picked) : selected?.id === ex.id;
+          return (
+            <WorkoutRow
+              title={ex.name}
+              meta={workoutMetaLine(ex)}
+              accent={statAccent(ex.category)}
+              exp={expBadgeLabel(ex)}
+              state={tagged ? 'dimmed' : isOn ? 'selected' : 'default'}
+              onPress={tagged ? undefined : () => selectExercise(ex)}
+              trailing={
+                isSkill ? (
+                  <Ionicons
+                    name={tagged ? 'checkmark-circle' : picked ? 'checkbox' : 'square-outline'}
+                    size={20}
+                    color={tagged ? COLORS.accentGreen : picked ? COLORS.accentCyan : COLORS.textMuted}
                   />
-                </View>
-              );
-            })}
-            <Text style={styles.expPreview}>
-              ≈ {previewExp} EXP{isPlan && Number(sets) > 1 ? ` · ${Number(sets)} sets` : ''}
-            </Text>
-          </>
-        )}
-
-        <View style={styles.row}>
-          <SystemButton title="Cancel" variant="ghost" style={styles.flex1} onPress={() => navigation.goBack()} />
-          <SystemButton
-            title={isSkill
-              ? `Add ${pickedIds.length} Workout${pickedIds.length === 1 ? '' : 's'}`
-              : isPlan ? 'Add' : 'Add Bonus'}
-            style={styles.flex1}
-            onPress={handleConfirm}
-            loading={submitting}
-            disabled={isSkill ? pickedIds.length === 0 : !selected}
-          />
-        </View>
-      </ScrollView>
+                ) : isOn ? (
+                  <Ionicons name="checkmark-circle" size={20} color={COLORS.accentCyan} />
+                ) : undefined
+              }
+            />
+          );
+        }}
+      />
 
       <FilterSheet
         visible={filtersOpen}
@@ -302,16 +305,6 @@ const styles = StyleSheet.create({
   dropRow:     { flexDirection: 'row', gap: 12 },
 
   selectLbl:   { color: COLORS.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 8, marginTop: 6, textTransform: 'uppercase' },
-
-  exPickItem:  { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, borderWidth: 1, borderColor: COLORS.borderDim, borderRadius: 8, marginBottom: 5 },
-  exPickItemOn:{ borderColor: COLORS.accentCyan, backgroundColor: `${COLORS.accentCyan}12` },
-  exPickItemTagged: { borderColor: `${COLORS.accentGreen}66`, backgroundColor: `${COLORS.accentGreen}0D`, opacity: 0.8 },
-  exPickInfo:  { flex: 1, paddingRight: 8 },
-  exPickTxt:   { color: COLORS.textSecondary, fontSize: 14, flex: 1 },
-  exPickTxtOn: { color: COLORS.accentCyan },
-  exPickParts: { color: COLORS.textMuted, fontSize: 10, marginTop: 2 },
-  exPickExp:   { color: COLORS.textMuted, fontSize: 12 },
-  checkWrap:   { paddingLeft: 4 },
 
   unitRow:      { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
   unitRowLbl:   { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700', width: 80 },

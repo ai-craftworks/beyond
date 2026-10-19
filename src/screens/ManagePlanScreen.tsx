@@ -17,10 +17,12 @@ import {
   cancelTodayPendingSessions, Plan, PlanExercise,
 } from '../database/Database';
 import { SectionHeader } from '../components/UIComponents';
+import WorkoutRow from '../components/WorkoutRow';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, parseUnitValues, formatUnitValues } from '../constants/game';
+import { COLORS, parseUnitValues, formatUnitValues, statColor } from '../constants/game';
 import { expForUnits } from '../utils/math';
 import { specsOf, primarySpecOf } from '../utils/units';
+import { playSound } from '../utils/sounds';
 import { RootStackParamList } from '../../App';
 
 type Route = RouteProp<RootStackParamList, 'ManagePlan'>;
@@ -55,9 +57,29 @@ const ManagePlanScreen: React.FC = () => {
 
   const handleToggleActive = async () => {
     const next = plan.is_active ? 0 : 1;
-    if (next === 0) await cancelTodayPendingSessions(plan.id!);
-    await updatePlan(plan.id!, { is_active: next });
-    setPlan(prev => ({ ...prev, is_active: next }));
+    const apply = async () => {
+      try {
+        if (next === 0) await cancelTodayPendingSessions(plan.id!);
+        await updatePlan(plan.id!, { is_active: next });
+        setPlan(prev => ({ ...prev, is_active: next }));
+      } catch (e) {
+        console.error('toggle plan error:', e);
+        Alert.alert('Error', 'Could not update the plan. Please try again.');
+      }
+    };
+    // Deactivating cancels today's pending quests for this plan — say so.
+    if (next === 0) {
+      Alert.alert(
+        'Deactivate Plan',
+        `Today's pending quests from "${plan.name}" will be cancelled. Completed sessions stay.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Deactivate', style: 'destructive', onPress: apply },
+        ]
+      );
+    } else {
+      await apply();
+    }
   };
 
   const handleRemoveExercise = (peId: number) =>
@@ -65,7 +87,13 @@ const ManagePlanScreen: React.FC = () => {
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove', style: 'destructive',
-        onPress: async () => { await removeExerciseFromPlan(peId); await loadExercises(); },
+        onPress: async () => {
+          try { await removeExerciseFromPlan(peId); await loadExercises(); }
+          catch (e) {
+            console.error('remove plan exercise error:', e);
+            Alert.alert('Error', 'Could not remove the exercise. Please try again.');
+          }
+        },
       },
     ]);
 
@@ -99,17 +127,18 @@ const ManagePlanScreen: React.FC = () => {
           <Text style={styles.noEx}>No exercises yet.</Text>
         ) : (
           planExercises.map(pe => (
-            <View key={pe.id} style={styles.peRow}>
-              <View style={styles.peInfo}>
-                <Text style={styles.peName}>{pe.exercise_name}</Text>
-                <Text style={styles.peSets}>
-                  {pe.sets} sets × {peLabel(pe)}  ·  +{peExp(pe).toFixed(0)} EXP total
-                </Text>
-              </View>
-              <TouchableOpacity onPress={() => handleRemoveExercise(pe.id!)} style={styles.removeBtn}>
-                <Ionicons name="close" size={18} color={COLORS.accentRed} />
-              </TouchableOpacity>
-            </View>
+            <WorkoutRow
+              key={pe.id}
+              title={pe.exercise_name ?? ''}
+              meta={`${pe.sets} sets × ${peLabel(pe)}`}
+              accent={statColor(pe.stat_type)}
+              exp={`+${peExp(pe).toFixed(0)} EXP`}
+              trailing={
+                <TouchableOpacity onPress={() => { playSound('click'); handleRemoveExercise(pe.id!); }} style={styles.removeBtn}>
+                  <Ionicons name="close" size={18} color={COLORS.accentRed} />
+                </TouchableOpacity>
+              }
+            />
           ))
         )}
       </ScrollView>
@@ -126,10 +155,6 @@ const styles = StyleSheet.create({
   activeHint: { color: COLORS.textMuted, fontSize: 11, marginTop: 2 },
 
   noEx:       { color: COLORS.textMuted, fontSize: 13, fontStyle: 'italic', textAlign: 'center', paddingVertical: 20 },
-  peRow:      { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderBottomWidth: 1, borderBottomColor: COLORS.borderDim },
-  peInfo:     { flex: 1 },
-  peName:     { color: COLORS.textPrimary, fontSize: 14, fontWeight: '600' },
-  peSets:     { color: COLORS.textSecondary, fontSize: 12, marginTop: 2 },
   removeBtn:  { padding: 6 },
 });
 

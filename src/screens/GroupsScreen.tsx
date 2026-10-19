@@ -23,21 +23,18 @@ import {
   getGroups, createGroup, renameGroup, deleteGroup, getExercises, getPlans,
 } from '../database/Database';
 import {
-  SystemButton, EmptyState,
+  SystemButton, EmptyState, SegmentedTabs,
 } from '../components/UIComponents';
+import WorkoutRow from '../components/WorkoutRow';
+import { playSound } from '../utils/sounds';
 import {
-  COLORS, EXERCISE_CATEGORIES, STATS, GroupKind, groupColorForIndex,
-  parseGroupIds, unitSuffix,
+  COLORS, GroupKind, groupColorForIndex, parseGroupIds,
+  statAccent, expBadgeLabel, workoutMetaLine,
 } from '../constants/game';
 import { RootStackParamList } from '../../App';
 
 type Nav   = NativeStackNavigationProp<RootStackParamList>;
 type Route = RouteProp<RootStackParamList, 'Groups'>;
-
-const accentForCat = (cat: string): string => {
-  const stat = EXERCISE_CATEGORIES.find(c => c.value === cat)?.stat;
-  return STATS.find(s => s.key === stat)?.color ?? COLORS.textSecondary;
-};
 
 const GroupsScreen: React.FC = () => {
   const navigation = useNavigation<Nav>();
@@ -138,8 +135,10 @@ const GroupsScreen: React.FC = () => {
       },
     ]);
 
-  const toggleExpand = (gid: number) =>
+  const toggleExpand = (gid: number) => {
+    playSound('click');
     setExpandedId(prev => (prev === gid ? null : gid));
+  };
 
   const openPlan = (plan: Plan) => navigation.navigate('ManagePlan', { plan });
 
@@ -151,27 +150,17 @@ const GroupsScreen: React.FC = () => {
         showsVerticalScrollIndicator={false}
       >
         {/* Segment toggle */}
-        <View style={styles.segment}>
-          <TouchableOpacity
-            style={[styles.segBtn, kind === 'exercise' && styles.segBtnOn]}
-            onPress={() => switchKind('exercise')} activeOpacity={0.8}
-          >
-            <Ionicons name="barbell-outline" size={15}
-              color={kind === 'exercise' ? COLORS.accentCyan : COLORS.textSecondary} />
-            <Text style={[styles.segTxt, kind === 'exercise' && styles.segTxtOn]}>Workouts</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.segBtn, kind === 'plan' && styles.segBtnOn]}
-            onPress={() => switchKind('plan')} activeOpacity={0.8}
-          >
-            <Ionicons name="list-outline" size={15}
-              color={kind === 'plan' ? COLORS.accentCyan : COLORS.textSecondary} />
-            <Text style={[styles.segTxt, kind === 'plan' && styles.segTxtOn]}>Plans</Text>
-          </TouchableOpacity>
-        </View>
+        <SegmentedTabs
+          tabs={[
+            { key: 'exercise', label: 'Workouts', icon: 'barbell-outline' },
+            { key: 'plan', label: 'Plans', icon: 'list-outline' },
+          ]}
+          value={kind}
+          onChange={k => switchKind(k as GroupKind)}
+        />
 
         <Text style={styles.hint}>
-          Groups are just labels for finding things — they don't affect EXP or ranks.
+          Groups are just labels for finding things — they don’t affect EXP or ranks.
         </Text>
 
         {/* Add new */}
@@ -227,15 +216,15 @@ const GroupsScreen: React.FC = () => {
 
                   <View style={styles.cardIcons}>
                     {editing ? (
-                      <TouchableOpacity onPress={saveRename} style={styles.iconBtn}>
+                      <TouchableOpacity onPress={() => { playSound('click'); saveRename(); }} style={styles.iconBtn}>
                         <Ionicons name="checkmark" size={18} color={COLORS.accentGreen} />
                       </TouchableOpacity>
                     ) : (
-                      <TouchableOpacity onPress={() => startRename(g)} style={styles.iconBtn}>
+                      <TouchableOpacity onPress={() => { playSound('click'); startRename(g); }} style={styles.iconBtn}>
                         <Ionicons name="create" size={16} color={COLORS.accentCyan} />
                       </TouchableOpacity>
                     )}
-                    <TouchableOpacity onPress={() => remove(g)} style={styles.iconBtn}>
+                    <TouchableOpacity onPress={() => { playSound('click'); remove(g); }} style={styles.iconBtn}>
                       <Ionicons name="trash" size={16} color={COLORS.accentRed} />
                     </TouchableOpacity>
                   </View>
@@ -249,28 +238,32 @@ const GroupsScreen: React.FC = () => {
                       </Text>
                     ) : kind === 'exercise' ? (
                       (members as Exercise[]).map(m => (
-                        <View key={m.id} style={styles.memberRow}>
-                          <View style={[styles.memberAccent, { backgroundColor: accentForCat(m.category) }]} />
-                          <Ionicons name="barbell-outline" size={14} color={accentForCat(m.category)} />
-                          <Text style={styles.memberName} numberOfLines={1}>{m.name}</Text>
-                          <Text style={styles.memberMeta}>
-                            +{m.exp_per_unit ?? m.exp_reward} / {m.exp_unit_count ?? 1} {unitSuffix(m.primary_unit ?? m.unit_type ?? 'reps')}
-                          </Text>
-                        </View>
+                        <WorkoutRow
+                          key={m.id}
+                          title={m.name}
+                          meta={workoutMetaLine(m)}
+                          accent={statAccent(m.category)}
+                          exp={expBadgeLabel(m)}
+                        />
                       ))
                     ) : (
                       (members as Plan[]).map(m => (
-                        <TouchableOpacity key={m.id} style={styles.memberRow}
-                          onPress={() => openPlan(m)} activeOpacity={0.75}>
-                          <Ionicons name="list-outline" size={14} color={COLORS.accentCyan} />
-                          <Text style={styles.memberName} numberOfLines={1}>{m.name}</Text>
-                          <View style={[styles.miniPill, m.is_active ? styles.miniPillOn : null]}>
-                            <Text style={[styles.miniPillTxt, { color: m.is_active ? COLORS.accentCyan : COLORS.textMuted }]}>
-                              {m.is_active ? 'ACTIVE' : 'INACTIVE'}
-                            </Text>
-                          </View>
-                          <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
-                        </TouchableOpacity>
+                        <WorkoutRow
+                          key={m.id}
+                          title={m.name}
+                          accent={m.is_active ? COLORS.accentCyan : COLORS.borderDim}
+                          onPress={() => openPlan(m)}
+                          trailing={
+                            <>
+                              <View style={[styles.miniPill, m.is_active ? styles.miniPillOn : null]}>
+                                <Text style={[styles.miniPillTxt, { color: m.is_active ? COLORS.accentCyan : COLORS.textMuted }]}>
+                                  {m.is_active ? 'ACTIVE' : 'INACTIVE'}
+                                </Text>
+                              </View>
+                              <Ionicons name="chevron-forward" size={14} color={COLORS.textMuted} />
+                            </>
+                          }
+                        />
                       ))
                     )}
                   </View>
@@ -287,12 +280,6 @@ const GroupsScreen: React.FC = () => {
 const styles = StyleSheet.create({
   root:       { flex: 1, backgroundColor: COLORS.bgPrimary },
   content:    { padding: 16 },
-
-  segment:    { flexDirection: 'row', backgroundColor: COLORS.bgSecondary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 10, padding: 4, gap: 4, marginBottom: 12 },
-  segBtn:     { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, borderRadius: 7 },
-  segBtnOn:   { backgroundColor: COLORS.bgTertiary, borderWidth: 1, borderColor: COLORS.borderGlow },
-  segTxt:     { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700', letterSpacing: 0.3 },
-  segTxtOn:   { color: COLORS.accentCyan },
 
   hint:       { color: COLORS.textMuted, fontSize: 11, marginBottom: 16 },
 
@@ -311,10 +298,6 @@ const styles = StyleSheet.create({
   iconBtn:    { padding: 6 },
 
   members:    { borderTopWidth: 1, borderTopColor: COLORS.borderDim, paddingHorizontal: 13, paddingVertical: 8, backgroundColor: COLORS.bgTertiary },
-  memberRow:  { flexDirection: 'row', alignItems: 'center', gap: 8, paddingVertical: 9 },
-  memberAccent: { width: 3, height: 16, borderRadius: 2 },
-  memberName: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600', flex: 1 },
-  memberMeta: { color: COLORS.textMuted, fontSize: 11 },
   memberEmpty:{ color: COLORS.textMuted, fontSize: 12, fontStyle: 'italic', paddingVertical: 8 },
   miniPill:   { borderRadius: 4, paddingHorizontal: 6, paddingVertical: 2 },
   miniPillOn: { backgroundColor: `${COLORS.accentCyan}18` },

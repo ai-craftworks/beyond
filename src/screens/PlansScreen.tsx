@@ -20,6 +20,7 @@ import { SystemButton, SystemInput, SectionHeader, EmptyState, SystemMultiDropdo
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, parseGroupIds } from '../constants/game';
 import { filterPlans } from '../utils/filterPlans';
+import { playSound } from '../utils/sounds';
 import { RootStackParamList } from '../../App';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -53,13 +54,13 @@ const PlansScreen: React.FC = () => {
   const [editPenaltyExp, setEditPenaltyExp] = useState('0');
   const [editGroups, setEditGroups]         = useState<number[]>([]);
 
-  useFocusEffect(useCallback(() => { loadPlans(); }, []));
-
   const loadPlans = async () => {
     const [pls, grps] = await Promise.all([getPlans(), getGroups('plan')]);
     setPlans(pls);
     setGroups(grps);
   };
+
+  useFocusEffect(useCallback(() => { loadPlans(); }, []));
 
   const groupOptions = groups.map(g => ({ value: String(g.id), label: g.name, color: g.color }));
   const groupName = (id: number) => groups.find(g => g.id === id)?.name ?? '';
@@ -73,16 +74,21 @@ const PlansScreen: React.FC = () => {
 
   const handleCreatePlan = async () => {
     if (!planName.trim()) return Alert.alert('System', 'Plan name required.');
-    await createPlan({
-      name: planName.trim(),
-      description: planDesc.trim(),
-      is_active: 0,
-      repeat_days: JSON.stringify(repeatDays),
-      penalty_exp: Number(penaltyExp) || 0,
-    }, createGroups);
-    setPlanName(''); setPlanDesc(''); setRepeatDays([]); setPenaltyExp('0'); setCreateGroups([]);
-    setCreateModal(false);
-    await loadPlans();
+    try {
+      await createPlan({
+        name: planName.trim(),
+        description: planDesc.trim(),
+        is_active: 0,
+        repeat_days: JSON.stringify(repeatDays),
+        penalty_exp: Number(penaltyExp) || 0,
+      }, createGroups);
+      setPlanName(''); setPlanDesc(''); setRepeatDays([]); setPenaltyExp('0'); setCreateGroups([]);
+      setCreateModal(false);
+      await loadPlans();
+    } catch (e) {
+      console.error('create plan error:', e);
+      Alert.alert('Error', 'Could not create the plan. Please try again.');
+    }
   };
 
   const handleDeletePlan = (plan: Plan) =>
@@ -91,9 +97,14 @@ const PlansScreen: React.FC = () => {
       {
         text: 'Delete', style: 'destructive',
         onPress: async () => {
-          await cancelTodayPendingSessions(plan.id!);   // ← add
-          await deletePlan(plan.id!);
-          await loadPlans();
+          try {
+            await cancelTodayPendingSessions(plan.id!);
+            await deletePlan(plan.id!);
+            await loadPlans();
+          } catch (e) {
+            console.error('delete plan error:', e);
+            Alert.alert('Error', 'Could not delete the plan. Please try again.');
+          }
         },
       },
     ]);
@@ -102,7 +113,12 @@ const PlansScreen: React.FC = () => {
     setEditPlanTarget(plan);
     setEditPlanName(plan.name);
     setEditPlanDesc(plan.description);
-    setEditRepeatDays(JSON.parse(plan.repeat_days || '[]'));
+    let days: string[] = [];
+    try {
+      days = JSON.parse(plan.repeat_days || '[]');
+      if (!Array.isArray(days)) days = [];
+    } catch { days = []; }
+    setEditRepeatDays(days);
     setEditPenaltyExp(String(plan.penalty_exp ?? 0));
     setEditGroups(parseGroupIds(plan.groups));
     setEditPlanModal(true);
@@ -110,16 +126,21 @@ const PlansScreen: React.FC = () => {
 
   const handleSaveEditPlan = async () => {
     if (!editPlanName.trim()) return Alert.alert('System', 'Plan name required.');
-    await updatePlan(editPlanTarget!.id!, {
-      name:        editPlanName.trim(),
-      description: editPlanDesc.trim(),
-      repeat_days: JSON.stringify(editRepeatDays),
-      penalty_exp: Number(editPenaltyExp) || 0,
-    });
-    await setPlanGroups(editPlanTarget!.id!, editGroups);
-    setEditPlanModal(false);
-    setEditPlanTarget(null);
-    await loadPlans();
+    try {
+      await updatePlan(editPlanTarget!.id!, {
+        name:        editPlanName.trim(),
+        description: editPlanDesc.trim(),
+        repeat_days: JSON.stringify(editRepeatDays),
+        penalty_exp: Number(editPenaltyExp) || 0,
+      });
+      await setPlanGroups(editPlanTarget!.id!, editGroups);
+      setEditPlanModal(false);
+      setEditPlanTarget(null);
+      await loadPlans();
+    } catch (e) {
+      console.error('save plan error:', e);
+      Alert.alert('Error', 'Could not save the plan. Please try again.');
+    }
   };
 
   const toggleEditDay = (day: string) =>
@@ -127,11 +148,29 @@ const PlansScreen: React.FC = () => {
 
   const handleToggleActive = async (plan: Plan) => {
     const next = plan.is_active ? 0 : 1;
+    const apply = async () => {
+      try {
+        if (next === 0) await cancelTodayPendingSessions(plan.id!);
+        await updatePlan(plan.id!, { is_active: next });
+        await loadPlans();
+      } catch (e) {
+        console.error('toggle plan error:', e);
+        Alert.alert('Error', 'Could not update the plan. Please try again.');
+      }
+    };
+    // Deactivating cancels today's pending quests for this plan — say so.
     if (next === 0) {
-      await cancelTodayPendingSessions(plan.id!);   // ← add: clean up on deactivate
+      Alert.alert(
+        'Deactivate Plan',
+        `Today's pending quests from "${plan.name}" will be cancelled. Completed sessions stay.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Deactivate', style: 'destructive', onPress: apply },
+        ]
+      );
+    } else {
+      await apply();
     }
-    await updatePlan(plan.id!, { is_active: next });
-    await loadPlans();
   };
 
   const toggleDay = (day: string) =>
@@ -290,11 +329,15 @@ const PlanCard: React.FC<{
   onManage: () => void; onToggle: () => void; onDelete: () => void; onEdit: () => void;
 }> =
   ({ plan, groupName, groupColor, onManage, onToggle, onDelete, onEdit }) => {
-    const days: string[] = JSON.parse(plan.repeat_days || '[]');
+    let days: string[] = [];
+    try {
+      days = JSON.parse(plan.repeat_days || '[]');
+      if (!Array.isArray(days)) days = [];
+    } catch { days = []; }
     const groupIds = parseGroupIds(plan.groups);
     return (
       <View style={[styles.planCard, plan.is_active ? styles.planCardOn : null]}>
-        <TouchableOpacity style={styles.planMain} onPress={onManage} activeOpacity={0.8}>
+        <TouchableOpacity style={styles.planMain} onPress={() => { playSound('click'); onManage(); }} activeOpacity={0.8}>
           <View style={styles.planTop}>
             <Text style={styles.planName}>{plan.name}</Text>
             <View style={[styles.activePill, plan.is_active ? styles.activePillOn : null]}>
@@ -328,15 +371,15 @@ const PlanCard: React.FC<{
           )}
         </TouchableOpacity>
         <View style={styles.planActions}>
-          <TouchableOpacity style={styles.actionBtn} onPress={onToggle}>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => { playSound('click'); onToggle(); }}>
             <Text style={[styles.actionTxt, { color: plan.is_active ? COLORS.accentRed : COLORS.accentGreen }]}>
               {plan.is_active ? 'Deactivate' : 'Activate'}
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtn} onPress={onEdit}>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => { playSound('click'); onEdit(); }}>
             <Text style={[styles.actionTxt, { color: COLORS.accentCyan }]}>Edit</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtn} onPress={onDelete}>
+          <TouchableOpacity style={styles.actionBtn} onPress={() => { playSound('click'); onDelete(); }}>
             <Text style={[styles.actionTxt, { color: COLORS.textMuted }]}>Delete</Text>
           </TouchableOpacity>
         </View>

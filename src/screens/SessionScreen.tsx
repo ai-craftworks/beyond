@@ -16,9 +16,10 @@ import {
   awardMartialProficiency,
 } from '../database/Database';
 import { SystemPanel, SystemButton, ExpBar } from '../components/UIComponents';
+import WorkoutRow from '../components/WorkoutRow';
 import { Ionicons } from '@expo/vector-icons';
 import LevelUpModal from '../components/LevelUpModal';
-import { COLORS, TITLE_CONDITIONS, parseUnitValues, formatUnitValues, unitSuffix } from '../constants/game';
+import { COLORS, TITLE_CONDITIONS, parseUnitValues, formatUnitValues, unitSuffix, statColor } from '../constants/game';
 import { specsOf, primarySpecOf, plannedOf, recordFor } from '../utils/units';
 import {
   expForUnits, UnitValue, statDeltasFromItems, cappedStat,
@@ -26,6 +27,7 @@ import {
 } from '../utils/math';
 import { RootStackParamList } from '../../App';
 import { playSound } from '../utils/sounds';
+import { hapticHeavy, hapticSuccess, hapticWarning } from '../utils/haptics';
 
 type Route = RouteProp<RootStackParamList, 'Session'>;
 type Nav   = NativeStackNavigationProp<RootStackParamList, 'Session'>;
@@ -56,8 +58,43 @@ const SessionScreen: React.FC = () => {
   const flashAnim  = useRef(new Animated.Value(0)).current;
   const flashScale = useRef(new Animated.Value(0.8)).current;
   const finishingRef = useRef(false);
+  // Set before any programmatic exit (finish/abandon) so the beforeRemove
+  // guard below doesn't re-prompt on navigation we initiated ourselves.
+  const allowLeaveRef = useRef(false);
 
-  useEffect(() => { loadSession(); }, []);
+  // Guard the header back button / swipe-back: never silently strand an
+  // unfinished quest in 'in_progress'. Confirm, or explicitly abandon.
+  useEffect(() => {
+    const unsub = navigation.addListener('beforeRemove', (e) => {
+      if (allowLeaveRef.current || loading || isAlreadyCompleted) return;
+      e.preventDefault();
+      Alert.alert(
+        'Leave Quest?',
+        'Your progress is saved. The quest stays in progress so you can finish it later today.',
+        [
+          { text: 'Stay', style: 'cancel' },
+          {
+            text: 'Leave',
+            onPress: () => {
+              allowLeaveRef.current = true;
+              navigation.dispatch(e.data.action);
+            },
+          },
+          {
+            text: 'Abandon',
+            style: 'destructive',
+            onPress: async () => {
+              try { await updateSession(sessionId, { status: 'skipped' }); }
+              catch (err) { console.error('Abandon failed:', err); }
+              allowLeaveRef.current = true;
+              navigation.dispatch(e.data.action);
+            },
+          },
+        ]
+      );
+    });
+    return unsub;
+  }, [navigation, sessionId, loading, isAlreadyCompleted]);
 
   // Refresh bonus quests when returning from the Add Bonus screen.
   useFocusEffect(useCallback(() => {
@@ -82,6 +119,8 @@ const SessionScreen: React.FC = () => {
     if (currentSession?.status === 'pending') playSound('questStart');
     setLoading(false);
   };
+
+  useEffect(() => { loadSession(); }, []);
 
   const triggerFlash = (amount: number) => {
     setExpGained(prev => prev + amount);
@@ -146,9 +185,19 @@ const SessionScreen: React.FC = () => {
     setExercises(prev =>
       prev.map(e => e.id === ex.id ? { ...e, is_completed: 1, actual_amount: primaryValue, actual_units: actualUnitsJson, exp_reward: expEarned } : e)
     );
-    triggerFlash(expEarned);
-    playSound('exerciseDone');
-    await completeSessionExercise(ex.id!, primaryValue, expEarned, actualUnitsJson);
+    try {
+      const isNewPr = await completeSessionExercise(ex.id!, primaryValue, expEarned, actualUnitsJson);
+      triggerFlash(expEarned);
+      if (isNewPr) { playSound('title'); hapticSuccess(); }
+      else { playSound('exerciseDone'); hapticHeavy(); }
+    } catch (e) {
+      console.error('complete exercise error:', e);
+      // Roll back the optimistic tick so the UI matches the DB.
+      setExercises(prev =>
+        prev.map(e => e.id === ex.id ? { ...e, is_completed: 0, actual_amount: ex.actual_amount, actual_units: ex.actual_units, exp_reward: ex.exp_reward } : e)
+      );
+      Alert.alert('Error', 'Could not save your progress. Please try again.');
+    }
   };
 
   const finalizeBonusExercise = async (ex: BonusExercise, values: UnitValue[], primaryValue: number) => {
@@ -159,9 +208,18 @@ const SessionScreen: React.FC = () => {
     setBonusEx(prev =>
       prev.map(e => e.id === ex.id ? { ...e, is_completed: 1, actual_amount: primaryValue, actual_units: actualUnitsJson, exp_reward: expEarned } : e)
     );
-    triggerFlash(expEarned);
-    playSound('exerciseDone'); 
-    await completeBonusExercise(ex.id!, primaryValue, expEarned, actualUnitsJson);
+    try {
+      const isNewPr = await completeBonusExercise(ex.id!, primaryValue, expEarned, actualUnitsJson);
+      triggerFlash(expEarned);
+      if (isNewPr) { playSound('title'); hapticSuccess(); }
+      else { playSound('exerciseDone'); hapticHeavy(); }
+    } catch (e) {
+      console.error('complete bonus exercise error:', e);
+      setBonusEx(prev =>
+        prev.map(e => e.id === ex.id ? { ...e, is_completed: 0, actual_amount: ex.actual_amount, actual_units: ex.actual_units, exp_reward: ex.exp_reward } : e)
+      );
+      Alert.alert('Error', 'Could not save your progress. Please try again.');
+    }
   };
 
   const handleFinishSession = async () => {
@@ -215,7 +273,7 @@ const SessionScreen: React.FC = () => {
           [...doneMain, ...claimableBonus].map(e => ({ exercise_id: e.exercise_id, exp: e.exp_reward }))
         );
 
-        if (!levelled) navigation.goBack();
+        if (!levelled) { allowLeaveRef.current = true; navigation.goBack(); }
       } else {
         // Session already completed — claim only newly-completed bonus EXP
         if (claimableBonus.length === 0) {
@@ -294,20 +352,45 @@ const SessionScreen: React.FC = () => {
 
     if (levelled) {
       playSound('levelUp');
+      hapticSuccess();
       setLvlUp(true);
     } else {
       playSound('sessionDone');
+      hapticSuccess();
     }
     return levelled;
   };
 
   const abandonSession = () => {
     if (finishingRef.current) return;
-    finishingRef.current = true;
-    setFinishing(true);
-    updateSession(sessionId, { status: 'skipped' })
-      .catch(e => console.error('Abandon failed:', e));
-    navigation.goBack();
+    Alert.alert(
+      'Abandon Quest?',
+      'This quest will be marked as skipped. Completed exercises stay logged, but uncompleted ones will not count.',
+      [
+        { text: 'Keep Going', style: 'cancel' },
+        {
+          text: 'Abandon',
+          style: 'destructive',
+          onPress: async () => {
+            if (finishingRef.current) return;
+            finishingRef.current = true;
+            setFinishing(true);
+            try {
+              await updateSession(sessionId, { status: 'skipped' });
+              hapticWarning();
+              allowLeaveRef.current = true;
+              navigation.goBack();
+            } catch (e) {
+              console.error('Abandon failed:', e);
+              Alert.alert('Error', 'Could not abandon the quest. Please try again.');
+            } finally {
+              setFinishing(false);
+              finishingRef.current = false;
+            }
+          },
+        },
+      ]
+    );
   };
 
   if (loading || !player) {
@@ -347,9 +430,8 @@ const SessionScreen: React.FC = () => {
       </Animated.View>
 
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 60 + insets.bottom }]} showsVerticalScrollIndicator={false}>
-        {/* Header */}
+        {/* Progress header — the native header already names the quest */}
         <View style={styles.sessionHdr}>
-          <Text style={styles.sessionTag}>◆ DAILY QUEST</Text>
           <Text style={styles.sessionProgress}>{completedCount} / {exercises.length}</Text>
         </View>
 
@@ -434,7 +516,7 @@ const SessionScreen: React.FC = () => {
       {/* Level-up modal */}
       {player && (
         <LevelUpModal visible={levelUpVisible} player={player} newTitle={newTitle}
-          onClose={() => { setLvlUp(false); navigation.goBack(); }} />
+          onClose={() => { setLvlUp(false); allowLeaveRef.current = true; navigation.goBack(); }} />
       )}
 
       {/* Amount input modal (for distance/time exercises) */}
@@ -484,8 +566,8 @@ const ExerciseItem: React.FC<{ exercise: SessionExercise; index: number; onTap: 
   const specs = specsOf(exercise.units, exercise.unit_type);
   const primary = primarySpecOf(exercise.units, exercise.primary_unit, exercise.unit_type);
   const planned = plannedOf(exercise.unit_values, exercise.target, exercise.unit_type);
-  const plannedLabel = formatUnitValues(planned) || `${exercise.target} ${exercise.unit_label}`;
-  const actualLabel = formatUnitValues(parseUnitValues(exercise.actual_units)) || `${exercise.actual_amount} ${exercise.unit_label}`;
+  const plannedLabel = formatUnitValues(planned) || `${exercise.target} ${exercise.unit_label ?? 'reps'}`;
+  const actualLabel = formatUnitValues(parseUnitValues(exercise.actual_units)) || `${exercise.actual_amount} ${exercise.unit_label ?? 'reps'}`;
   const previewExp = expForUnits(planned, specs, primary, exercise.exp_per_unit, exercise.exp_unit_count, exercise.sets_total);
   const checkAnim = useRef(new Animated.Value(done ? 1 : 0)).current;
   const handlePress = () => {
@@ -496,29 +578,21 @@ const ExerciseItem: React.FC<{ exercise: SessionExercise; index: number; onTap: 
   const scale = checkAnim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [1, 1.3, 1] });
 
   return (
-    <TouchableOpacity style={[styles.questItem, done && styles.questItemDone]} onPress={handlePress} disabled={done} activeOpacity={0.75}>
-      <Animated.View style={[styles.indicator, done && styles.indicatorDone, { transform: [{ scale }] }]}>
-        {done ? <Ionicons name="checkmark" size={16} color={COLORS.accentGreen} /> : <Text style={styles.indexNum}>{index + 1}</Text>}
-      </Animated.View>
-      <View style={styles.questBody}>
-        <Text style={[styles.questName, done && styles.questNameDone]}>{exercise.exercise_name}</Text>
-        <Text style={styles.questSets}>
-          {exercise.sets_total} sets × {done ? actualLabel : plannedLabel}
-        </Text>
-        {!done && (
-          <Text style={styles.tapHint}>Tap to log your amount</Text>
-        )}
-      </View>
-      <View style={[styles.expBadge, done && styles.expBadgeDone]}>
-        <Text style={[styles.expBadgeTxt, done && styles.expBadgeTxtDone]}>
-          {done
-            ? `+${exercise.exp_reward}`
-            : `~${previewExp}`
-          }
-        </Text>
-        <Text style={[styles.expBadgeLbl, done && styles.expBadgeTxtDone]}>EXP</Text>
-      </View>
-    </TouchableOpacity>
+    <WorkoutRow
+      state={done ? 'done' : 'default'}
+      title={exercise.exercise_name}
+      meta={`${exercise.sets_total} sets × ${done ? actualLabel : plannedLabel}`}
+      accent={statColor(exercise.stat_type)}
+      exp={done ? `+${exercise.exp_reward} EXP` : `~${previewExp} EXP`}
+      badgeColor={done ? COLORS.accentGreen : COLORS.accentCyan}
+      footer={done ? undefined : <Text style={styles.tapHint}>Tap to log your amount</Text>}
+      leading={
+        <Animated.View style={[styles.indicator, done && styles.indicatorDone, { transform: [{ scale }] }]}>
+          {done ? <Ionicons name="checkmark" size={16} color={COLORS.accentGreen} /> : <Text style={styles.indexNum}>{index + 1}</Text>}
+        </Animated.View>
+      }
+      onPress={done ? undefined : handlePress}
+    />
   );
 };
 
@@ -529,28 +603,25 @@ const BonusItem: React.FC<{ exercise: BonusExercise; index: number; onTap: () =>
   const specs = specsOf(exercise.units, exercise.unit_type);
   const primary = primarySpecOf(exercise.units, exercise.primary_unit, exercise.unit_type);
   const planned = plannedOf(exercise.unit_values, exercise.target, exercise.unit_type);
-  const plannedLabel = formatUnitValues(planned) || `${exercise.target} ${exercise.unit_label}`;
-  const actualLabel = formatUnitValues(parseUnitValues(exercise.actual_units)) || `${exercise.actual_amount} ${exercise.unit_label}`;
+  const plannedLabel = formatUnitValues(planned) || `${exercise.target} ${exercise.unit_label ?? 'reps'}`;
+  const actualLabel = formatUnitValues(parseUnitValues(exercise.actual_units)) || `${exercise.actual_amount} ${exercise.unit_label ?? 'reps'}`;
   const previewExp = expForUnits(planned, specs, primary, exercise.exp_per_unit, exercise.exp_unit_count, 1);
   return (
-    <TouchableOpacity style={[styles.questItem, styles.bonusItem, done && styles.questItemDone]} onPress={onTap} disabled={done} activeOpacity={0.75}>
-      <View style={[styles.indicator, styles.bonusIndicator, done && styles.indicatorDone]}>
-        {done ? <Ionicons name="checkmark" size={16} color={COLORS.accentGreen} /> : <Ionicons name="star" size={14} color={COLORS.accentGold} />}
-      </View>
-      <View style={styles.questBody}>
-        <Text style={[styles.questName, done && styles.questNameDone]}>{exercise.exercise_name}</Text>
-        <Text style={styles.questSets}>{done ? actualLabel : plannedLabel} · BONUS</Text>
-      </View>
-      <View style={[styles.expBadge, styles.bonusExpBadge, done && styles.expBadgeDone]}>
-        <Text style={[styles.expBadgeTxt, done && styles.expBadgeTxtDone]}>
-          {done
-            ? `+${exercise.exp_reward}`
-            : `~${previewExp}`
-          }
-        </Text>
-        <Text style={[styles.expBadgeLbl, done && styles.expBadgeTxtDone]}>EXP</Text>
-      </View>
-    </TouchableOpacity>
+    <WorkoutRow
+      state={done ? 'done' : 'default'}
+      style={done ? undefined : styles.bonusItem}
+      title={exercise.exercise_name}
+      meta={`${done ? actualLabel : plannedLabel} · BONUS`}
+      accent={done ? COLORS.accentGreen : COLORS.accentGold}
+      exp={done ? `+${exercise.exp_reward} EXP` : `~${previewExp} EXP`}
+      badgeColor={done ? COLORS.accentGreen : COLORS.accentGold}
+      leading={
+        <View style={[styles.indicator, styles.bonusIndicator, done && styles.indicatorDone]}>
+          {done ? <Ionicons name="checkmark" size={16} color={COLORS.accentGreen} /> : <Ionicons name="star" size={14} color={COLORS.accentGold} />}
+        </View>
+      }
+      onPress={done ? undefined : onTap}
+    />
   );
 };
 
@@ -564,7 +635,6 @@ const styles = StyleSheet.create({
   flashTxt:      { color: COLORS.accentCyan, fontSize: 32, fontWeight: '900', letterSpacing: 3 },
 
   sessionHdr:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, marginBottom: 10 },
-  sessionTag:    { color: COLORS.accentCyan, fontSize: 13, fontWeight: '700', letterSpacing: 2 },
   sessionProgress: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
 
   progressBg:    { height: 4, backgroundColor: COLORS.borderMain, borderRadius: 2, marginBottom: 16, overflow: 'hidden' },
@@ -579,6 +649,8 @@ const styles = StyleSheet.create({
 
   questsLbl:     { color: COLORS.textMuted, fontSize: 11, letterSpacing: 2, fontWeight: '600', textAlign: 'center', marginBottom: 12 },
 
+  bonusItem:     { backgroundColor: `${COLORS.accentGold}05` },
+
   bonusHeader:   { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 4 },
   bonusLbl:      { color: COLORS.accentGold, fontSize: 11, letterSpacing: 2, fontWeight: '600' },
   addBonusBtn:   { borderWidth: 1, borderColor: COLORS.accentGold, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 4 },
@@ -586,27 +658,12 @@ const styles = StyleSheet.create({
   bonusHint:     { color: COLORS.textMuted, fontSize: 10, marginBottom: 10, fontStyle: 'italic' },
   noBonusTxt:    { color: COLORS.textMuted, fontSize: 12, textAlign: 'center', paddingVertical: 12, fontStyle: 'italic' },
 
-  questItem:     { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bgSecondary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 10, padding: 13, marginBottom: 8, gap: 11 },
-  questItemDone: { borderColor: COLORS.accentGreen, backgroundColor: `${COLORS.accentGreen}07` },
-  bonusItem:     { borderColor: `${COLORS.accentGold}40`, backgroundColor: `${COLORS.accentGold}05` },
-
   indicator:     { width: 38, height: 38, borderRadius: 19, borderWidth: 2, borderColor: COLORS.accentCyan, alignItems: 'center', justifyContent: 'center' },
   indicatorDone: { borderColor: COLORS.accentGreen, backgroundColor: `${COLORS.accentGreen}18` },
   bonusIndicator:{ borderColor: COLORS.accentGold },
   indexNum:      { color: COLORS.accentCyan, fontSize: 14, fontWeight: '700' },
 
-  questBody:     { flex: 1 },
-  questName:     { color: COLORS.textPrimary, fontSize: 14, fontWeight: '600', marginBottom: 2 },
-  questNameDone: { color: COLORS.textMuted, textDecorationLine: 'line-through' },
-  questSets:     { color: COLORS.textSecondary, fontSize: 12 },
-  tapHint:       { color: COLORS.textMuted, fontSize: 10, fontStyle: 'italic', marginTop: 2 },
-
-  expBadge:      { alignItems: 'center', backgroundColor: `${COLORS.accentCyan}12`, borderWidth: 1, borderColor: COLORS.accentCyan, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 4 },
-  bonusExpBadge: { borderColor: COLORS.accentGold, backgroundColor: `${COLORS.accentGold}10` },
-  expBadgeDone:  { borderColor: COLORS.accentGreen, backgroundColor: `${COLORS.accentGreen}10` },
-  expBadgeTxt:   { color: COLORS.accentCyan, fontSize: 13, fontWeight: '700' },
-  expBadgeTxtDone: { color: COLORS.accentGreen },
-  expBadgeLbl:   { color: COLORS.accentCyan, fontSize: 9, fontWeight: '600', letterSpacing: 0.5 },
+  tapHint:       { color: COLORS.textMuted, fontSize: 10, fontStyle: 'italic', marginTop: 4 },
 
   finishBtn:     { marginTop: 20, marginBottom: 8 },
   abandonBtn:    {},
@@ -622,11 +679,6 @@ const styles = StyleSheet.create({
   amountExpPreview: { color: COLORS.accentCyan, fontSize: 13, fontWeight: '600', marginBottom: 16, textAlign: 'center' },
   amountBtnRow:  { flexDirection: 'row', gap: 12 },
   flex1:         { flex: 1 },
-
-  exPickItem:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, borderWidth: 1, borderColor: COLORS.borderDim, borderRadius: 8, marginBottom: 5 },
-  exPickItemOn:  { borderColor: COLORS.accentCyan, backgroundColor: `${COLORS.accentCyan}12` },
-  exPickTxt:     { color: COLORS.textSecondary, fontSize: 14, flex: 1 },
-  exPickTxtOn:   { color: COLORS.accentCyan },
 
   completedBanner:     { marginTop: 24, marginBottom: 8, backgroundColor: `${COLORS.accentGreen}12`, borderWidth: 1, borderColor: COLORS.accentGreen, borderRadius: 10, padding: 20, alignItems: 'center', gap: 6 },
   completedBannerText: { color: COLORS.accentGreen, fontSize: 16, fontWeight: '800', letterSpacing: 2 },

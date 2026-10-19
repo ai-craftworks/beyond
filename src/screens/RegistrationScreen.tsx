@@ -68,7 +68,7 @@ const RegistrationScreen: React.FC<Props> = ({ navigation }) => {
       // player id is captured for future multi-row-safe updates (single-player today)
       void playerId;
       navigation.replace('Main');
-    } catch (e) {
+    } catch {
       Alert.alert('Error', 'Registration failed. Try again.');
     } finally {
       setLoading(false);
@@ -161,7 +161,7 @@ const RegistrationScreen: React.FC<Props> = ({ navigation }) => {
             </View>
           )}
 
-          <Text style={styles.footer}>「 The weak don't get to choose. 」</Text>
+          <Text style={styles.footer}>「 The weak don’t get to choose. 」</Text>
         </Animated.View>
       </ScrollView>
     </KeyboardAvoidingView>

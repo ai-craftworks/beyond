@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/game';
 import { percentOf } from '../utils/math';
 import { playSound } from '../utils/sounds';
+import { hapticTap, hapticWarning } from '../utils/haptics';
 
 export type IonName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -42,7 +43,16 @@ export const SystemButton: React.FC<BtnProps> = ({
   return (
     <TouchableOpacity
       style={[styles.btn, { backgroundColor: bg }, variant === 'ghost' && styles.btnGhost, disabled && styles.btnDisabled, style]}
-      onPress={() => { playSound('click'); onPress(); }} disabled={disabled || loading} activeOpacity={0.75}
+      onPress={() => {
+        playSound('click');
+        if (variant === 'danger') hapticWarning(); else hapticTap();
+        onPress();
+      }}
+      disabled={disabled || loading} activeOpacity={0.75}
+      accessible
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      accessibilityState={{ disabled: !!disabled || !!loading, busy: !!loading }}
     >
       {loading
         ? <ActivityIndicator color={clr} size="small" />
@@ -220,12 +230,20 @@ export const SectionHeader: React.FC<SecHdrProps> = ({ title, subtitle, action, 
     </View>
     <View style={styles.secHdrActions}>
       {secondary && (
-        <TouchableOpacity onPress={() => { playSound('click'); secondary.onPress(); }}>
+        <TouchableOpacity
+          onPress={() => { playSound('click'); secondary.onPress(); }}
+          accessibilityRole="button"
+          accessibilityLabel={`${secondary.label} — ${title}`}
+        >
           <Text style={styles.secActionAlt}>{secondary.label}</Text>
         </TouchableOpacity>
       )}
       {action && (
-        <TouchableOpacity onPress={() => { playSound('click'); action.onPress(); }}>
+        <TouchableOpacity
+          onPress={() => { playSound('click'); action.onPress(); }}
+          accessibilityRole="button"
+          accessibilityLabel={`${action.label} — ${title}`}
+        >
           <Text style={styles.secAction}>{action.label}</Text>
         </TouchableOpacity>
       )}
@@ -309,7 +327,9 @@ interface FilterButtonProps { count: number; onPress: () => void; }
 /** The funnel button shown at the right of a search row; shows an active-filter count. */
 export const FilterButton: React.FC<FilterButtonProps> = ({ count, onPress }) => (
   <TouchableOpacity style={styles.filterTrigger} onPress={() => { playSound('click'); onPress(); }}
-    activeOpacity={0.75} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+    activeOpacity={0.75} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+    accessibilityRole="button"
+    accessibilityLabel={count > 0 ? `Filters, ${count} active` : 'Filters'}>
     <Ionicons name="options-outline" size={20} color={count > 0 ? COLORS.accentCyan : COLORS.textSecondary} />
     {count > 0 && (
       <View style={styles.filterBadge}><Text style={styles.filterBadgeTxt}>{count}</Text></View>
@@ -382,6 +402,36 @@ export const EmptyState: React.FC<{ icon?: IonName; title: string; subtitle?: st
     <Ionicons name={icon} size={38} color={COLORS.textMuted} style={{ marginBottom: 10 }} />
     <Text style={styles.emptyTitle}>{title}</Text>
     {subtitle && <Text style={styles.emptySub}>{subtitle}</Text>}
+  </View>
+);
+
+// ── SegmentedTabs ────────────────────────────
+
+export interface SegmentedTabItem { key: string; label: string; icon?: IonName; }
+
+export const SegmentedTabs: React.FC<{
+  tabs: SegmentedTabItem[];
+  value: string;
+  onChange: (key: string) => void;
+  style?: ViewStyle;
+}> = ({ tabs, value, onChange, style }) => (
+  <View style={[styles.segRow, style]}>
+    {tabs.map(t => {
+      const on = t.key === value;
+      return (
+        <TouchableOpacity
+          key={t.key}
+          style={[styles.segBtn, on && styles.segBtnOn]}
+          onPress={() => { playSound('click'); onChange(t.key); }}
+          activeOpacity={0.8}
+        >
+          {!!t.icon && (
+            <Ionicons name={t.icon} size={15} color={on ? COLORS.accentCyan : COLORS.textSecondary} />
+          )}
+          <Text style={[styles.segTxt, on && styles.segTxtOn]}>{t.label}</Text>
+        </TouchableOpacity>
+      );
+    })}
   </View>
 );
 
@@ -477,4 +527,10 @@ const styles = StyleSheet.create({
   empty:        { alignItems: 'center', paddingVertical: 40 },
   emptyTitle:   { color: COLORS.textSecondary, fontSize: 15, fontWeight: '600', textAlign: 'center' },
   emptySub:     { color: COLORS.textMuted, fontSize: 12, marginTop: 6, textAlign: 'center' },
+
+  segRow:       { flexDirection: 'row', backgroundColor: COLORS.bgSecondary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 10, padding: 4, gap: 4, marginBottom: 12 },
+  segBtn:       { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, borderRadius: 7 },
+  segBtnOn:     { backgroundColor: COLORS.bgTertiary, borderWidth: 1, borderColor: COLORS.borderGlow },
+  segTxt:       { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700', letterSpacing: 0.3 },
+  segTxtOn:     { color: COLORS.accentCyan },
 });
