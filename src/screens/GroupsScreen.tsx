@@ -23,7 +23,7 @@ import {
   getGroups, createGroup, renameGroup, deleteGroup, getExercises, getPlans,
 } from '../database/Database';
 import {
-  SystemButton, EmptyState,
+  SystemButton, EmptyState, SegmentedTabs,
 } from '../components/UIComponents';
 import {
   COLORS, EXERCISE_CATEGORIES, STATS, GroupKind, groupColorForIndex,
@@ -151,24 +151,14 @@ const GroupsScreen: React.FC = () => {
         showsVerticalScrollIndicator={false}
       >
         {/* Segment toggle */}
-        <View style={styles.segment}>
-          <TouchableOpacity
-            style={[styles.segBtn, kind === 'exercise' && styles.segBtnOn]}
-            onPress={() => switchKind('exercise')} activeOpacity={0.8}
-          >
-            <Ionicons name="barbell-outline" size={15}
-              color={kind === 'exercise' ? COLORS.accentCyan : COLORS.textSecondary} />
-            <Text style={[styles.segTxt, kind === 'exercise' && styles.segTxtOn]}>Workouts</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[styles.segBtn, kind === 'plan' && styles.segBtnOn]}
-            onPress={() => switchKind('plan')} activeOpacity={0.8}
-          >
-            <Ionicons name="list-outline" size={15}
-              color={kind === 'plan' ? COLORS.accentCyan : COLORS.textSecondary} />
-            <Text style={[styles.segTxt, kind === 'plan' && styles.segTxtOn]}>Plans</Text>
-          </TouchableOpacity>
-        </View>
+        <SegmentedTabs
+          tabs={[
+            { key: 'exercise', label: 'Workouts', icon: 'barbell-outline' },
+            { key: 'plan', label: 'Plans', icon: 'list-outline' },
+          ]}
+          value={kind}
+          onChange={k => switchKind(k as GroupKind)}
+        />
 
         <Text style={styles.hint}>
           Groups are just labels for finding things — they don't affect EXP or ranks.
@@ -287,12 +277,6 @@ const GroupsScreen: React.FC = () => {
 const styles = StyleSheet.create({
   root:       { flex: 1, backgroundColor: COLORS.bgPrimary },
   content:    { padding: 16 },
-
-  segment:    { flexDirection: 'row', backgroundColor: COLORS.bgSecondary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 10, padding: 4, gap: 4, marginBottom: 12 },
-  segBtn:     { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, borderRadius: 7 },
-  segBtnOn:   { backgroundColor: COLORS.bgTertiary, borderWidth: 1, borderColor: COLORS.borderGlow },
-  segTxt:     { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700', letterSpacing: 0.3 },
-  segTxtOn:   { color: COLORS.accentCyan },
 
   hint:       { color: COLORS.textMuted, fontSize: 11, marginBottom: 16 },
 

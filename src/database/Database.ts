@@ -264,6 +264,17 @@ export const initDatabase = async (): Promise<void> => {
       FOREIGN KEY (exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS art_notes (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      martial_art_id INTEGER NOT NULL,
+      title          TEXT    NOT NULL,
+      body           TEXT    DEFAULT '',
+      media          TEXT    DEFAULT '[]',
+      created_at     TEXT    DEFAULT (datetime('now')),
+      updated_at     TEXT    DEFAULT '',
+      FOREIGN KEY (martial_art_id) REFERENCES martial_arts(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS item_groups (
       id          INTEGER PRIMARY KEY AUTOINCREMENT,
       kind        TEXT    NOT NULL,
@@ -559,6 +570,37 @@ export interface Skill {
   exercise_count?: number;
   groups?: string;       // JSON array of skill-group ids, populated by getSkills (join table, not a column)
 }
+
+/** One attachment stored on a note; parsed from the note's `media` JSON column. */
+export interface NoteMedia {
+  type: 'image' | 'video';
+  uri: string;
+}
+
+export interface Note {
+  id?: number;
+  martial_art_id: number;
+  title: string;
+  body: string;
+  media: string;         // JSON array of NoteMedia, stored as a column
+  created_at?: string;
+  updated_at?: string;
+}
+
+/** Safe parse of a note's `media` JSON column; never throws on bad/legacy data. */
+export const parseNoteMedia = (json?: string): NoteMedia[] => {
+  if (!json) return [];
+  try {
+    const parsed = JSON.parse(json);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (m): m is NoteMedia =>
+        !!m && (m.type === 'image' || m.type === 'video') && typeof m.uri === 'string' && !!m.uri
+    );
+  } catch {
+    return [];
+  }
+};
 
 export interface SkillExercise {
   id?: number;
@@ -1183,6 +1225,7 @@ export const resetAllData = async (): Promise<void> => {
     DELETE FROM skill_groups;
     DELETE FROM skill_exercises;
     DELETE FROM skills;
+    DELETE FROM art_notes;
     DELETE FROM martial_arts;
     DELETE FROM bonus_exercises;
     DELETE FROM session_exercises;
@@ -1199,7 +1242,7 @@ export const resetAllData = async (): Promise<void> => {
   `);
   await db.execAsync(`
     DELETE FROM sqlite_sequence WHERE name IN
-      ('player','exercises','exercise_body_parts','plans','plan_exercises','sessions','session_exercises','titles','bonus_exercises','martial_arts','skills','skill_exercises','item_groups','exercise_groups','plan_groups','skill_groups','skill_group_links');
+      ('player','exercises','exercise_body_parts','plans','plan_exercises','sessions','session_exercises','titles','bonus_exercises','martial_arts','skills','skill_exercises','art_notes','item_groups','exercise_groups','plan_groups','skill_groups','skill_group_links');
   `);
 };
 
@@ -1303,6 +1346,9 @@ export const deleteMartialArt = async (id: number): Promise<string[]> => {
   const skills = await db.getAllAsync<{ id: number; media_uri: string; media_type: string }>(
     `SELECT id, media_uri, media_type FROM skills WHERE martial_art_id = ?`, [id]
   );
+  const noteRows = await db.getAllAsync<{ media: string }>(
+    `SELECT media FROM art_notes WHERE martial_art_id = ?`, [id]
+  );
   await db.withTransactionAsync(async () => {
     // FK enforcement is off — clean dependants explicitly.
     await db.runAsync(
@@ -1315,11 +1361,15 @@ export const deleteMartialArt = async (id: number): Promise<string[]> => {
       [id]
     );
     await db.runAsync(`DELETE FROM skills WHERE martial_art_id = ?`, [id]);
+    await db.runAsync(`DELETE FROM art_notes WHERE martial_art_id = ?`, [id]);
     await db.runAsync(`DELETE FROM martial_arts WHERE id = ?`, [id]);
   });
-  return skills
-    .filter(s => s.media_type !== 'none' && s.media_uri)
-    .map(s => s.media_uri);
+  return [
+    ...skills
+      .filter(s => s.media_type !== 'none' && s.media_uri)
+      .map(s => s.media_uri),
+    ...noteRows.flatMap(r => parseNoteMedia(r.media).map(m => m.uri)),
+  ];
 };
 
 export const createSkill = async (
@@ -1487,4 +1537,53 @@ export const awardMartialProficiency = async (
       await applySkillExp(Number(id), gained);
     }
   });
+};
+
+// ─────────────────────────────────────────────
+// NOTES (theory notes attached to a martial art)
+// ─────────────────────────────────────────────
+
+export const getNotes = async (martialArtId: number): Promise<Note[]> => {
+  const db = await getDb();
+  return db.getAllAsync<Note>(
+    `SELECT * FROM art_notes WHERE martial_art_id = ?
+      ORDER BY created_at DESC, id DESC`,
+    [martialArtId]
+  );
+};
+
+export const getNote = async (id: number): Promise<Note | null> => {
+  const db = await getDb();
+  return db.getFirstAsync<Note>(`SELECT * FROM art_notes WHERE id = ?`, [id]);
+};
+
+export const createNote = async (
+  note: Pick<Note, 'martial_art_id' | 'title' | 'body' | 'media'>
+): Promise<number> => {
+  const db = await getDb();
+  const result = await db.runAsync(
+    `INSERT INTO art_notes (martial_art_id, title, body, media) VALUES (?, ?, ?, ?)`,
+    [note.martial_art_id, note.title, note.body ?? '', note.media ?? '[]']
+  );
+  return result.lastInsertRowId;
+};
+
+export const updateNote = async (
+  id: number,
+  updates: Pick<Note, 'title' | 'body' | 'media'>
+): Promise<void> => {
+  const db = await getDb();
+  await db.runAsync(
+    `UPDATE art_notes SET title = ?, body = ?, media = ?, updated_at = datetime('now')
+      WHERE id = ?`,
+    [updates.title, updates.body ?? '', updates.media ?? '[]', id]
+  );
+};
+
+/** Deletes a note and returns every attachment URI so the caller can free the files. */
+export const deleteNote = async (id: number): Promise<string[]> => {
+  const db = await getDb();
+  const note = await db.getFirstAsync<{ media: string }>(`SELECT media FROM art_notes WHERE id = ?`, [id]);
+  await db.runAsync(`DELETE FROM art_notes WHERE id = ?`, [id]);
+  return note ? parseNoteMedia(note.media).map(m => m.uri) : [];
 };

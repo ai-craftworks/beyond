@@ -141,11 +141,13 @@ interface MediaThumbProps {
   mediaUri: string;
   width?: number;
   height?: number;
+  /** Overrides the corner badge text (defaults to VIDEO / DEMO). */
+  badge?: string;
 }
 
 /** Compact 16:9 preview for list cards; tap → fullscreen. */
 export const MediaThumb: React.FC<MediaThumbProps> = ({
-  mediaType, mediaUri, width = 104, height = 58,
+  mediaType, mediaUri, width = 104, height = 58, badge,
 }) => {
   const [fullscreen, setFullscreen] = useState(false);
   if (!mediaUri || mediaType === 'none') return null;
@@ -163,7 +165,7 @@ export const MediaThumb: React.FC<MediaThumbProps> = ({
           <Image source={{ uri: mediaUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
         )}
         <View style={styles.thumbBadge} pointerEvents="none">
-          <Text style={styles.thumbBadgeTxt}>{mediaType === 'video' ? 'VIDEO' : 'DEMO'}</Text>
+          <Text style={styles.thumbBadgeTxt}>{badge ?? (mediaType === 'video' ? 'VIDEO' : 'DEMO')}</Text>
         </View>
       </TouchableOpacity>
       <FullscreenMedia

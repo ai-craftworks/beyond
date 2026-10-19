@@ -385,6 +385,36 @@ export const EmptyState: React.FC<{ icon?: IonName; title: string; subtitle?: st
   </View>
 );
 
+// ── SegmentedTabs ────────────────────────────
+
+export interface SegmentedTabItem { key: string; label: string; icon?: IonName; }
+
+export const SegmentedTabs: React.FC<{
+  tabs: SegmentedTabItem[];
+  value: string;
+  onChange: (key: string) => void;
+  style?: ViewStyle;
+}> = ({ tabs, value, onChange, style }) => (
+  <View style={[styles.segRow, style]}>
+    {tabs.map(t => {
+      const on = t.key === value;
+      return (
+        <TouchableOpacity
+          key={t.key}
+          style={[styles.segBtn, on && styles.segBtnOn]}
+          onPress={() => { playSound('click'); onChange(t.key); }}
+          activeOpacity={0.8}
+        >
+          {!!t.icon && (
+            <Ionicons name={t.icon} size={15} color={on ? COLORS.accentCyan : COLORS.textSecondary} />
+          )}
+          <Text style={[styles.segTxt, on && styles.segTxtOn]}>{t.label}</Text>
+        </TouchableOpacity>
+      );
+    })}
+  </View>
+);
+
 // ── Styles ───────────────────────────────────
 
 const styles = StyleSheet.create({
@@ -477,4 +507,10 @@ const styles = StyleSheet.create({
   empty:        { alignItems: 'center', paddingVertical: 40 },
   emptyTitle:   { color: COLORS.textSecondary, fontSize: 15, fontWeight: '600', textAlign: 'center' },
   emptySub:     { color: COLORS.textMuted, fontSize: 12, marginTop: 6, textAlign: 'center' },
+
+  segRow:       { flexDirection: 'row', backgroundColor: COLORS.bgSecondary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 10, padding: 4, gap: 4, marginBottom: 12 },
+  segBtn:       { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingVertical: 9, borderRadius: 7 },
+  segBtnOn:     { backgroundColor: COLORS.bgTertiary, borderWidth: 1, borderColor: COLORS.borderGlow },
+  segTxt:       { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700', letterSpacing: 0.3 },
+  segTxtOn:     { color: COLORS.accentCyan },
 });

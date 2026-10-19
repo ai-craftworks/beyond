@@ -24,6 +24,7 @@ import WorkoutSelectScreen from './src/screens/WorkoutSelectScreen';
 import MartialArtsScreen  from './src/screens/MartialArtsScreen';
 import MartialArtDetailScreen from './src/screens/MartialArtDetailScreen';
 import SkillDetailScreen  from './src/screens/SkillDetailScreen';
+import NoteDetailScreen   from './src/screens/NoteDetailScreen';
 import ProfileScreen      from './src/screens/ProfileScreen';
 import SessionScreen      from './src/screens/SessionScreen';
 import GroupsScreen       from './src/screens/GroupsScreen';
@@ -41,6 +42,7 @@ export type RootStackParamList = {
     | { mode: 'skill'; skillId: number; skillName: string };
   MartialArtDetail: { artId: number };
   SkillDetail:      { skillId: number };
+  NoteDetail:       { noteId: number };
   Groups:           { kind?: GroupKind } | undefined;
   Guide:            undefined;
 };
@@ -274,6 +276,18 @@ const App: React.FC = () => {
               options={{
                 headerShown: true,
                 headerTitle: 'Skill',
+                headerStyle: styles.header,
+                headerTitleStyle: styles.headerTitle,
+                headerTintColor: COLORS.accentCyan,
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="NoteDetail"
+              component={NoteDetailScreen}
+              options={{
+                headerShown: true,
+                headerTitle: 'Note',
                 headerStyle: styles.header,
                 headerTitleStyle: styles.headerTitle,
                 headerTintColor: COLORS.accentCyan,
