@@ -169,7 +169,7 @@ export const initDatabase = async (): Promise<void> => {
 
   // Safely add new columns to existing installs — ALTER TABLE ignores errors if column exists
   const safeAlter = async (sql: string) => {
-    try { await db.execAsync(sql); } catch (_) {}
+    try { await db.execAsync(sql); } catch {}
   };
   await safeAlter(`ALTER TABLE exercises ADD COLUMN unit_type TEXT DEFAULT 'reps'`);
   await safeAlter(`ALTER TABLE exercises ADD COLUMN exp_per_unit REAL DEFAULT 2`);
@@ -203,6 +203,10 @@ export const initDatabase = async (): Promise<void> => {
   await safeAlter(`ALTER TABLE bonus_exercises ADD COLUMN actual_units TEXT DEFAULT '[]'`);
   await safeAlter(`ALTER TABLE exercises ADD COLUMN media_type TEXT DEFAULT 'none'`);
   await safeAlter(`ALTER TABLE exercises ADD COLUMN media_uri TEXT DEFAULT ''`);
+  // Per-exercise personal records: best primary-unit value ever completed.
+  await safeAlter(`ALTER TABLE exercises ADD COLUMN pr_value REAL DEFAULT 0`);
+  await safeAlter(`ALTER TABLE exercises ADD COLUMN pr_unit TEXT DEFAULT ''`);
+  await safeAlter(`ALTER TABLE exercises ADD COLUMN pr_at TEXT DEFAULT ''`);
 
   // Create bonus_exercises table if it doesn't exist
   await db.execAsync(`
@@ -422,6 +426,9 @@ export interface Exercise {
   primary_unit?: string; // unit type that drives EXP
   media_type: MediaType;
   media_uri: string;
+  pr_value?: number;     // best primary-unit value ever completed (0 = none)
+  pr_unit?: string;      // unit type the PR was set in
+  pr_at?: string;        // ISO timestamp of the PR
   body_parts?: string;   // JSON array, populated by getExercises (join table, not a column)
   groups?: string;       // JSON array of group ids, populated by getExercises (join table, not a column)
   created_at?: string;
@@ -1078,6 +1085,44 @@ export const getRecentSessions = async (limit = 20): Promise<Session[]> => {
   );
 };
 
+/** Full session history, newest first. `status` filters (e.g. 'completed'). */
+export const getAllSessions = async (status?: string): Promise<Session[]> => {
+  const db = await getDb();
+  if (status && status !== 'all') {
+    return db.getAllAsync<Session>(
+      `SELECT * FROM sessions WHERE status = ? ORDER BY date DESC, id DESC`, [status]
+    );
+  }
+  return db.getAllAsync<Session>(
+    `SELECT * FROM sessions ORDER BY date DESC, id DESC`
+  );
+};
+
+export interface LifetimeStats {
+  /** All completed sessions ever (not capped to the visible history). */
+  completed: number;
+  /** Total EXP across all completed sessions. */
+  totalExp: number;
+  /** Distinct dates (YYYY-MM-DD) with a completed session, newest first. */
+  completedDates: string[];
+}
+
+export const getLifetimeStats = async (): Promise<LifetimeStats> => {
+  const db = await getDb();
+  const agg = await db.getFirstAsync<{ completed: number; total_exp: number | null }>(
+    `SELECT COUNT(*) AS completed, COALESCE(SUM(total_exp), 0) AS total_exp
+     FROM sessions WHERE status = 'completed'`
+  );
+  const rows = await db.getAllAsync<{ date: string }>(
+    `SELECT DISTINCT date FROM sessions WHERE status = 'completed' ORDER BY date DESC`
+  );
+  return {
+    completed: agg?.completed ?? 0,
+    totalExp: agg?.total_exp ?? 0,
+    completedDates: rows.map(r => r.date),
+  };
+};
+
 export const getSessionExercises = async (sessionId: number): Promise<SessionExercise[]> => {
   const db = await getDb();
   return db.getAllAsync<SessionExercise>(
@@ -1100,14 +1145,41 @@ export const getSession = async (id: number): Promise<Session | null> => {
 
 // actualAmount = how much the player actually did (reps, km, minutes, etc.)
 // expEarned = actualAmount × exp_per_unit × sets (calculated in SessionScreen)
+/**
+ * Records a completed value against the exercise's personal record.
+ * Returns true when a new PR was set. A completion in a different unit than
+ * the stored PR (the exercise's unit was reworked) starts a fresh baseline
+ * instead of comparing incomparable numbers.
+ */
+const recordExercisePr = async (
+  db: SQLite.SQLiteDatabase, exerciseId: number, value: number, unit: string
+): Promise<boolean> => {
+  const row = await db.getFirstAsync<{ pr_value: number | null; pr_unit: string | null }>(
+    `SELECT pr_value, pr_unit FROM exercises WHERE id = ?`, [exerciseId]
+  );
+  if (!row) return false;
+  const sameUnit = (row.pr_unit ?? '') === unit;
+  if (sameUnit && value <= (row.pr_value ?? 0)) return false;
+  await db.runAsync(
+    `UPDATE exercises SET pr_value = ?, pr_unit = ?, pr_at = ? WHERE id = ?`,
+    [value, unit, new Date().toISOString(), exerciseId]
+  );
+  return true;
+};
+
 export const completeSessionExercise = async (
   id: number, actualAmount: number, expEarned: number, actualUnits: string = '[]'
-): Promise<void> => {
+): Promise<boolean> => {
   const db = await getDb();
   await db.runAsync(
     `UPDATE session_exercises SET is_completed = 1, actual_amount = ?, exp_reward = ?, actual_units = ? WHERE id = ?`,
     [actualAmount, expEarned, actualUnits, id]
   );
+  const meta = await db.getFirstAsync<{ exercise_id: number; primary_unit: string | null; unit_type: string | null }>(
+    `SELECT exercise_id, primary_unit, unit_type FROM session_exercises WHERE id = ?`, [id]
+  );
+  if (!meta) return false;
+  return recordExercisePr(db, meta.exercise_id, actualAmount, meta.primary_unit || meta.unit_type || 'reps');
 };
 
 // ─────────────────────────────────────────────
@@ -1157,12 +1229,17 @@ export const addBonusExerciseToSession = async (
 
 export const completeBonusExercise = async (
   id: number, actualAmount: number, expEarned: number, actualUnits: string = '[]'
-): Promise<void> => {
+): Promise<boolean> => {
   const db = await getDb();
   await db.runAsync(
     `UPDATE bonus_exercises SET is_completed = 1, actual_amount = ?, exp_reward = ?, actual_units = ? WHERE id = ?`,
     [actualAmount, expEarned, actualUnits, id]
   );
+  const meta = await db.getFirstAsync<{ exercise_id: number; primary_unit: string | null; unit_type: string | null }>(
+    `SELECT exercise_id, primary_unit, unit_type FROM bonus_exercises WHERE id = ?`, [id]
+  );
+  if (!meta) return false;
+  return recordExercisePr(db, meta.exercise_id, actualAmount, meta.primary_unit || meta.unit_type || 'reps');
 };
 
 // Marks bonus exercises as having had their EXP awarded to the player.
@@ -1244,6 +1321,140 @@ export const resetAllData = async (): Promise<void> => {
     DELETE FROM sqlite_sequence WHERE name IN
       ('player','exercises','exercise_body_parts','plans','plan_exercises','sessions','session_exercises','titles','bonus_exercises','martial_arts','skills','skill_exercises','art_notes','item_groups','exercise_groups','plan_groups','skill_groups','skill_group_links');
   `);
+};
+
+// ─────────────────────────────────────────────
+// BACKUP  (export / import a full JSON snapshot)
+// ─────────────────────────────────────────────
+
+/** Every table included in a backup, in delete-safe order (children first). */
+const BACKUP_TABLES = [
+  'skill_group_links', 'skill_groups', 'skill_exercises', 'skills', 'art_notes',
+  'martial_arts', 'bonus_exercises', 'session_exercises', 'sessions',
+  'plan_groups', 'plan_exercises', 'plans', 'exercise_groups', 'item_groups',
+  'exercise_body_parts', 'exercises', 'titles', 'player',
+] as const;
+
+export const BACKUP_APP_ID = 'beyond';
+export const BACKUP_SCHEMA_VERSION = 1;
+
+export interface BackupFile {
+  app: typeof BACKUP_APP_ID;
+  schemaVersion: number;
+  exportedAt: string;
+  tables: Record<string, unknown[]>;
+}
+
+/**
+ * Snapshot every table into a plain JSON object. Note: attached demo media
+ * files (images/videos) live on the filesystem, not in SQLite, and are NOT
+ * included — only game data is backed up.
+ */
+export const exportAllData = async (): Promise<BackupFile> => {
+  const db = await getDb();
+  const tables: Record<string, unknown[]> = {};
+  for (const t of BACKUP_TABLES) {
+    tables[t] = await db.getAllAsync(`SELECT * FROM ${t}`);
+  }
+  return {
+    app: BACKUP_APP_ID,
+    schemaVersion: BACKUP_SCHEMA_VERSION,
+    exportedAt: new Date().toISOString(),
+    tables,
+  };
+};
+
+export type ImportFailure =
+  | 'not-backup'      // wrong/absent app marker
+  | 'bad-shape'       // tables missing or not an object
+  | 'no-player'       // player row missing — this isn't a playable save
+  | 'failed';         // unexpected DB error (wrapped by caller)
+
+export class ImportBackupError extends Error {
+  constructor(public kind: ImportFailure) { super(`import failed: ${kind}`); }
+}
+
+/**
+ * Wipe every table and replay a backup on top, preserving original ids so
+ * foreign-key-ish references between rows (session_id, plan_id, ...) stay
+ * intact. Only keys that exist in the current schema are written, so backups
+ * from older app versions import cleanly. Throws ImportBackupError on invalid
+ * input; the caller shows the friendly message.
+ */
+export const importAllData = async (input: unknown): Promise<number> => {
+  if (!input || typeof input !== 'object') throw new ImportBackupError('not-backup');
+  const backup = input as Partial<BackupFile>;
+  if (backup.app !== BACKUP_APP_ID || !backup.tables || typeof backup.tables !== 'object') {
+    throw new ImportBackupError('not-backup');
+  }
+  const playerRows = backup.tables.player;
+  if (!Array.isArray(playerRows) || playerRows.length === 0) throw new ImportBackupError('no-player');
+
+  const db = await getDb();
+  let imported = 0;
+
+  try {
+    await db.withTransactionAsync(async () => {
+      // Same wipe order as resetAllData: children before parents.
+      await db.execAsync(`
+        DELETE FROM skill_group_links;
+        DELETE FROM skill_groups;
+        DELETE FROM skill_exercises;
+        DELETE FROM skills;
+        DELETE FROM art_notes;
+        DELETE FROM martial_arts;
+        DELETE FROM bonus_exercises;
+        DELETE FROM session_exercises;
+        DELETE FROM sessions;
+        DELETE FROM plan_groups;
+        DELETE FROM plan_exercises;
+        DELETE FROM plans;
+        DELETE FROM exercise_groups;
+        DELETE FROM item_groups;
+        DELETE FROM exercise_body_parts;
+        DELETE FROM exercises;
+        DELETE FROM titles;
+        DELETE FROM player;
+        DELETE FROM sqlite_sequence WHERE name IN
+          ('player','exercises','exercise_body_parts','plans','plan_exercises','sessions','session_exercises','titles','bonus_exercises','martial_arts','skills','skill_exercises','art_notes','item_groups','exercise_groups','plan_groups','skill_groups','skill_group_links');
+      `);
+
+      for (const t of BACKUP_TABLES) {
+        const rows = backup.tables![t];
+        if (!Array.isArray(rows) || rows.length === 0) continue;
+        const cols = (await db.getAllAsync<{ name: string }>(`PRAGMA table_info(${t})`)).map(c => c.name);
+        for (const row of rows) {
+          if (!row || typeof row !== 'object') continue;
+          const rec = row as Record<string, unknown>;
+          const keys = Object.keys(rec).filter(k => cols.includes(k));
+          if (keys.length === 0) continue;
+          await db.runAsync(
+            `INSERT INTO ${t} (${keys.join(', ')}) VALUES (${keys.map(() => '?').join(', ')})`,
+            keys.map(k => (rec[k] === undefined ? null : rec[k]) as SQLite.SQLiteBindValue)
+          );
+          imported++;
+        }
+      }
+
+      // Explicit-id inserts update AUTOINCREMENT sequences automatically, but
+      // only when a row exceeds the old max — normalise so the next local
+      // insert never collides with an imported id.
+      for (const t of BACKUP_TABLES) {
+        const max = await db.getFirstAsync<{ m: number | null }>(`SELECT MAX(id) AS m FROM ${t}`);
+        if (max?.m != null) {
+          await db.runAsync(`UPDATE sqlite_sequence SET seq = ? WHERE name = ?`, [max.m, t]);
+        } else {
+          await db.runAsync(`DELETE FROM sqlite_sequence WHERE name = ?`, [t]);
+        }
+      }
+    });
+  } catch (e) {
+    if (e instanceof ImportBackupError) throw e;
+    console.error('importAllData error:', e);
+    throw new ImportBackupError('failed');
+  }
+
+  return imported;
 };
 
 export const getSessionSummary = async (sessionId: number): Promise<{

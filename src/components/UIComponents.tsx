@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/game';
 import { percentOf } from '../utils/math';
 import { playSound } from '../utils/sounds';
+import { hapticTap, hapticWarning } from '../utils/haptics';
 
 export type IonName = React.ComponentProps<typeof Ionicons>['name'];
 
@@ -42,7 +43,16 @@ export const SystemButton: React.FC<BtnProps> = ({
   return (
     <TouchableOpacity
       style={[styles.btn, { backgroundColor: bg }, variant === 'ghost' && styles.btnGhost, disabled && styles.btnDisabled, style]}
-      onPress={() => { playSound('click'); onPress(); }} disabled={disabled || loading} activeOpacity={0.75}
+      onPress={() => {
+        playSound('click');
+        if (variant === 'danger') hapticWarning(); else hapticTap();
+        onPress();
+      }}
+      disabled={disabled || loading} activeOpacity={0.75}
+      accessible
+      accessibilityRole="button"
+      accessibilityLabel={title}
+      accessibilityState={{ disabled: !!disabled || !!loading, busy: !!loading }}
     >
       {loading
         ? <ActivityIndicator color={clr} size="small" />
@@ -220,12 +230,20 @@ export const SectionHeader: React.FC<SecHdrProps> = ({ title, subtitle, action, 
     </View>
     <View style={styles.secHdrActions}>
       {secondary && (
-        <TouchableOpacity onPress={() => { playSound('click'); secondary.onPress(); }}>
+        <TouchableOpacity
+          onPress={() => { playSound('click'); secondary.onPress(); }}
+          accessibilityRole="button"
+          accessibilityLabel={`${secondary.label} — ${title}`}
+        >
           <Text style={styles.secActionAlt}>{secondary.label}</Text>
         </TouchableOpacity>
       )}
       {action && (
-        <TouchableOpacity onPress={() => { playSound('click'); action.onPress(); }}>
+        <TouchableOpacity
+          onPress={() => { playSound('click'); action.onPress(); }}
+          accessibilityRole="button"
+          accessibilityLabel={`${action.label} — ${title}`}
+        >
           <Text style={styles.secAction}>{action.label}</Text>
         </TouchableOpacity>
       )}
@@ -309,7 +327,9 @@ interface FilterButtonProps { count: number; onPress: () => void; }
 /** The funnel button shown at the right of a search row; shows an active-filter count. */
 export const FilterButton: React.FC<FilterButtonProps> = ({ count, onPress }) => (
   <TouchableOpacity style={styles.filterTrigger} onPress={() => { playSound('click'); onPress(); }}
-    activeOpacity={0.75} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+    activeOpacity={0.75} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+    accessibilityRole="button"
+    accessibilityLabel={count > 0 ? `Filters, ${count} active` : 'Filters'}>
     <Ionicons name="options-outline" size={20} color={count > 0 ? COLORS.accentCyan : COLORS.textSecondary} />
     {count > 0 && (
       <View style={styles.filterBadge}><Text style={styles.filterBadgeTxt}>{count}</Text></View>

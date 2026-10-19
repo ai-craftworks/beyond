@@ -272,6 +272,20 @@ export interface ExpBadgeSource {
 export const expBadgeLabel = (ex: ExpBadgeSource): string =>
   `+${ex.exp_per_unit ?? ex.exp_reward ?? 0} EXP / ${ex.exp_unit_count ?? 1} ${unitSuffix(ex.primary_unit ?? ex.unit_type ?? 'reps')}`;
 
+/** Personal-record source (a full Exercise row carries these). */
+export interface PrSource {
+  pr_value?: number | null;
+  pr_unit?: string | null;
+}
+
+/** Canonical PR label — `PR 12 reps`, or null when the exercise has no PR. */
+export const prLabel = (ex: PrSource): string | null => {
+  const v = ex.pr_value ?? 0;
+  if (!(v > 0)) return null;
+  const value = parseFloat(v.toFixed(2));
+  return `PR ${value} ${unitSuffix(ex.pr_unit || 'reps')}`;
+};
+
 export interface MetaLineSource {
   stat_type?: string | null;
   body_parts?: string | null;
@@ -370,7 +384,9 @@ export const COLORS = {
 
   textPrimary:   '#E8F4FD',
   textSecondary: '#8BAECF',
-  textMuted:     '#4A6A8A',
+  // Was #4A6A8A (~3.4:1 — fails WCAG AA). #6288AD is ~5.1:1 on bgPrimary,
+  // ~4.5:1 on bgTertiary, while staying clearly below textSecondary.
+  textMuted:     '#6288AD',
 
   borderGlow: '#00D4FF33',
   borderMain: '#1A3A5C',

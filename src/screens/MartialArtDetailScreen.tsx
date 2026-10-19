@@ -23,6 +23,7 @@ import SkillGroupSheet from '../components/SkillGroupSheet';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, getBeltForLevel, parseGroupIds } from '../constants/game';
 import { playSound } from '../utils/sounds';
+import { fmtShortDate } from '../utils/dates';
 import { RootStackParamList } from '../../App';
 
 type Route = RouteProp<RootStackParamList, 'MartialArtDetail'>;
@@ -45,8 +46,6 @@ const MartialArtDetailScreen: React.FC = () => {
   const [noteModal, setNoteModal] = useState(false);
   const [groupSheet, setGroupSheet] = useState(false);
 
-  useFocusEffect(useCallback(() => { load(); }, [artId]));
-
   const load = async () => {
     const [a, s, g, n] = await Promise.all([
       getMartialArt(artId), getSkills(artId), getSkillGroups(artId), getNotes(artId),
@@ -62,10 +61,22 @@ const MartialArtDetailScreen: React.FC = () => {
     setLoading(false);
   };
 
-  if (loading || !art) {
+  useFocusEffect(useCallback(() => { load(); }, [artId]));
+
+  if (loading) {
     return (
       <View style={styles.loadRoot}>
         <ActivityIndicator color={COLORS.accentCyan} size="large" />
+      </View>
+    );
+  }
+
+  if (!art) {
+    return (
+      <View style={styles.loadRoot}>
+        <Ionicons name="help-circle-outline" size={44} color={COLORS.textMuted} />
+        <Text style={styles.missingTxt}>This martial art no longer exists.</Text>
+        <SystemButton title="Go Back" variant="ghost" onPress={() => navigation.goBack()} />
       </View>
     );
   }
@@ -208,7 +219,7 @@ const MartialArtDetailScreen: React.FC = () => {
           ) : (
             notes.map(note => {
               const attachments = parseNoteMedia(note.media).length;
-              const date = (note.updated_at || note.created_at || '').slice(0, 10);
+              const date = fmtShortDate(note.updated_at || note.created_at || '');
               return (
                 <TouchableOpacity
                   key={note.id}
@@ -270,7 +281,8 @@ const MartialArtDetailScreen: React.FC = () => {
 const styles = StyleSheet.create({
   root:     { flex: 1, backgroundColor: COLORS.bgPrimary },
   content:  { padding: 16 },
-  loadRoot: { flex: 1, backgroundColor: COLORS.bgPrimary, alignItems: 'center', justifyContent: 'center' },
+  loadRoot: { flex: 1, backgroundColor: COLORS.bgPrimary, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  missingTxt: { color: COLORS.textMuted, fontSize: 14, marginBottom: 4 },
 
   hero:      { alignItems: 'center', backgroundColor: COLORS.bgSecondary, borderWidth: 1.5, borderRadius: 14, padding: 20, marginBottom: 12 },
   heroIcon:  { width: 64, height: 64, borderRadius: 32, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginBottom: 12 },

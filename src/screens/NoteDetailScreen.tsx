@@ -18,6 +18,7 @@ import MediaViewer from '../components/MediaViewer';
 import NoteFormModal from '../components/NoteFormModal';
 import { COLORS } from '../constants/game';
 import { deleteMedia } from '../utils/media';
+import { fmtShortDate } from '../utils/dates';
 import { RootStackParamList } from '../../App';
 
 type Route = RouteProp<RootStackParamList, 'NoteDetail'>;
@@ -34,8 +35,6 @@ const NoteDetailScreen: React.FC = () => {
   const [loading, setLoading]   = useState(true);
   const [editModal, setEditModal] = useState(false);
 
-  useFocusEffect(useCallback(() => { load(); }, [noteId]));
-
   const load = async () => {
     const n = await getNote(noteId);
     if (!n) {
@@ -47,6 +46,8 @@ const NoteDetailScreen: React.FC = () => {
     setArt(await getMartialArt(n.martial_art_id));
     setLoading(false);
   };
+
+  useFocusEffect(useCallback(() => { load(); }, [noteId]));
 
   const handleDelete = () =>
     Alert.alert('Delete Note', `Remove "${note?.title}"? Its attachments are deleted too.`, [
@@ -67,7 +68,7 @@ const NoteDetailScreen: React.FC = () => {
       },
     ]);
 
-  if (loading || !note) {
+  if (loading) {
     return (
       <View style={styles.loadRoot}>
         <ActivityIndicator color={COLORS.accentCyan} size="large" />
@@ -75,9 +76,18 @@ const NoteDetailScreen: React.FC = () => {
     );
   }
 
+  if (!note) {
+    return (
+      <View style={styles.loadRoot}>
+        <Text style={styles.missingTxt}>This note no longer exists.</Text>
+        <SystemButton title="Go Back" variant="ghost" onPress={() => navigation.goBack()} />
+      </View>
+    );
+  }
+
   const attachments = parseNoteMedia(note.media);
-  const created = (note.created_at ?? '').slice(0, 10);
-  const updated = (note.updated_at ?? '').slice(0, 10);
+  const created = fmtShortDate(note.created_at ?? '');
+  const updated = fmtShortDate(note.updated_at ?? '');
 
   return (
     <View style={styles.root}>
@@ -140,7 +150,8 @@ const NoteDetailScreen: React.FC = () => {
 const styles = StyleSheet.create({
   root:      { flex: 1, backgroundColor: COLORS.bgPrimary },
   content:   { padding: 16 },
-  loadRoot:  { flex: 1, backgroundColor: COLORS.bgPrimary, alignItems: 'center', justifyContent: 'center' },
+  loadRoot:  { flex: 1, backgroundColor: COLORS.bgPrimary, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  missingTxt: { color: COLORS.textMuted, fontSize: 14, marginBottom: 4 },
 
   artTag:    { fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: 4 },
   title:     { color: COLORS.textPrimary, fontSize: 22, fontWeight: '800', marginBottom: 6 },

@@ -28,6 +28,7 @@ import NoteDetailScreen   from './src/screens/NoteDetailScreen';
 import ProfileScreen      from './src/screens/ProfileScreen';
 import SessionScreen      from './src/screens/SessionScreen';
 import GroupsScreen       from './src/screens/GroupsScreen';
+import HistoryScreen      from './src/screens/HistoryScreen';
 import AboutScreen from './src/screens/AboutScreen';
 import { initAudio, playSound } from './src/utils/sounds';
 
@@ -45,6 +46,7 @@ export type RootStackParamList = {
   NoteDetail:       { noteId: number };
   Groups:           { kind?: GroupKind } | undefined;
   Guide:            undefined;
+  History:          undefined;
 };
 
 export type TabParamList = {
@@ -162,9 +164,7 @@ const App: React.FC = () => {
   const [appState, setAppState] = useState<'loading' | 'register' | 'main' | 'error'>('loading');
   const [bootstrapError, setBootstrapError] = useState<string>('');
 
-  useEffect(() => { bootstrap(); }, []);
-
-  const bootstrap = async () => {
+  async function bootstrap() {
     try {
       await initAudio();
       playSound('boot'); 
@@ -176,7 +176,9 @@ const App: React.FC = () => {
       setBootstrapError(e instanceof Error ? e.message : String(e));
       setAppState('error');
     }
-  };
+  }
+
+  useEffect(() => { bootstrap(); }, []);
 
   if (appState === 'loading') {
     return (
@@ -313,6 +315,18 @@ const App: React.FC = () => {
               options={{
                 headerShown: true,
                 headerTitle: 'Groups',
+                headerStyle: styles.header,
+                headerTitleStyle: styles.headerTitle,
+                headerTintColor: COLORS.accentCyan,
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="History"
+              component={HistoryScreen}
+              options={{
+                headerShown: true,
+                headerTitle: 'Quest Log',
                 headerStyle: styles.header,
                 headerTitleStyle: styles.headerTitle,
                 headerTintColor: COLORS.accentCyan,

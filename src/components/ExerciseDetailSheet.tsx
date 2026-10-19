@@ -16,7 +16,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SystemButton } from './UIComponents';
 import MediaViewer from './MediaViewer';
-import { COLORS, EXERCISE_CATEGORIES, expBadgeLabel, parseUnits, parseBodyParts, parseGroupIds, statAccent, bodyPartLabel } from '../constants/game';
+import { COLORS, EXERCISE_CATEGORIES, expBadgeLabel, prLabel, parseUnits, parseBodyParts, parseGroupIds, statAccent, bodyPartLabel } from '../constants/game';
 import { Exercise, Group } from '../database/Database';
 
 interface ExerciseDetailSheetProps {
@@ -70,6 +70,11 @@ const ExerciseDetailSheet: React.FC<ExerciseDetailSheetProps> = ({
               <View style={[styles.chip, { borderColor: COLORS.accentCyan }]}>
                 <Text style={[styles.chipTxt, { color: COLORS.accentCyan }]}>{expBadgeLabel(exercise)}</Text>
               </View>
+              {prLabel(exercise) && (
+                <View style={[styles.chip, { borderColor: COLORS.accentGold }]}>
+                  <Text style={[styles.chipTxt, { color: COLORS.accentGold }]}>★ {prLabel(exercise)}</Text>
+                </View>
+              )}
               <View style={[styles.chip, { borderColor: accent }]}>
                 <Text style={[styles.chipTxt, { color: accent }]}>{exercise.stat_type?.toUpperCase()}</Text>
               </View>

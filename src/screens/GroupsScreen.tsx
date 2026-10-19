@@ -26,6 +26,7 @@ import {
   SystemButton, EmptyState, SegmentedTabs,
 } from '../components/UIComponents';
 import WorkoutRow from '../components/WorkoutRow';
+import { playSound } from '../utils/sounds';
 import {
   COLORS, GroupKind, groupColorForIndex, parseGroupIds,
   statAccent, expBadgeLabel, workoutMetaLine,
@@ -134,8 +135,10 @@ const GroupsScreen: React.FC = () => {
       },
     ]);
 
-  const toggleExpand = (gid: number) =>
+  const toggleExpand = (gid: number) => {
+    playSound('click');
     setExpandedId(prev => (prev === gid ? null : gid));
+  };
 
   const openPlan = (plan: Plan) => navigation.navigate('ManagePlan', { plan });
 
@@ -157,7 +160,7 @@ const GroupsScreen: React.FC = () => {
         />
 
         <Text style={styles.hint}>
-          Groups are just labels for finding things — they don't affect EXP or ranks.
+          Groups are just labels for finding things — they don’t affect EXP or ranks.
         </Text>
 
         {/* Add new */}
@@ -213,15 +216,15 @@ const GroupsScreen: React.FC = () => {
 
                   <View style={styles.cardIcons}>
                     {editing ? (
-                      <TouchableOpacity onPress={saveRename} style={styles.iconBtn}>
+                      <TouchableOpacity onPress={() => { playSound('click'); saveRename(); }} style={styles.iconBtn}>
                         <Ionicons name="checkmark" size={18} color={COLORS.accentGreen} />
                       </TouchableOpacity>
                     ) : (
-                      <TouchableOpacity onPress={() => startRename(g)} style={styles.iconBtn}>
+                      <TouchableOpacity onPress={() => { playSound('click'); startRename(g); }} style={styles.iconBtn}>
                         <Ionicons name="create" size={16} color={COLORS.accentCyan} />
                       </TouchableOpacity>
                     )}
-                    <TouchableOpacity onPress={() => remove(g)} style={styles.iconBtn}>
+                    <TouchableOpacity onPress={() => { playSound('click'); remove(g); }} style={styles.iconBtn}>
                       <Ionicons name="trash" size={16} color={COLORS.accentRed} />
                     </TouchableOpacity>
                   </View>

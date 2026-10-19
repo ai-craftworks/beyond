@@ -12,12 +12,15 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { View, Image, Text, StyleSheet, Modal, TouchableOpacity, Pressable, Platform } from 'react-native';
+import { View, Text, StyleSheet, Modal, TouchableOpacity, Pressable, Platform } from 'react-native';
+import { Image } from 'expo-image';
 import { useVideoPlayer, VideoView } from 'expo-video';
 import * as ScreenOrientation from 'expo-screen-orientation';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/game';
 import { MediaType } from '../database/Database';
+import { playSound } from '../utils/sounds';
+import { hapticTap } from '../utils/haptics';
 
 // ── Fullscreen ───────────────────────────────
 
@@ -63,10 +66,16 @@ export const FullscreenMedia: React.FC<FullscreenProps> = ({
           {mediaType === 'video' ? (
             <FullscreenVideo uri={mediaUri} />
           ) : (
-            <Image source={{ uri: mediaUri }} style={StyleSheet.absoluteFill} resizeMode="contain" />
+            <Image source={{ uri: mediaUri }} style={StyleSheet.absoluteFill} contentFit="contain" cachePolicy="memory-disk" />
           )}
         </View>
-        <TouchableOpacity style={fsStyles.close} onPress={onClose} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+        <TouchableOpacity
+          style={fsStyles.close}
+          onPress={() => { playSound('click'); onClose(); }}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          accessibilityRole="button"
+          accessibilityLabel="Close media viewer"
+        >
           <Ionicons name="close" size={26} color="#FFF" />
         </TouchableOpacity>
       </View>
@@ -108,11 +117,13 @@ const MediaViewer: React.FC<MediaViewerProps> = ({ mediaType, mediaUri }) => {
         <TouchableOpacity
           style={styles.tapWrap}
           activeOpacity={0.9}
-          onPress={() => setFullscreen(true)}
+          onPress={() => { playSound('click'); hapticTap(); setFullscreen(true); }}
           delayPressIn={120}
+          accessibilityRole="button"
+          accessibilityLabel={mediaType === 'video' ? 'Play demo video fullscreen' : 'View demo image fullscreen'}
         >
           {mediaType === 'video' ? <InlineVideo uri={mediaUri} /> : (
-            <Image source={{ uri: mediaUri }} style={styles.media} resizeMode="contain" />
+            <Image source={{ uri: mediaUri }} style={styles.media} contentFit="contain" cachePolicy="memory-disk" transition={150} />
           )}
           <ExpandBadge />
         </TouchableOpacity>
@@ -157,12 +168,14 @@ export const MediaThumb: React.FC<MediaThumbProps> = ({
       <TouchableOpacity
         style={[styles.thumb, { width, height }]}
         activeOpacity={0.85}
-        onPress={() => setFullscreen(true)}
+        onPress={() => { playSound('click'); hapticTap(); setFullscreen(true); }}
+        accessibilityRole="button"
+        accessibilityLabel={mediaType === 'video' ? 'Play demo video' : 'View demo image'}
       >
         {mediaType === 'video' ? (
           <Ionicons name="play-circle" size={24} color="#FFF" />
         ) : (
-          <Image source={{ uri: mediaUri }} style={StyleSheet.absoluteFill} resizeMode="cover" />
+          <Image source={{ uri: mediaUri }} style={StyleSheet.absoluteFill} contentFit="cover" cachePolicy="memory-disk" />
         )}
         <View style={styles.thumbBadge} pointerEvents="none">
           <Text style={styles.thumbBadgeTxt}>{badge ?? (mediaType === 'video' ? 'VIDEO' : 'DEMO')}</Text>

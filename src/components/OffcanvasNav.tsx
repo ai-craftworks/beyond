@@ -71,8 +71,9 @@ const MENU: { key: string; label: string; icon: IonName; iconOn: IonName; tab?: 
   { key: 'Profile',   label: 'Profile',   icon: 'person-outline',            iconOn: 'person',            tab: 'Profile' },
   { key: 'Plans',     label: 'Plans',     icon: 'list-outline',              iconOn: 'list',              tab: 'Plans' },
   { key: 'Groups',    label: 'Groups',    icon: 'pricetags-outline',         iconOn: 'pricetags' },
-  { key: 'Dojo',      label: 'Dojo',      icon: 'hand-left-outline',         iconOn: 'hand-left',         tab: 'Dojo' },
-  { key: 'Guide',     label: 'Guide',     icon: 'information-circle-outline', iconOn: 'information-circle' },
+  { key: 'Dojo',     label: 'Dojo',      icon: 'hand-left-outline',         iconOn: 'hand-left',         tab: 'Dojo' },
+  { key: 'History',  label: 'Quest Log', icon: 'time-outline',              iconOn: 'time' },
+  { key: 'Guide',    label: 'Guide',     icon: 'information-circle-outline', iconOn: 'information-circle' },
 ];
 
 // ── Overlay ──────────────────────────────────
@@ -118,7 +119,9 @@ export const OffcanvasNav: React.FC = () => {
     if (item.tab) {
       navigationRef.navigate('Main', { screen: item.tab });
     } else if (item.key === 'Groups') {
-      navigationRef.navigate('Groups', { kind: 'exercise' });
+      navigationRef.navigate('Groups');
+    } else if (item.key === 'History') {
+      navigationRef.navigate('History');
     } else {
       navigationRef.navigate('Guide');
     }

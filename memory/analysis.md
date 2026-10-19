@@ -1,7 +1,11 @@
 # Beyond (Solo Leveling) — Codebase Analysis & Bug Report
 
 Date: 2026-08-17
-Status: Analysis complete, fixes planned but NOT yet implemented.
+Status: **RESOLVED** (verified 2026-10-19). 13 of 14 bugs fixed; #11 partial
+(form field removed and stat gains correctly derive from `exp_per_stat_point`,
+but `createExercise` still writes a dead `stat_reward = 0` column — harmless,
+column is read nowhere). Kept for historical reference; the live bug list has
+moved to AGENTS.md and code review.
 
 ## Tech Stack
 

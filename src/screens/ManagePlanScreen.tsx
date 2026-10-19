@@ -22,6 +22,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, parseUnitValues, formatUnitValues, statColor } from '../constants/game';
 import { expForUnits } from '../utils/math';
 import { specsOf, primarySpecOf } from '../utils/units';
+import { playSound } from '../utils/sounds';
 import { RootStackParamList } from '../../App';
 
 type Route = RouteProp<RootStackParamList, 'ManagePlan'>;
@@ -56,9 +57,29 @@ const ManagePlanScreen: React.FC = () => {
 
   const handleToggleActive = async () => {
     const next = plan.is_active ? 0 : 1;
-    if (next === 0) await cancelTodayPendingSessions(plan.id!);
-    await updatePlan(plan.id!, { is_active: next });
-    setPlan(prev => ({ ...prev, is_active: next }));
+    const apply = async () => {
+      try {
+        if (next === 0) await cancelTodayPendingSessions(plan.id!);
+        await updatePlan(plan.id!, { is_active: next });
+        setPlan(prev => ({ ...prev, is_active: next }));
+      } catch (e) {
+        console.error('toggle plan error:', e);
+        Alert.alert('Error', 'Could not update the plan. Please try again.');
+      }
+    };
+    // Deactivating cancels today's pending quests for this plan — say so.
+    if (next === 0) {
+      Alert.alert(
+        'Deactivate Plan',
+        `Today's pending quests from "${plan.name}" will be cancelled. Completed sessions stay.`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Deactivate', style: 'destructive', onPress: apply },
+        ]
+      );
+    } else {
+      await apply();
+    }
   };
 
   const handleRemoveExercise = (peId: number) =>
@@ -66,7 +87,13 @@ const ManagePlanScreen: React.FC = () => {
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Remove', style: 'destructive',
-        onPress: async () => { await removeExerciseFromPlan(peId); await loadExercises(); },
+        onPress: async () => {
+          try { await removeExerciseFromPlan(peId); await loadExercises(); }
+          catch (e) {
+            console.error('remove plan exercise error:', e);
+            Alert.alert('Error', 'Could not remove the exercise. Please try again.');
+          }
+        },
       },
     ]);
 
@@ -107,7 +134,7 @@ const ManagePlanScreen: React.FC = () => {
               accent={statColor(pe.stat_type)}
               exp={`+${peExp(pe).toFixed(0)} EXP`}
               trailing={
-                <TouchableOpacity onPress={() => handleRemoveExercise(pe.id!)} style={styles.removeBtn}>
+                <TouchableOpacity onPress={() => { playSound('click'); handleRemoveExercise(pe.id!); }} style={styles.removeBtn}>
                   <Ionicons name="close" size={18} color={COLORS.accentRed} />
                 </TouchableOpacity>
               }

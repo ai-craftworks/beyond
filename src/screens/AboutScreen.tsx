@@ -12,20 +12,15 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { getPlayer, Player, getTitles, EarnedTitle, getMartialArts, MartialArt } from '../database/Database';
-import { SystemPanel, SectionHeader, ExpBar } from '../components/UIComponents';
+import { SystemPanel, SectionHeader } from '../components/UIComponents';
 import { COLORS, RANKS, TITLE_CONDITIONS, getRankForLevel, MARTIAL_BELTS, getBeltForLevel, expRequiredForMartialLevel } from '../constants/game';
 import { expRequiredForLevel } from '../utils/math';
+import { fmtLocalShortDate } from '../utils/dates';
 
 const AboutScreen: React.FC = () => {
   const [player, setPlayer]   = useState<Player | null>(null);
   const [titles, setTitles]   = useState<EarnedTitle[]>([]);
   const [arts, setArts]       = useState<MartialArt[]>([]);
-
-  useFocusEffect(
-    useCallback(() => {
-      load();
-    }, [])
-  );
 
   const load = async () => {
     const [p, t, a] = await Promise.all([getPlayer(), getTitles(), getMartialArts()]);
@@ -33,6 +28,12 @@ const AboutScreen: React.FC = () => {
     setTitles(t);
     setArts(a);
   };
+
+  useFocusEffect(
+    useCallback(() => {
+      load();
+    }, [])
+  );
 
   const earnedTitleNames = new Set(titles.map(t => t.title));
   const highestArtLevel  = arts.reduce((m, a) => Math.max(m, a.level), 0);
@@ -215,8 +216,8 @@ const AboutScreen: React.FC = () => {
 
         <Text style={styles.subHeading}>How Proficiency Grows</Text>
         <Text style={styles.bodyText}>
-          Finishing a workout that is tagged to a skill adds that workout's base EXP
-          to the skill's proficiency. Each skill levels up on its own, and an art's
+          Finishing a workout that is tagged to a skill adds that workout’s base EXP
+          to the skill’s proficiency. Each skill levels up on its own, and an art’s
           level and belt are simply the combined EXP of all its skills — so training
           any tagged skill advances the art. Untagged workouts (like general
           bodybuilding) never count.
@@ -286,7 +287,7 @@ const AboutScreen: React.FC = () => {
         <View style={styles.progressBox}>
           {arts.length === 0 ? (
             <Text style={styles.progressSub}>
-              You haven't started an art yet. Open the Dojo tab to create your first one.
+              You haven’t started an art yet. Open the Dojo tab to create your first one.
             </Text>
           ) : (
             <>
@@ -332,9 +333,7 @@ const AboutScreen: React.FC = () => {
                 </Text>
                 {earned && earnedEntry && (
                   <Text style={styles.titleDate}>
-                    Earned {new Date(earnedEntry.earned_at).toLocaleDateString('en-US', {
-                      month: 'short', day: 'numeric', year: 'numeric'
-                    })}
+                    Earned {fmtLocalShortDate(earnedEntry.earned_at)}
                   </Text>
                 )}
                 {!earned && (

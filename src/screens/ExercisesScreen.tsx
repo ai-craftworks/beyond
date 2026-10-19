@@ -12,9 +12,8 @@ import MediaField from '../components/MediaField';
 import WorkoutRow from '../components/WorkoutRow';
 import ExerciseDetailSheet from '../components/ExerciseDetailSheet';
 import { deleteMedia } from '../utils/media';
-import { playSound } from '../utils/sounds';
 import { Ionicons } from '@expo/vector-icons';
-import { COLORS, EXERCISE_CATEGORIES, STATS, UNIT_TYPES, BODY_PARTS, parseBodyParts, parseUnits, parseGroupIds, unitSuffix, statAccent, expBadgeLabel, workoutMetaLine } from '../constants/game';
+import { COLORS, EXERCISE_CATEGORIES, STATS, UNIT_TYPES, BODY_PARTS, parseBodyParts, parseUnits, parseGroupIds, unitSuffix, statAccent, expBadgeLabel, prLabel, workoutMetaLine } from '../constants/game';
 import { filterExercises } from '../utils/filterExercises';
 import type { RootStackParamList } from '../../App';
 
@@ -72,12 +71,13 @@ const ExercisesScreen: React.FC = () => {
   const [partFilter, setPartFilter] = useState<string[]>([]);
   const [groupFilter, setGroupFilter] = useState<string[]>([]);
 
-  useFocusEffect(useCallback(() => { load(); }, []));
   const load = async () => {
     const [exs, grps] = await Promise.all([getExercises(), getGroups('exercise')]);
     setExercises(exs);
     setGroups(grps);
   };
+
+  useFocusEffect(useCallback(() => { load(); }, []));
 
   const groupOptions = groups.map(g => ({ value: String(g.id), label: g.name, color: g.color }));
   const groupColor = (id: number) => groups.find(g => g.id === id)?.color ?? COLORS.textSecondary;
@@ -176,9 +176,14 @@ const ExercisesScreen: React.FC = () => {
       {
         text: 'Delete', style: 'destructive',
         onPress: async () => {
-          const mediaFile = await deleteExercise(ex.id!);
-          deleteMedia(mediaFile);
-          await load();
+          try {
+            const mediaFile = await deleteExercise(ex.id!);
+            deleteMedia(mediaFile);
+            await load();
+          } catch (e) {
+            console.error('delete exercise error:', e);
+            Alert.alert('Error', 'Could not delete the exercise. Please try again.');
+          }
         },
       },
     ]);
@@ -255,7 +260,7 @@ const ExercisesScreen: React.FC = () => {
       setEditModal(false);
       setEditTarget(null);
       await load();
-    } catch (e) {
+    } catch {
       Alert.alert('Error', 'Failed to update exercise.');
     } finally {
       setEditLoading(false);
@@ -311,10 +316,19 @@ const ExercisesScreen: React.FC = () => {
           <WorkoutRow
             title={item.name}
             meta={workoutMetaLine(item)}
-            metaAccessory={groupDots(item)}
+            metaAccessory={
+              <>
+                {groupDots(item)}
+                {prLabel(item) && (
+                  <View style={styles.prPill}>
+                    <Text style={styles.prPillTxt}>★ {prLabel(item)}</Text>
+                  </View>
+                )}
+              </>
+            }
             accent={statAccent(item.category)}
             exp={expBadgeLabel(item)}
-            onPress={() => { playSound('click'); setDetail(item); }}
+            onPress={() => setDetail(item)}
           />
         )}
       />
@@ -677,6 +691,8 @@ const styles = StyleSheet.create({
   dotsRow:    { flexDirection: 'row', alignItems: 'center', gap: 4 },
   dot:        { width: 7, height: 7, borderRadius: 3.5 },
   dotMore:    { color: COLORS.textMuted, fontSize: 10, fontWeight: '700' },
+  prPill:     { alignSelf: 'flex-start', borderWidth: 1, borderColor: COLORS.accentGold, borderRadius: 4, paddingHorizontal: 6, paddingVertical: 1, marginTop: 4 },
+  prPillTxt:  { color: COLORS.accentGold, fontSize: 10, fontWeight: '800', letterSpacing: 0.4 },
 
   searchRow:  { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bgTertiary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 8, paddingHorizontal: 12, marginBottom: 14, gap: 8 },
   searchInput: { flex: 1, color: COLORS.textPrimary, fontSize: 14, paddingVertical: 11 },

@@ -48,8 +48,9 @@ const MartialArtsScreen: React.FC = () => {
   const [color, setColor]     = useState<string>(COLOR_CHOICES[0]);
   const [saving, setSaving]   = useState(false);
 
-  useFocusEffect(useCallback(() => { load(); }, []));
   const load = async () => setArts(await getMartialArts());
+
+  useFocusEffect(useCallback(() => { load(); }, []));
 
   const openCreate = () => {
     setEditing(null);
@@ -100,9 +101,14 @@ const MartialArtsScreen: React.FC = () => {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            const mediaUris = await deleteMartialArt(art.id!);
-            mediaUris.forEach(deleteMedia);
-            await load();
+            try {
+              const mediaUris = await deleteMartialArt(art.id!);
+              mediaUris.forEach(deleteMedia);
+              await load();
+            } catch (e) {
+              console.error('delete martial art error:', e);
+              Alert.alert('Error', 'Could not delete the martial art. Please try again.');
+            }
           },
         },
       ]
