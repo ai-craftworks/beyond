@@ -207,6 +207,9 @@ export const initDatabase = async (): Promise<void> => {
   await safeAlter(`ALTER TABLE exercises ADD COLUMN pr_value REAL DEFAULT 0`);
   await safeAlter(`ALTER TABLE exercises ADD COLUMN pr_unit TEXT DEFAULT ''`);
   await safeAlter(`ALTER TABLE exercises ADD COLUMN pr_at TEXT DEFAULT ''`);
+  // Notes live inside tutorials (NULL tutorial_id = unassigned legacy note).
+  await safeAlter(`ALTER TABLE art_notes ADD COLUMN tutorial_id INTEGER DEFAULT NULL`);
+  await safeAlter(`ALTER TABLE art_notes ADD COLUMN order_index INTEGER DEFAULT 0`);
 
   // Create bonus_exercises table if it doesn't exist
   await db.execAsync(`
@@ -268,15 +271,28 @@ export const initDatabase = async (): Promise<void> => {
       FOREIGN KEY (exercise_id) REFERENCES exercises(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS tutorials (
+      id             INTEGER PRIMARY KEY AUTOINCREMENT,
+      martial_art_id INTEGER NOT NULL,
+      title          TEXT    NOT NULL,
+      description    TEXT    DEFAULT '',
+      created_at     TEXT    DEFAULT (datetime('now')),
+      updated_at     TEXT    DEFAULT '',
+      FOREIGN KEY (martial_art_id) REFERENCES martial_arts(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS art_notes (
       id             INTEGER PRIMARY KEY AUTOINCREMENT,
       martial_art_id INTEGER NOT NULL,
+      tutorial_id    INTEGER DEFAULT NULL,
+      order_index    INTEGER DEFAULT 0,
       title          TEXT    NOT NULL,
       body           TEXT    DEFAULT '',
       media          TEXT    DEFAULT '[]',
       created_at     TEXT    DEFAULT (datetime('now')),
       updated_at     TEXT    DEFAULT '',
-      FOREIGN KEY (martial_art_id) REFERENCES martial_arts(id) ON DELETE CASCADE
+      FOREIGN KEY (martial_art_id) REFERENCES martial_arts(id) ON DELETE CASCADE,
+      FOREIGN KEY (tutorial_id)   REFERENCES tutorials(id)    ON DELETE CASCADE
     );
 
     CREATE TABLE IF NOT EXISTS item_groups (
@@ -584,14 +600,28 @@ export interface NoteMedia {
   uri: string;
 }
 
+/** A titled series of notes under a martial art. */
+export interface Tutorial {
+  id?: number;
+  martial_art_id: number;
+  title: string;
+  description: string;
+  created_at?: string;
+  updated_at?: string;
+  note_count?: number;   // populated by getTutorials
+}
+
 export interface Note {
   id?: number;
   martial_art_id: number;
+  tutorial_id: number | null;
+  order_index: number;
   title: string;
   body: string;
   media: string;         // JSON array of NoteMedia, stored as a column
   created_at?: string;
   updated_at?: string;
+  tutorial_title?: string; // optional join, for the parent chip on NoteDetail
 }
 
 /** Safe parse of a note's `media` JSON column; never throws on bad/legacy data. */
@@ -1303,6 +1333,7 @@ export const resetAllData = async (): Promise<void> => {
     DELETE FROM skill_exercises;
     DELETE FROM skills;
     DELETE FROM art_notes;
+    DELETE FROM tutorials;
     DELETE FROM martial_arts;
     DELETE FROM bonus_exercises;
     DELETE FROM session_exercises;
@@ -1319,7 +1350,7 @@ export const resetAllData = async (): Promise<void> => {
   `);
   await db.execAsync(`
     DELETE FROM sqlite_sequence WHERE name IN
-      ('player','exercises','exercise_body_parts','plans','plan_exercises','sessions','session_exercises','titles','bonus_exercises','martial_arts','skills','skill_exercises','art_notes','item_groups','exercise_groups','plan_groups','skill_groups','skill_group_links');
+      ('player','exercises','exercise_body_parts','plans','plan_exercises','sessions','session_exercises','titles','bonus_exercises','martial_arts','skills','skill_exercises','art_notes','tutorials','item_groups','exercise_groups','plan_groups','skill_groups','skill_group_links');
   `);
 };
 
@@ -1329,7 +1360,7 @@ export const resetAllData = async (): Promise<void> => {
 
 /** Every table included in a backup, in delete-safe order (children first). */
 const BACKUP_TABLES = [
-  'skill_group_links', 'skill_groups', 'skill_exercises', 'skills', 'art_notes',
+  'skill_group_links', 'skill_groups', 'skill_exercises', 'skills', 'art_notes', 'tutorials',
   'martial_arts', 'bonus_exercises', 'session_exercises', 'sessions',
   'plan_groups', 'plan_exercises', 'plans', 'exercise_groups', 'item_groups',
   'exercise_body_parts', 'exercises', 'titles', 'player',
@@ -1402,6 +1433,7 @@ export const importAllData = async (input: unknown): Promise<number> => {
         DELETE FROM skill_exercises;
         DELETE FROM skills;
         DELETE FROM art_notes;
+        DELETE FROM tutorials;
         DELETE FROM martial_arts;
         DELETE FROM bonus_exercises;
         DELETE FROM session_exercises;
@@ -1416,7 +1448,7 @@ export const importAllData = async (input: unknown): Promise<number> => {
         DELETE FROM titles;
         DELETE FROM player;
         DELETE FROM sqlite_sequence WHERE name IN
-          ('player','exercises','exercise_body_parts','plans','plan_exercises','sessions','session_exercises','titles','bonus_exercises','martial_arts','skills','skill_exercises','art_notes','item_groups','exercise_groups','plan_groups','skill_groups','skill_group_links');
+          ('player','exercises','exercise_body_parts','plans','plan_exercises','sessions','session_exercises','titles','bonus_exercises','martial_arts','skills','skill_exercises','art_notes','tutorials','item_groups','exercise_groups','plan_groups','skill_groups','skill_group_links');
       `);
 
       for (const t of BACKUP_TABLES) {
@@ -1573,6 +1605,7 @@ export const deleteMartialArt = async (id: number): Promise<string[]> => {
     );
     await db.runAsync(`DELETE FROM skills WHERE martial_art_id = ?`, [id]);
     await db.runAsync(`DELETE FROM art_notes WHERE martial_art_id = ?`, [id]);
+    await db.runAsync(`DELETE FROM tutorials WHERE martial_art_id = ?`, [id]);
     await db.runAsync(`DELETE FROM martial_arts WHERE id = ?`, [id]);
   });
   return [
@@ -1751,13 +1784,80 @@ export const awardMartialProficiency = async (
 };
 
 // ─────────────────────────────────────────────
-// NOTES (theory notes attached to a martial art)
+// TUTORIALS (ordered series of notes under a martial art)
 // ─────────────────────────────────────────────
 
-export const getNotes = async (martialArtId: number): Promise<Note[]> => {
+export const getTutorials = async (martialArtId: number): Promise<Tutorial[]> => {
+  const db = await getDb();
+  const tutorials = await db.getAllAsync<Tutorial>(
+    `SELECT * FROM tutorials WHERE martial_art_id = ?
+      ORDER BY created_at DESC, id DESC`,
+    [martialArtId]
+  );
+  const counts = await db.getAllAsync<{ tutorial_id: number; count: number }>(
+    `SELECT tutorial_id, COUNT(*) AS count FROM art_notes
+      WHERE tutorial_id IS NOT NULL GROUP BY tutorial_id`
+  );
+  const byId = new Map(counts.map(c => [c.tutorial_id, c.count]));
+  return tutorials.map(t => ({ ...t, note_count: byId.get(t.id!) ?? 0 }));
+};
+
+export const getTutorial = async (id: number): Promise<Tutorial | null> => {
+  const db = await getDb();
+  return db.getFirstAsync<Tutorial>(`SELECT * FROM tutorials WHERE id = ?`, [id]);
+};
+
+export const createTutorial = async (
+  tutorial: Pick<Tutorial, 'martial_art_id' | 'title' | 'description'>
+): Promise<number> => {
+  const db = await getDb();
+  const result = await db.runAsync(
+    `INSERT INTO tutorials (martial_art_id, title, description) VALUES (?, ?, ?)`,
+    [tutorial.martial_art_id, tutorial.title, tutorial.description ?? '']
+  );
+  return result.lastInsertRowId;
+};
+
+export const updateTutorial = async (
+  id: number,
+  updates: Pick<Tutorial, 'title' | 'description'>
+): Promise<void> => {
+  const db = await getDb();
+  await db.runAsync(
+    `UPDATE tutorials SET title = ?, description = ?, updated_at = datetime('now')
+      WHERE id = ?`,
+    [updates.title, updates.description ?? '', id]
+  );
+};
+
+/** Deletes a tutorial; its notes survive as unassigned (tutorial_id = NULL). */
+export const deleteTutorial = async (id: number): Promise<void> => {
+  const db = await getDb();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(`UPDATE art_notes SET tutorial_id = NULL WHERE tutorial_id = ?`, [id]);
+    await db.runAsync(`DELETE FROM tutorials WHERE id = ?`, [id]);
+  });
+};
+
+// ─────────────────────────────────────────────
+// NOTES (entries inside a tutorial, or unassigned)
+// ─────────────────────────────────────────────
+
+/** A tutorial's notes in series order (reading order, oldest first). */
+export const getTutorialNotes = async (tutorialId: number): Promise<Note[]> => {
   const db = await getDb();
   return db.getAllAsync<Note>(
-    `SELECT * FROM art_notes WHERE martial_art_id = ?
+    `SELECT * FROM art_notes WHERE tutorial_id = ?
+      ORDER BY order_index ASC, created_at ASC, id ASC`,
+    [tutorialId]
+  );
+};
+
+/** Legacy notes not yet placed in any tutorial. */
+export const getUnassignedNotes = async (martialArtId: number): Promise<Note[]> => {
+  const db = await getDb();
+  return db.getAllAsync<Note>(
+    `SELECT * FROM art_notes WHERE martial_art_id = ? AND tutorial_id IS NULL
       ORDER BY created_at DESC, id DESC`,
     [martialArtId]
   );
@@ -1765,16 +1865,32 @@ export const getNotes = async (martialArtId: number): Promise<Note[]> => {
 
 export const getNote = async (id: number): Promise<Note | null> => {
   const db = await getDb();
-  return db.getFirstAsync<Note>(`SELECT * FROM art_notes WHERE id = ?`, [id]);
+  return db.getFirstAsync<Note>(
+    `SELECT n.*, t.title AS tutorial_title
+       FROM art_notes n LEFT JOIN tutorials t ON n.tutorial_id = t.id
+      WHERE n.id = ?`,
+    [id]
+  );
 };
 
 export const createNote = async (
-  note: Pick<Note, 'martial_art_id' | 'title' | 'body' | 'media'>
+  note: Pick<Note, 'martial_art_id' | 'title' | 'body' | 'media'> &
+        Partial<Pick<Note, 'tutorial_id'>>
 ): Promise<number> => {
   const db = await getDb();
+  // New notes append to the end of their tutorial's series.
+  const next = note.tutorial_id
+    ? await db.getFirstAsync<{ m: number | null }>(
+        `SELECT MAX(order_index) AS m FROM art_notes WHERE tutorial_id = ?`,
+        [note.tutorial_id]
+      )
+    : null;
+  const orderIndex = (next?.m ?? -1) + 1;
   const result = await db.runAsync(
-    `INSERT INTO art_notes (martial_art_id, title, body, media) VALUES (?, ?, ?, ?)`,
-    [note.martial_art_id, note.title, note.body ?? '', note.media ?? '[]']
+    `INSERT INTO art_notes (martial_art_id, tutorial_id, order_index, title, body, media)
+      VALUES (?, ?, ?, ?, ?, ?)`,
+    [note.martial_art_id, note.tutorial_id ?? null, orderIndex,
+     note.title, note.body ?? '', note.media ?? '[]']
   );
   return result.lastInsertRowId;
 };
@@ -1789,6 +1905,49 @@ export const updateNote = async (
       WHERE id = ?`,
     [updates.title, updates.body ?? '', updates.media ?? '[]', id]
   );
+};
+
+/** Moves a note between tutorials (null = unassign); appends to the end of the target series. */
+export const setNoteTutorial = async (id: number, tutorialId: number | null): Promise<void> => {
+  const db = await getDb();
+  const next = tutorialId
+    ? await db.getFirstAsync<{ m: number | null }>(
+        `SELECT MAX(order_index) AS m FROM art_notes
+          WHERE tutorial_id = ? AND id != ?`,
+        [tutorialId, id]
+      )
+    : null;
+  await db.runAsync(
+    `UPDATE art_notes SET tutorial_id = ?, order_index = ?, updated_at = datetime('now')
+      WHERE id = ?`,
+    [tutorialId, (next?.m ?? -1) + 1, id]
+  );
+};
+
+/** Swaps a note with its up/down neighbour inside the same tutorial's series. */
+export const moveNote = async (id: number, direction: 'up' | 'down'): Promise<void> => {
+  const db = await getDb();
+  const note = await db.getFirstAsync<{ tutorial_id: number | null; order_index: number }>(
+    `SELECT tutorial_id, order_index FROM art_notes WHERE id = ?`, [id]
+  );
+  if (!note?.tutorial_id) return;
+  const neighbour = await db.getFirstAsync<{ id: number; order_index: number }>(
+    direction === 'up'
+      ? `SELECT id, order_index FROM art_notes
+          WHERE tutorial_id = ? AND (order_index < ? OR (order_index = ? AND id < ?))
+          ORDER BY order_index DESC, id DESC LIMIT 1`
+      : `SELECT id, order_index FROM art_notes
+          WHERE tutorial_id = ? AND (order_index > ? OR (order_index = ? AND id > ?))
+          ORDER BY order_index ASC, id ASC LIMIT 1`,
+    [note.tutorial_id, note.order_index, note.order_index, id]
+  );
+  if (!neighbour) return;
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(`UPDATE art_notes SET order_index = ? WHERE id = ?`,
+      [neighbour.order_index, id]);
+    await db.runAsync(`UPDATE art_notes SET order_index = ? WHERE id = ?`,
+      [note.order_index, neighbour.id]);
+  });
 };
 
 /** Deletes a note and returns every attachment URI so the caller can free the files. */

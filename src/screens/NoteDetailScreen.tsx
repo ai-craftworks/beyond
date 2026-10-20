@@ -1,12 +1,14 @@
 /**
  * src/screens/NoteDetailScreen.tsx
  * =================================
- * One theory note: title, body text and its attachments (image/GIF/video),
- * plus Edit / Delete actions. Reached from the Notes tab of a martial art.
+ * One note's reading view: title, well-typeset body (paragraph spacing,
+ * comfortable line height) and its attachments (image/GIF/video), plus
+ * Edit / Delete actions. Reached from a tutorial's series or the
+ * unassigned notes section of a martial art.
  */
 
 import React, { useCallback, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, Alert, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -15,10 +17,11 @@ import {
 } from '../database/Database';
 import { SystemButton, SectionHeader, EmptyState } from '../components/UIComponents';
 import MediaViewer from '../components/MediaViewer';
-import NoteFormModal from '../components/NoteFormModal';
+import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/game';
 import { deleteMedia } from '../utils/media';
 import { fmtShortDate } from '../utils/dates';
+import { playSound } from '../utils/sounds';
 import { RootStackParamList } from '../../App';
 
 type Route = RouteProp<RootStackParamList, 'NoteDetail'>;
@@ -33,7 +36,6 @@ const NoteDetailScreen: React.FC = () => {
   const [note, setNote]         = useState<Note | null>(null);
   const [art, setArt]           = useState<MartialArt | null>(null);
   const [loading, setLoading]   = useState(true);
-  const [editModal, setEditModal] = useState(false);
 
   const load = async () => {
     const n = await getNote(noteId);
@@ -88,30 +90,62 @@ const NoteDetailScreen: React.FC = () => {
   const attachments = parseNoteMedia(note.media);
   const created = fmtShortDate(note.created_at ?? '');
   const updated = fmtShortDate(note.updated_at ?? '');
+  // Blank lines separate paragraphs — rendered as spaced blocks for readability.
+  const paragraphs = note.body
+    ? note.body.split(/\n{2,}/).map(p => p.trim()).filter(Boolean)
+    : [];
 
   return (
     <View style={styles.root}>
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 60 + insets.bottom }]}
         showsVerticalScrollIndicator={false}>
 
-        {!!art && (
-          <Text style={[styles.artTag, { color: art.color }]}>{art.name.toUpperCase()}</Text>
-        )}
+        <View style={styles.tagRow}>
+          {!!art && (
+            <TouchableOpacity
+              style={[styles.chip, { borderColor: art.color, backgroundColor: `${art.color}18` }]}
+              onPress={() => { playSound('navigate'); navigation.goBack(); }}
+            >
+              <View style={[styles.chipDot, { backgroundColor: art.color }]} />
+              <Text style={[styles.chipTxt, { color: art.color }]}>{art.name.toUpperCase()}</Text>
+            </TouchableOpacity>
+          )}
+          {!!note.tutorial_title && (
+            <TouchableOpacity
+              style={[styles.chip, { borderColor: COLORS.accentCyan, backgroundColor: `${COLORS.accentCyan}18` }]}
+              onPress={() => { playSound('navigate'); navigation.navigate('TutorialDetail', { tutorialId: note.tutorial_id! }); }}
+            >
+              <Ionicons name="book-outline" size={10} color={COLORS.accentCyan} />
+              <Text style={[styles.chipTxt, { color: COLORS.accentCyan }]} numberOfLines={1}>
+                {note.tutorial_title}
+              </Text>
+            </TouchableOpacity>
+          )}
+        </View>
+
         <Text style={styles.title}>{note.title}</Text>
         <Text style={styles.dateLine}>
           {created ? `Added ${created}` : ''}
           {updated ? `${created ? '  ·  ' : ''}Updated ${updated}` : ''}
         </Text>
 
-        {note.body ? (
-          <Text style={styles.body}>{note.body}</Text>
-        ) : (
-          <Text style={styles.bodyEmpty}>No text in this note.</Text>
-        )}
+        <View style={styles.bodyBlock}>
+          {paragraphs.length > 0 ? (
+            paragraphs.map((p, i) => (
+              <Text key={i} style={[styles.paragraph, i > 0 && styles.paragraphGap]}>{p}</Text>
+            ))
+          ) : (
+            <Text style={styles.bodyEmpty}>No text in this note.</Text>
+          )}
+        </View>
 
         <View style={styles.actions}>
           <SystemButton title="Edit Note" icon="create-outline" variant="ghost"
-            style={styles.flex1} onPress={() => setEditModal(true)} />
+            style={styles.flex1}
+            onPress={() => navigation.navigate('NoteEditor', {
+              noteId,
+              tutorialId: note.tutorial_id ?? undefined,
+            })} />
           <SystemButton title="Delete" icon="trash-outline" variant="danger"
             style={styles.flex1} onPress={handleDelete} />
         </View>
@@ -135,14 +169,6 @@ const NoteDetailScreen: React.FC = () => {
             subtitle="Edit the note to add images, GIFs or videos." />
         )}
       </ScrollView>
-
-      <NoteFormModal
-        visible={editModal}
-        martialArtId={note.martial_art_id}
-        initial={note}
-        onClose={() => setEditModal(false)}
-        onSaved={load}
-      />
     </View>
   );
 };
@@ -153,11 +179,16 @@ const styles = StyleSheet.create({
   loadRoot:  { flex: 1, backgroundColor: COLORS.bgPrimary, alignItems: 'center', justifyContent: 'center', gap: 12 },
   missingTxt: { color: COLORS.textMuted, fontSize: 14, marginBottom: 4 },
 
-  artTag:    { fontSize: 11, fontWeight: '700', letterSpacing: 2, marginBottom: 4 },
+  tagRow:    { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 10 },
+  chip:      { flexDirection: 'row', alignItems: 'center', gap: 5, borderWidth: 1, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3, maxWidth: 200 },
+  chipDot:   { width: 6, height: 6, borderRadius: 3 },
+  chipTxt:   { fontSize: 10, fontWeight: '800', letterSpacing: 1 },
   title:     { color: COLORS.textPrimary, fontSize: 22, fontWeight: '800', marginBottom: 6 },
-  dateLine:  { color: COLORS.textMuted, fontSize: 11, marginBottom: 14 },
+  dateLine:  { color: COLORS.textMuted, fontSize: 11, marginBottom: 16 },
 
-  body:      { color: COLORS.textSecondary, fontSize: 14, lineHeight: 22, marginBottom: 6 },
+  bodyBlock: { marginBottom: 6 },
+  paragraph: { color: COLORS.textPrimary, fontSize: 15, lineHeight: 25 },
+  paragraphGap: { marginTop: 14 },
   bodyEmpty: { color: COLORS.textMuted, fontSize: 13, fontStyle: 'italic', marginBottom: 6 },
 
   actions:   { flexDirection: 'row', gap: 12, marginTop: 10, marginBottom: 8 },

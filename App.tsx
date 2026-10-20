@@ -24,7 +24,9 @@ import WorkoutSelectScreen from './src/screens/WorkoutSelectScreen';
 import MartialArtsScreen  from './src/screens/MartialArtsScreen';
 import MartialArtDetailScreen from './src/screens/MartialArtDetailScreen';
 import SkillDetailScreen  from './src/screens/SkillDetailScreen';
+import TutorialDetailScreen from './src/screens/TutorialDetailScreen';
 import NoteDetailScreen   from './src/screens/NoteDetailScreen';
+import NoteEditorScreen   from './src/screens/NoteEditorScreen';
 import ProfileScreen      from './src/screens/ProfileScreen';
 import SessionScreen      from './src/screens/SessionScreen';
 import GroupsScreen       from './src/screens/GroupsScreen';
@@ -43,7 +45,9 @@ export type RootStackParamList = {
     | { mode: 'skill'; skillId: number; skillName: string };
   MartialArtDetail: { artId: number };
   SkillDetail:      { skillId: number };
+  TutorialDetail:   { tutorialId: number };
   NoteDetail:       { noteId: number };
+  NoteEditor:       { tutorialId?: number; noteId?: number };
   Groups:           { kind?: GroupKind } | undefined;
   Guide:            undefined;
   History:          undefined;
@@ -285,6 +289,18 @@ const App: React.FC = () => {
               }}
             />
             <Stack.Screen
+              name="TutorialDetail"
+              component={TutorialDetailScreen}
+              options={{
+                headerShown: true,
+                headerTitle: 'Tutorial',
+                headerStyle: styles.header,
+                headerTitleStyle: styles.headerTitle,
+                headerTintColor: COLORS.accentCyan,
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
               name="NoteDetail"
               component={NoteDetailScreen}
               options={{
@@ -294,6 +310,14 @@ const App: React.FC = () => {
                 headerTitleStyle: styles.headerTitle,
                 headerTintColor: COLORS.accentCyan,
                 animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="NoteEditor"
+              component={NoteEditorScreen}
+              options={{
+                headerShown: false,
+                animation: 'slide_from_bottom',
               }}
             />
             <Stack.Screen

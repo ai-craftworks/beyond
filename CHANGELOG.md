@@ -50,6 +50,12 @@
 - Added shared media picker and viewer components, now used by both skills and workouts.
 - Added fullscreen landscape video playback with screen orientation unlock while open.
 - Tapping skill demos now opens them fullscreen.
+- Replaced the martial art notes tab with Tutorials — a tutorial is a titled, described series of notes.
+- Notes now live inside tutorials; legacy notes show in an Unassigned section and can be moved via the editor.
+- Notes inside a tutorial are numbered and can be reordered manually (up/down).
+- Upgraded the note editor to a full-screen page with a large auto-growing writing area, character count, attachments and a tutorial picker.
+- Refined the note reading view: paragraph spacing, larger line height, tutorial chip.
+- Backups now include tutorials.
 
 ### 19 Oct, 2026
 
