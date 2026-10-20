@@ -72,3 +72,19 @@
 ### 20 Oct, 2026
 
 - Added a global Tutorials section in the sidebar: same tutorial/notes experience as the Dojo, but stored under a global collection that belongs to no single art (reuses the existing tables — no migration).
+
+### 21 Oct, 2026
+
+- Level-up is now the spotlight: rank changes get a dedicated E→D-style transition in the level-up modal, and the modal shows the stat gains earned with the level.
+- Every session finish now shows a "QUEST CLEAR" summary (EXP breakdown with the full-clear bonus, stat gains, streak, personal records, belt promotions, title) instead of silently returning to the dashboard; the level-up modal rises on top when applicable.
+- Dashboard celebrates your return with a flash card (level reached, rank up, new best streak) and an animated EXP bar; the Dojo shows belt promotions.
+- Personal records now flash a gold "NEW PR" banner mid-session; new best streaks are detected on finish.
+- Belt promotions (skill and art) are detected when proficiency is awarded and celebrated — they were completely silent before.
+- Added a Settings screen (sidebar → Settings): toggle sound and haptics (persisted, effective immediately), and edit hunter profile (name, age, weight, height) without exporting/importing a backup.
+- Sound and haptic toggles are now honored app-wide via a single gate in the sound/haptic modules — turning them off silences everything, including the boot sound.
+
+### 22 Oct, 2026
+
+- Added a Progress screen (Profile → View Progress): weekly EXP bar chart (last 12 weeks), level progression by week-end, and body-weight trend.
+- Added body metrics logging: log your weight with an optional note; the player's weight updates automatically and is used everywhere the System knows a weight.
+- Added a Body panel on the Profile screen showing current weight/height and entry count, with a shortcut to log and view the trend.

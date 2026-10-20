@@ -2,7 +2,8 @@
  * src/components/LevelUpModal.tsx
  * ================================
  * Full-screen animated level-up overlay.
- * Spring scales in → gold level number → rank badge → stats → optional title.
+ * Spring scales in → gold level number → rank-up transition (when the level
+ * crossed a rank threshold) → rank badge → stat gains → stats → title.
  */
 
 import React, { useEffect, useRef } from 'react';
@@ -16,26 +17,39 @@ import { Player } from '../database/Database';
 
 const { width } = Dimensions.get('window');
 
+type Rank = ReturnType<typeof getRankForLevel>;
+
+export interface LevelUpStatDelta { key: string; delta: number; }
+
 interface Props {
   visible: boolean;
   player: Player;
   newTitle?: string;
+  /** Set when this level-up crossed a rank threshold. */
+  rankUp?: { from: Rank; to: Rank } | null;
+  /** Positive stat gains earned this level-up. */
+  statDeltas?: LevelUpStatDelta[];
   onClose: () => void;
 }
 
-const LevelUpModal: React.FC<Props> = ({ visible, player, newTitle, onClose }) => {
+const LevelUpModal: React.FC<Props> = ({ visible, player, newTitle, rankUp, statDeltas, onClose }) => {
   const scaleAnim   = useRef(new Animated.Value(0.4)).current;
   const opacityAnim = useRef(new Animated.Value(0)).current;
   const pulseAnim   = useRef(new Animated.Value(0.5)).current;
+  const rankScale   = useRef(new Animated.Value(0.6)).current;
 
   useEffect(() => {
     if (visible) {
       scaleAnim.setValue(0.4);
       opacityAnim.setValue(0);
+      rankScale.setValue(0.6);
       Animated.parallel([
         Animated.spring(scaleAnim,   { toValue: 1, friction: 6, tension: 60, useNativeDriver: true }),
         Animated.timing(opacityAnim, { toValue: 1, duration: 350, useNativeDriver: true }),
       ]).start(() => {
+        if (rankUp) {
+          Animated.spring(rankScale, { toValue: 1, friction: 4, tension: 90, useNativeDriver: true }).start();
+        }
         Animated.loop(
           Animated.sequence([
             Animated.timing(pulseAnim, { toValue: 1,   duration: 900, useNativeDriver: true }),
@@ -48,6 +62,7 @@ const LevelUpModal: React.FC<Props> = ({ visible, player, newTitle, onClose }) =
   }, [visible]);
 
   const rank = getRankForLevel(player.level);
+  const gains = (statDeltas ?? []).filter(d => d.delta > 0);
 
   return (
     <Modal visible={visible} transparent animationType="none" onRequestClose={onClose}>
@@ -57,9 +72,9 @@ const LevelUpModal: React.FC<Props> = ({ visible, player, newTitle, onClose }) =
           <View key={i} style={[styles.scanLine, { top: `${i * 10}%` as any }]} />
         ))}
 
-        <Animated.View style={[styles.card, { opacity: opacityAnim, transform: [{ scale: scaleAnim }] }]}>
+        <Animated.View style={[styles.card, { opacity: opacityAnim, transform: [{ scale: scaleAnim }], borderColor: rankUp ? rankUp.to.color : COLORS.accentCyan, shadowColor: rankUp ? rankUp.to.color : COLORS.accentCyan }]}>
           {/* Pulsing header */}
-          <Animated.Text style={[styles.header, { opacity: pulseAnim }]}>
+          <Animated.Text style={[styles.header, { opacity: pulseAnim, color: rankUp ? rankUp.to.color : COLORS.accentCyan }]}>
             ◆ LEVEL UP ◆
           </Animated.Text>
 
@@ -67,10 +82,36 @@ const LevelUpModal: React.FC<Props> = ({ visible, player, newTitle, onClose }) =
           <Text style={styles.levelNum}>{player.level}</Text>
           <Text style={styles.levelLbl}>LEVEL</Text>
 
-          {/* Rank */}
-          <View style={[styles.rankChip, { borderColor: rank.color }]}>
-            <Text style={[styles.rankChipText, { color: rank.color }]}>{rank.label}</Text>
-          </View>
+          {/* Rank transition (rank-up) or static rank chip */}
+          {rankUp ? (
+            <Animated.View style={[styles.rankUpRow, { transform: [{ scale: rankScale }] }]}>
+              <View style={[styles.rankChip, styles.rankChipOld]}>
+                <Text style={[styles.rankChipText, styles.rankChipTextOld]}>{rankUp.from.rank}-Rank</Text>
+              </View>
+              <Ionicons name="arrow-forward" size={18} color={rankUp.to.color} />
+              <View style={[styles.rankChip, { borderColor: rankUp.to.color }]}>
+                <Text style={[styles.rankChipText, { color: rankUp.to.color }]}>{rankUp.to.label}</Text>
+              </View>
+            </Animated.View>
+          ) : (
+            <View style={[styles.rankChip, { borderColor: rank.color }]}>
+              <Text style={[styles.rankChipText, { color: rank.color }]}>{rank.label}</Text>
+            </View>
+          )}
+
+          {/* Stat gains */}
+          {gains.length > 0 && (
+            <View style={styles.gainRow}>
+              {gains.map(g => {
+                const s = STATS.find(x => x.key === g.key);
+                return (
+                  <View key={g.key} style={[styles.gainChip, { borderColor: s?.color ?? COLORS.accentCyan, backgroundColor: `${s?.color ?? COLORS.accentCyan}15` }]}>
+                    <Text style={[styles.gainTxt, { color: s?.color ?? COLORS.accentCyan }]}>+{g.delta} {g.key.slice(0, 3).toUpperCase()}</Text>
+                  </View>
+                );
+              })}
+            </View>
+          )}
 
           <View style={styles.divider} />
 
@@ -120,6 +161,12 @@ const styles = StyleSheet.create({
   levelLbl:    { color: COLORS.textSecondary, fontSize: 13, fontWeight: '700', letterSpacing: 3, marginBottom: 12 },
   rankChip:    { borderWidth: 1.5, borderRadius: 20, paddingHorizontal: 18, paddingVertical: 6, marginBottom: 18 },
   rankChipText:{ fontSize: 13, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase' },
+  rankUpRow:   { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 18 },
+  rankChipOld: { borderColor: COLORS.textMuted, opacity: 0.7 },
+  rankChipTextOld: { color: COLORS.textMuted },
+  gainRow:     { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'center', marginBottom: 12 },
+  gainChip:    { borderWidth: 1, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  gainTxt:     { fontSize: 11, fontWeight: '800', letterSpacing: 0.3 },
   divider:     { width: '100%', height: 1, backgroundColor: COLORS.borderMain, marginBottom: 14 },
   statsHdr:    { color: COLORS.textMuted, fontSize: 10, letterSpacing: 2, fontWeight: '600', marginBottom: 10 },
   statsGrid:   { width: '100%', gap: 6, marginBottom: 14 },

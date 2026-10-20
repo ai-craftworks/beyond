@@ -7,7 +7,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context'; // ← added useSafeAreaInsets
 
-import { initDatabase, getPlayer } from './src/database/Database';
+import { initDatabase, getPlayer, getSetting } from './src/database/Database';
 import type { Plan } from './src/database/Database';
 import { COLORS } from './src/constants/game';
 import type { GroupKind } from './src/constants/game';
@@ -28,12 +28,15 @@ import TutorialDetailScreen from './src/screens/TutorialDetailScreen';
 import NoteDetailScreen   from './src/screens/NoteDetailScreen';
 import NoteEditorScreen   from './src/screens/NoteEditorScreen';
 import ProfileScreen      from './src/screens/ProfileScreen';
+import ProgressScreen     from './src/screens/ProgressScreen';
 import SessionScreen      from './src/screens/SessionScreen';
 import GroupsScreen       from './src/screens/GroupsScreen';
 import TutorialsScreen    from './src/screens/TutorialsScreen';
+import SettingsScreen     from './src/screens/SettingsScreen';
 import HistoryScreen      from './src/screens/HistoryScreen';
 import AboutScreen from './src/screens/AboutScreen';
-import { initAudio, playSound } from './src/utils/sounds';
+import { initAudio, playSound, setSoundsEnabled } from './src/utils/sounds';
+import { setHapticsEnabled } from './src/utils/haptics';
 
 export type RootStackParamList = {
   Registration: undefined;
@@ -51,6 +54,8 @@ export type RootStackParamList = {
   NoteEditor:       { tutorialId?: number; noteId?: number };
   Groups:           { kind?: GroupKind } | undefined;
   Tutorials:        undefined;
+  Settings:         undefined;
+  Progress:         undefined;
   Guide:            undefined;
   History:          undefined;
 };
@@ -172,9 +177,15 @@ const App: React.FC = () => {
 
   async function bootstrap() {
     try {
-      await initAudio();
-      playSound('boot'); 
       await initDatabase();
+      // Apply stored preferences before any UI can fire sounds/haptics.
+      const [soundPref, hapticPref] = await Promise.all([
+        getSetting('sound_enabled'), getSetting('haptics_enabled'),
+      ]);
+      setSoundsEnabled(soundPref !== 'false');
+      setHapticsEnabled(hapticPref !== 'false');
+      await initAudio();
+      playSound('boot');
       const player = await getPlayer();
       setAppState(player ? 'main' : 'register');
     } catch (e) {
@@ -353,6 +364,30 @@ const App: React.FC = () => {
               options={{
                 headerShown: true,
                 headerTitle: 'Tutorials',
+                headerStyle: styles.header,
+                headerTitleStyle: styles.headerTitle,
+                headerTintColor: COLORS.accentCyan,
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="Settings"
+              component={SettingsScreen}
+              options={{
+                headerShown: true,
+                headerTitle: 'Settings',
+                headerStyle: styles.header,
+                headerTitleStyle: styles.headerTitle,
+                headerTintColor: COLORS.accentCyan,
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="Progress"
+              component={ProgressScreen}
+              options={{
+                headerShown: true,
+                headerTitle: 'Progress',
                 headerStyle: styles.header,
                 headerTitleStyle: styles.headerTitle,
                 headerTintColor: COLORS.accentCyan,

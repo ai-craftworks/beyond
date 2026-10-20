@@ -63,6 +63,11 @@ const VOLUMES: Record<string, number> = {
 };
 
 let audioReady = false;
+let soundsEnabled = true;
+
+/** Master mute — loaded from the settings store at bootstrap. */
+export const setSoundsEnabled = (enabled: boolean): void => { soundsEnabled = enabled; };
+export const areSoundsEnabled = (): boolean => soundsEnabled;
 
 // ─────────────────────────────────────────────
 // PUBLIC API
@@ -90,7 +95,7 @@ export const initAudio = async (): Promise<void> => {
  * Non-blocking — returns immediately, plays in background.
  */
 export const playSound = (name: keyof typeof SOUNDS): void => {
-  if (!audioReady) return;
+  if (!audioReady || !soundsEnabled) return;
   _play(name).catch(() => {}); // fire and forget, never throws
 };
 

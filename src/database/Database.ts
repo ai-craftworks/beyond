@@ -11,7 +11,7 @@
 
 import * as SQLite from 'expo-sqlite';
 import { calculateLevelFromTotalExp } from '../utils/math';
-import { unitSuffix, calculateMartialLevelFromTotalExp } from '../constants/game';
+import { unitSuffix, calculateMartialLevelFromTotalExp, getBeltForLevel } from '../constants/game';
 
 // ─────────────────────────────────────────────
 // SINGLETON CONNECTION
@@ -335,6 +335,20 @@ export const initDatabase = async (): Promise<void> => {
       UNIQUE (skill_id, group_id),
       FOREIGN KEY (skill_id) REFERENCES skills(id)         ON DELETE CASCADE,
       FOREIGN KEY (group_id) REFERENCES skill_groups(id)   ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS settings (
+      id    INTEGER PRIMARY KEY AUTOINCREMENT,
+      key   TEXT NOT NULL UNIQUE,
+      value TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS body_metrics (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      measured_at TEXT NOT NULL,
+      weight      REAL DEFAULT 0,
+      note        TEXT DEFAULT '',
+      created_at  TEXT DEFAULT (datetime('now'))
     );
   `);
 
@@ -1346,12 +1360,70 @@ export const resetAllData = async (): Promise<void> => {
     DELETE FROM exercise_body_parts;
     DELETE FROM exercises;
     DELETE FROM titles;
+    DELETE FROM body_metrics;
+    DELETE FROM settings;
     DELETE FROM player;
   `);
   await db.execAsync(`
     DELETE FROM sqlite_sequence WHERE name IN
-      ('player','exercises','exercise_body_parts','plans','plan_exercises','sessions','session_exercises','titles','bonus_exercises','martial_arts','skills','skill_exercises','art_notes','tutorials','item_groups','exercise_groups','plan_groups','skill_groups','skill_group_links');
+      ('player','exercises','exercise_body_parts','plans','plan_exercises','sessions','session_exercises','titles','bonus_exercises','martial_arts','skills','skill_exercises','art_notes','tutorials','item_groups','exercise_groups','plan_groups','skill_groups','skill_group_links','settings','body_metrics');
   `);
+};
+
+// ─────────────────────────────────────────────
+// SETTINGS  (small key/value store for app preferences)
+// ─────────────────────────────────────────────
+
+export const getSetting = async (key: string): Promise<string | null> => {
+  const db = await getDb();
+  const row = await db.getFirstAsync<{ value: string }>(
+    `SELECT value FROM settings WHERE key = ?`, [key]
+  );
+  return row?.value ?? null;
+};
+
+export const setSetting = async (key: string, value: string): Promise<void> => {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT INTO settings (key, value) VALUES (?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+    [key, value]
+  );
+};
+
+// ─────────────────────────────────────────────
+// BODY METRICS  (periodic weight entries for the Progress screen)
+// ─────────────────────────────────────────────
+
+export interface BodyMetric {
+  id?: number;
+  measured_at: string; // 'YYYY-MM-DD'
+  weight: number;
+  note: string;
+  created_at?: string;
+}
+
+export const getBodyMetrics = async (): Promise<BodyMetric[]> => {
+  const db = await getDb();
+  return db.getAllAsync<BodyMetric>(
+    `SELECT * FROM body_metrics ORDER BY measured_at DESC, id DESC`
+  );
+};
+
+export const addBodyMetric = async (metric: { measured_at: string; weight: number; note?: string }): Promise<number> => {
+  const db = await getDb();
+  const result = await db.runAsync(
+    `INSERT INTO body_metrics (measured_at, weight, note) VALUES (?, ?, ?)`,
+    [metric.measured_at, metric.weight, metric.note ?? '']
+  );
+  // Keep the player's registration weight in sync with the latest entry.
+  await db.runAsync(`UPDATE player SET weight = ? WHERE id = 1`, [metric.weight]);
+  return result.lastInsertRowId;
+};
+
+export const deleteBodyMetric = async (id: number): Promise<void> => {
+  const db = await getDb();
+  await db.runAsync(`DELETE FROM body_metrics WHERE id = ?`, [id]);
 };
 
 // ─────────────────────────────────────────────
@@ -1363,7 +1435,7 @@ const BACKUP_TABLES = [
   'skill_group_links', 'skill_groups', 'skill_exercises', 'skills', 'art_notes', 'tutorials',
   'martial_arts', 'bonus_exercises', 'session_exercises', 'sessions',
   'plan_groups', 'plan_exercises', 'plans', 'exercise_groups', 'item_groups',
-  'exercise_body_parts', 'exercises', 'titles', 'player',
+  'exercise_body_parts', 'exercises', 'titles', 'settings', 'body_metrics', 'player',
 ] as const;
 
 export const BACKUP_APP_ID = 'beyond';
@@ -1446,9 +1518,11 @@ export const importAllData = async (input: unknown): Promise<number> => {
         DELETE FROM exercise_body_parts;
         DELETE FROM exercises;
         DELETE FROM titles;
+        DELETE FROM body_metrics;
+        DELETE FROM settings;
         DELETE FROM player;
         DELETE FROM sqlite_sequence WHERE name IN
-          ('player','exercises','exercise_body_parts','plans','plan_exercises','sessions','session_exercises','titles','bonus_exercises','martial_arts','skills','skill_exercises','art_notes','tutorials','item_groups','exercise_groups','plan_groups','skill_groups','skill_group_links');
+          ('player','exercises','exercise_body_parts','plans','plan_exercises','sessions','session_exercises','titles','bonus_exercises','martial_arts','skills','skill_exercises','art_notes','tutorials','item_groups','exercise_groups','plan_groups','skill_groups','skill_group_links','settings','body_metrics');
       `);
 
       for (const t of BACKUP_TABLES) {
@@ -1735,16 +1809,26 @@ export const getExercisesForSkill = async (skillId: number): Promise<Exercise[]>
   return exercises.map(ex => ({ ...ex, body_parts: JSON.stringify(byExercise.get(ex.id!) ?? []) }));
 };
 
+/** A belt earned by crossing a proficiency threshold (skill- or art-level). */
+export interface BeltPromotion {
+  name: string;
+  kind: 'skill' | 'art';
+  from: string;
+  to: string;
+}
+
 /**
  * Awards proficiency EXP to every skill tagged to the given exercise
  * completions. Each item's EXP is added once per tagged skill. Martial arts
  * have no independent EXP — their proficiency is derived from their skills.
+ * Returns every belt promotion earned along the way (skill and art level).
  */
 export const awardMartialProficiency = async (
   items: { exercise_id: number; exp: number }[]
-): Promise<void> => {
+): Promise<BeltPromotion[]> => {
+  const promotions: BeltPromotion[] = [];
   const valid = items.filter(i => i.exercise_id > 0 && i.exp > 0);
-  if (valid.length === 0) return;
+  if (valid.length === 0) return promotions;
 
   const db = await getDb();
   const ids = [...new Set(valid.map(i => i.exercise_id))];
@@ -1753,7 +1837,7 @@ export const awardMartialProficiency = async (
     `SELECT exercise_id, skill_id FROM skill_exercises WHERE exercise_id IN (${placeholders})`,
     ids
   );
-  if (tags.length === 0) return;
+  if (tags.length === 0) return promotions;
 
   const skillExp: Record<number, number> = {};
   for (const item of valid) {
@@ -1761,6 +1845,33 @@ export const awardMartialProficiency = async (
       if (t.exercise_id !== item.exercise_id) continue;
       skillExp[t.skill_id] = (skillExp[t.skill_id] ?? 0) + item.exp;
     }
+  }
+
+  // Snapshot pre-award state so belt crossings can be detected.
+  const skillIds = Object.keys(skillExp).map(Number);
+  const ph = skillIds.map(() => '?').join(', ');
+  const before = await db.getAllAsync<{ id: number; name: string; martial_art_id: number; total_exp: number }>(
+    `SELECT id, name, martial_art_id, total_exp FROM skills WHERE id IN (${ph})`,
+    skillIds
+  );
+  const artIds = [...new Set(before.map(s => s.martial_art_id))];
+  const artBefore: Record<number, number> = {};
+  if (artIds.length > 0) {
+    const aph = artIds.map(() => '?').join(', ');
+    const rows = await db.getAllAsync<{ martial_art_id: number; sum: number }>(
+      `SELECT martial_art_id, COALESCE(SUM(total_exp), 0) as sum FROM skills
+        WHERE martial_art_id IN (${aph}) GROUP BY martial_art_id`,
+      artIds
+    );
+    for (const r of rows) artBefore[r.martial_art_id] = r.sum;
+  }
+  const artNames: Record<number, string> = {};
+  if (artIds.length > 0) {
+    const aph = artIds.map(() => '?').join(', ');
+    const rows = await db.getAllAsync<{ id: number; name: string }>(
+      `SELECT id, name FROM martial_arts WHERE id IN (${aph})`, artIds
+    );
+    for (const r of rows) artNames[r.id] = r.name;
   }
 
   const applySkillExp = async (id: number, gained: number): Promise<void> => {
@@ -1781,6 +1892,30 @@ export const awardMartialProficiency = async (
       await applySkillExp(Number(id), gained);
     }
   });
+
+  // Compare belts before/after — promotions are pure visuals for callers.
+  const artDelta: Record<number, number> = {};
+  for (const s of before) {
+    const gained = skillExp[s.id] ?? 0;
+    const oldLevel = calculateMartialLevelFromTotalExp(s.total_exp ?? 0).level;
+    const newLevel = calculateMartialLevelFromTotalExp((s.total_exp ?? 0) + gained).level;
+    const oldBelt = getBeltForLevel(oldLevel);
+    const newBelt = getBeltForLevel(newLevel);
+    if (newBelt.belt !== oldBelt.belt) {
+      promotions.push({ name: s.name, kind: 'skill', from: oldBelt.belt, to: newBelt.belt });
+    }
+    artDelta[s.martial_art_id] = (artDelta[s.martial_art_id] ?? 0) + gained;
+  }
+  for (const [artIdStr, gained] of Object.entries(artDelta)) {
+    const artId = Number(artIdStr);
+    const oldTotal = artBefore[artId] ?? 0;
+    const oldBelt = getBeltForLevel(calculateMartialLevelFromTotalExp(oldTotal).level);
+    const newBelt = getBeltForLevel(calculateMartialLevelFromTotalExp(oldTotal + gained).level);
+    if (newBelt.belt !== oldBelt.belt) {
+      promotions.push({ name: artNames[artId] ?? 'Martial art', kind: 'art', from: oldBelt.belt, to: newBelt.belt });
+    }
+  }
+  return promotions;
 };
 
 // ─────────────────────────────────────────────

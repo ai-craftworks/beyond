@@ -10,8 +10,14 @@ import { Platform } from 'react-native';
 
 const supported = Platform.OS === 'ios' || Platform.OS === 'android';
 
+let hapticsEnabled = true;
+
+/** Master toggle — loaded from the settings store at bootstrap. */
+export const setHapticsEnabled = (enabled: boolean): void => { hapticsEnabled = enabled; };
+export const areHapticsEnabled = (): boolean => hapticsEnabled;
+
 const safe = (fn: () => Promise<void>) => {
-  if (!supported) return;
+  if (!supported || !hapticsEnabled) return;
   fn().catch(() => {});
 };
 

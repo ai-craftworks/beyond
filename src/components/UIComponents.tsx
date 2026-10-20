@@ -4,10 +4,10 @@
  * Reusable Solo Leveling-themed UI components used across all screens.
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, TouchableOpacity, TextInput, Modal, ScrollView,
-  ActivityIndicator, StyleSheet, ViewStyle, TextStyle,
+  ActivityIndicator, StyleSheet, ViewStyle, TextStyle, Animated,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/game';
@@ -370,10 +370,21 @@ export const StatRow: React.FC<StatRowProps> = ({
 
 // ── ExpBar ───────────────────────────────────
 
-interface ExpBarProps { current: number; max: number; }
+interface ExpBarProps { current: number; max: number; animated?: boolean; }
 
-export const ExpBar: React.FC<ExpBarProps> = ({ current, max }) => {
+export const ExpBar: React.FC<ExpBarProps> = ({ current, max, animated }) => {
   const pct = percentOf(current, max);
+  // Animated mode eases the fill toward its new value (used on the Dashboard
+  // so returning from a quest visibly fills the bar).
+  const fill = useRef(new Animated.Value(pct)).current;
+  useEffect(() => {
+    if (animated) {
+      Animated.timing(fill, { toValue: pct, duration: 500, useNativeDriver: false }).start();
+    }
+  }, [pct, animated]);
+  const width = animated
+    ? fill.interpolate({ inputRange: [0, 100], outputRange: ['0%', '100%'] })
+    : `${pct}%`;
   return (
     <View style={styles.expWrap}>
       <View style={styles.expRow}>
@@ -381,7 +392,9 @@ export const ExpBar: React.FC<ExpBarProps> = ({ current, max }) => {
         <Text style={styles.expNums}>{current} / {max}</Text>
       </View>
       <View style={styles.expBg}>
-        <View style={[styles.expFill, { width: `${pct}%` as any }]} />
+        {animated
+          ? <Animated.View style={[styles.expFill, { width } as any]} />
+          : <View style={[styles.expFill, { width: `${pct}%` as any }]} />}
       </View>
     </View>
   );

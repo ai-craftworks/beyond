@@ -73,7 +73,8 @@ const MENU: { key: string; label: string; icon: IonName; iconOn: IonName; tab?: 
   { key: 'Dojo',      label: 'Dojo',      icon: 'hand-left-outline',         iconOn: 'hand-left',         tab: 'Dojo' },
   { key: 'Tutorials', label: 'Tutorials', icon: 'book-outline',              iconOn: 'book' },
   { key: 'History',   label: 'Quest Log', icon: 'time-outline',              iconOn: 'time' },
-  { key: 'Guide',    label: 'Guide',     icon: 'information-circle-outline', iconOn: 'information-circle' },
+  { key: 'Guide',     label: 'Guide',     icon: 'information-circle-outline', iconOn: 'information-circle' },
+  { key: 'Settings',  label: 'Settings',  icon: 'settings-outline',          iconOn: 'settings' },
 ];
 
 // ── Overlay ──────────────────────────────────
@@ -122,6 +123,8 @@ export const OffcanvasNav: React.FC = () => {
       navigationRef.navigate('Groups');
     } else if (item.key === 'Tutorials') {
       navigationRef.navigate('Tutorials');
+    } else if (item.key === 'Settings') {
+      navigationRef.navigate('Settings');
     } else if (item.key === 'History') {
       navigationRef.navigate('History');
     } else {

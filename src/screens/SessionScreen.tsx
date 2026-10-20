@@ -13,13 +13,14 @@ import {
   SessionExercise, Player, saveTitle,
   getBonusExercises, completeBonusExercise,
   markBonusExercisesAwarded, BonusExercise, getSession,
-  awardMartialProficiency,
+  awardMartialProficiency, getLifetimeStats, BeltPromotion,
 } from '../database/Database';
 import { SystemPanel, SystemButton, ExpBar } from '../components/UIComponents';
 import WorkoutRow from '../components/WorkoutRow';
 import { Ionicons } from '@expo/vector-icons';
 import LevelUpModal from '../components/LevelUpModal';
-import { COLORS, TITLE_CONDITIONS, parseUnitValues, formatUnitValues, unitSuffix, statColor } from '../constants/game';
+import SessionClearModal, { SessionClearData, StatGain } from '../components/SessionClearModal';
+import { COLORS, TITLE_CONDITIONS, parseUnitValues, formatUnitValues, unitSuffix, statColor, STATS, getRankForLevel } from '../constants/game';
 import { specsOf, primarySpecOf, plannedOf, recordFor } from '../utils/units';
 import {
   expForUnits, UnitValue, statDeltasFromItems, cappedStat,
@@ -28,6 +29,8 @@ import {
 import { RootStackParamList } from '../../App';
 import { playSound } from '../utils/sounds';
 import { hapticHeavy, hapticSuccess, hapticWarning } from '../utils/haptics';
+import { computeStreaks } from '../utils/stats';
+import { queueDashCelebration, queueDojoCelebration } from '../utils/celebrations';
 
 type Route = RouteProp<RootStackParamList, 'Session'>;
 type Nav   = NativeStackNavigationProp<RootStackParamList, 'Session'>;
@@ -46,6 +49,11 @@ const SessionScreen: React.FC = () => {
   const [levelUpVisible, setLvlUp]      = useState(false);
   const [newTitle, setNewTitle]         = useState<string | undefined>();
   const [expGained, setExpGained]       = useState(0);
+  const [rankUp, setRankUp]             = useState<{ from: ReturnType<typeof getRankForLevel>; to: ReturnType<typeof getRankForLevel> } | null>(null);
+  const [awardStatGains, setAwardStatGains] = useState<StatGain[]>([]);
+  const [clearVisible, setClearVisible] = useState(false);
+  const [clearData, setClearData]       = useState<SessionClearData | null>(null);
+  const [prFlash, setPrFlash]           = useState<string | null>(null);
 
   // Amount input modal (for non-reps exercises)
   const [amountModal, setAmountModal]   = useState(false);
@@ -57,6 +65,9 @@ const SessionScreen: React.FC = () => {
 
   const flashAnim  = useRef(new Animated.Value(0)).current;
   const flashScale = useRef(new Animated.Value(0.8)).current;
+  const prFlashAnim = useRef(new Animated.Value(0)).current;
+  const prTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prsRef = useRef<{ name: string; detail: string }[]>([]);
   const finishingRef = useRef(false);
   // Set before any programmatic exit (finish/abandon) so the beforeRemove
   // guard below doesn't re-prompt on navigation we initiated ourselves.
@@ -116,6 +127,7 @@ const SessionScreen: React.FC = () => {
     setBonusEx(bonus);
     setPlayer(p);
     setAlreadyCompleted(currentSession?.status === 'completed');
+    prsRef.current = [];
     if (currentSession?.status === 'pending') playSound('questStart');
     setLoading(false);
   };
@@ -130,6 +142,19 @@ const SessionScreen: React.FC = () => {
       Animated.timing(flashAnim,  { toValue: 0, duration: 700, useNativeDriver: true }),
       Animated.spring(flashScale, { toValue: 1, friction: 4,   useNativeDriver: true }),
     ]).start();
+  };
+
+  // Gold "★ NEW PR" banner — visual counterpart to the existing PR sound.
+  const triggerPrFlash = (name: string, detail: string) => {
+    prsRef.current.push({ name, detail });
+    setPrFlash(`${name} — ${detail}`);
+    prFlashAnim.setValue(0);
+    if (prTimeoutRef.current) clearTimeout(prTimeoutRef.current);
+    Animated.timing(prFlashAnim, { toValue: 1, duration: 250, useNativeDriver: true }).start();
+    prTimeoutRef.current = setTimeout(() => {
+      Animated.timing(prFlashAnim, { toValue: 0, duration: 350, useNativeDriver: true })
+        .start(() => setPrFlash(null));
+    }, 1800);
   };
 
   // Called when player taps a session exercise
@@ -188,7 +213,7 @@ const SessionScreen: React.FC = () => {
     try {
       const isNewPr = await completeSessionExercise(ex.id!, primaryValue, expEarned, actualUnitsJson);
       triggerFlash(expEarned);
-      if (isNewPr) { playSound('title'); hapticSuccess(); }
+      if (isNewPr) { playSound('title'); hapticSuccess(); triggerPrFlash(ex.exercise_name, `${primaryValue} ${unitSuffix(primary)}`); }
       else { playSound('exerciseDone'); hapticHeavy(); }
     } catch (e) {
       console.error('complete exercise error:', e);
@@ -211,7 +236,7 @@ const SessionScreen: React.FC = () => {
     try {
       const isNewPr = await completeBonusExercise(ex.id!, primaryValue, expEarned, actualUnitsJson);
       triggerFlash(expEarned);
-      if (isNewPr) { playSound('title'); hapticSuccess(); }
+      if (isNewPr) { playSound('title'); hapticSuccess(); triggerPrFlash(ex.exercise_name, `${primaryValue} ${unitSuffix(primary)}`); }
       else { playSound('exerciseDone'); hapticHeavy(); }
     } catch (e) {
       console.error('complete bonus exercise error:', e);
@@ -220,6 +245,30 @@ const SessionScreen: React.FC = () => {
       );
       Alert.alert('Error', 'Could not save your progress. Please try again.');
     }
+  };
+
+  // Builds the QUEST CLEAR summary and opens it (the level-up modal, when
+  // set, rises on top). Celebration cards for the Dashboard/Dojo are queued
+  // by the caller so each event is queued exactly once.
+  const presentClear = async (opts: {
+    mainExp: number; fullClearAmount: number; bonusExp: number; totalExp: number;
+    awardedTitle?: string; statGains: StatGain[];
+    belts: BeltPromotion[]; newBestStreak: boolean;
+  }) => {
+    const streak = computeStreaks((await getLifetimeStats()).completedDates);
+    setClearData({
+      totalExp: opts.totalExp,
+      mainExp: opts.mainExp,
+      fullClearAmount: opts.fullClearAmount,
+      bonusExp: opts.bonusExp,
+      statGains: opts.statGains,
+      title: opts.awardedTitle,
+      streak,
+      newBestStreak: opts.newBestStreak,
+      prs: prsRef.current,
+      belts: opts.belts,
+    });
+    setClearVisible(true);
   };
 
   const handleFinishSession = async () => {
@@ -255,7 +304,10 @@ const SessionScreen: React.FC = () => {
 
         const statDeltas = statDeltasFromItems([...doneMain, ...claimableBonus]);
 
-        const levelled = await applyAward(statDeltas, totalExp, claimableBonusIds);
+        // Streak before/after completion — detects a new personal best.
+        const beforeStreak = computeStreaks((await getLifetimeStats()).completedDates);
+
+        const award = await applyAward(statDeltas, totalExp, claimableBonusIds);
         setExpGained(0);
         await updateSession(sessionId, {
           status: 'completed',
@@ -269,11 +321,56 @@ const SessionScreen: React.FC = () => {
         })));
 
         // Train martial-arts proficiency from every workout just cleared.
-        await awardMartialProficiency(
+        const belts = await awardMartialProficiency(
           [...doneMain, ...claimableBonus].map(e => ({ exercise_id: e.exercise_id, exp: e.exp_reward }))
         );
 
-        if (!levelled) { allowLeaveRef.current = true; navigation.goBack(); }
+        const afterStreak = computeStreaks((await getLifetimeStats()).completedDates);
+        const newBest = afterStreak.best > beforeStreak.best;
+
+        await presentClear({
+          mainExp: rawMainExp,
+          fullClearAmount: bonusAmount,
+          bonusExp,
+          totalExp,
+          awardedTitle: award.awardedTitle,
+          statGains: award.statGains,
+          belts,
+          newBestStreak: newBest,
+        });
+
+        // Dashboard return cards — level-up/rank-up first, then streak.
+        if (award.rankUp) {
+          queueDashCelebration({
+            kind: 'rank',
+            title: `RANK UP — ${award.rankUp.to.rank}-RANK`,
+            subtitle: `${player?.name ?? 'Hunter'}, you are now ${award.rankUp.to.label.toLowerCase()}`,
+            color: award.rankUp.to.color,
+          });
+        } else if (award.levelled) {
+          queueDashCelebration({
+            kind: 'level',
+            title: `LEVEL ${award.newLevel} REACHED`,
+            subtitle: 'Keep training, Hunter.',
+            color: COLORS.accentCyan,
+          });
+        }
+        if (newBest) {
+          queueDashCelebration({
+            kind: 'streak',
+            title: `NEW BEST STREAK — ${afterStreak.best} DAYS`,
+            subtitle: 'The System acknowledges your consistency.',
+            color: COLORS.accentGold,
+          });
+        }
+        if (belts.length > 0) {
+          queueDojoCelebration({
+            kind: 'belt',
+            title: 'BELT PROMOTED',
+            subtitle: belts.map(b => `${b.name}: ${b.from} → ${b.to}`).join('\n'),
+            color: COLORS.accentGreen,
+          });
+        }
       } else {
         // Session already completed — claim only newly-completed bonus EXP
         if (claimableBonus.length === 0) {
@@ -284,7 +381,7 @@ const SessionScreen: React.FC = () => {
         const bonusExp = claimableBonus.reduce((sum, e) => sum + e.exp_reward, 0);
         const statDeltas = statDeltasFromItems(claimableBonus);
 
-        await applyAward(statDeltas, bonusExp, claimableBonusIds);
+        const award = await applyAward(statDeltas, bonusExp, claimableBonusIds);
         setExpGained(0);
         await updateSession(sessionId, {
           total_exp: (currentSession.total_exp ?? 0) + bonusExp,
@@ -295,9 +392,40 @@ const SessionScreen: React.FC = () => {
         })));
 
         // Claimed bonus quests train martial-arts proficiency too.
-        await awardMartialProficiency(
+        const belts = await awardMartialProficiency(
           claimableBonus.map(e => ({ exercise_id: e.exercise_id, exp: e.exp_reward }))
         );
+
+        await presentClear({
+          mainExp: 0, fullClearAmount: 0, bonusExp, totalExp: bonusExp,
+          awardedTitle: award.awardedTitle,
+          statGains: award.statGains,
+          belts,
+          newBestStreak: false,
+        });
+        if (award.rankUp) {
+          queueDashCelebration({
+            kind: 'rank',
+            title: `RANK UP — ${award.rankUp.to.rank}-RANK`,
+            subtitle: `${player?.name ?? 'Hunter'}, you are now ${award.rankUp.to.label.toLowerCase()}`,
+            color: award.rankUp.to.color,
+          });
+        } else if (award.levelled) {
+          queueDashCelebration({
+            kind: 'level',
+            title: `LEVEL ${award.newLevel} REACHED`,
+            subtitle: 'Keep training, Hunter.',
+            color: COLORS.accentCyan,
+          });
+        }
+        if (belts.length > 0) {
+          queueDojoCelebration({
+            kind: 'belt',
+            title: 'BELT PROMOTED',
+            subtitle: belts.map(b => `${b.name}: ${b.from} → ${b.to}`).join('\n'),
+            color: COLORS.accentGreen,
+          });
+        }
       }
     } catch (e) {
       console.error(e);
@@ -307,17 +435,23 @@ const SessionScreen: React.FC = () => {
 
   // Applies EXP/stat/level/title rewards for the given deltas and marks the
   // awarded bonus ids. Shared by first-time completion and bonus claiming.
-  // Returns true if the player levelled up (caller decides whether to navigate away).
   const applyAward = async (
     statDeltas: Record<string, number>, totalExp: number, awardedBonusIds: number[]
-  ): Promise<boolean> => {
+  ): Promise<{
+    levelled: boolean; newLevel: number;
+    rankUp: { from: ReturnType<typeof getRankForLevel>; to: ReturnType<typeof getRankForLevel> } | null;
+    awardedTitle?: string; statGains: StatGain[];
+  }> => {
     const p = await getPlayer();
-    if (!p) return false;
+    if (!p) return { levelled: false, newLevel: 1, rankUp: null, statGains: [] };
 
     // Level calculation
     const newTotalExp = p.total_exp + totalExp;
     const { level, expInCurrentLevel, expToNext } = calculateLevelFromTotalExp(newTotalExp);
     const levelled = level > p.level;
+    const oldRank = getRankForLevel(p.level);
+    const newRank = getRankForLevel(level);
+    const crossedRank = newRank.rank !== oldRank.rank;
 
     const updates: Partial<Player> = {
       level, exp: expInCurrentLevel,
@@ -329,6 +463,14 @@ const SessionScreen: React.FC = () => {
       intelligence: cappedStat(p.intelligence, statDeltas['intelligence'] ?? 0),
       vitality:     cappedStat(p.vitality,     statDeltas['vitality']     ?? 0),
     };
+
+    // Actual gains after caps — what the modals celebrate.
+    const statGains: StatGain[] = STATS
+      .map(s => {
+        const delta = (updates[s.key] as number) - (p[s.key] as number);
+        return { key: s.key, label: s.label, color: s.color, delta };
+      })
+      .filter(g => g.delta > 0);
 
     // Title checks
     const snap = { level, strength: updates.strength!, agility: updates.agility!, endurance: updates.endurance!, intelligence: updates.intelligence!, vitality: updates.vitality! };
@@ -347,6 +489,8 @@ const SessionScreen: React.FC = () => {
 
     setPlayer({ ...p, ...updates } as Player);
     setNewTitle(awardedTitle);
+    setAwardStatGains(statGains);
+    setRankUp(crossedRank ? { from: oldRank, to: newRank } : null);
 
     // Exactly one celebration sound per finish — never stacked.
     if (levelled) {
@@ -360,7 +504,7 @@ const SessionScreen: React.FC = () => {
       playSound('sessionDone');
       hapticSuccess();
     }
-    return levelled;
+    return { levelled, newLevel: level, rankUp: crossedRank ? { from: oldRank, to: newRank } : null, awardedTitle, statGains };
   };
 
   const abandonSession = () => {
@@ -430,6 +574,15 @@ const SessionScreen: React.FC = () => {
           +EXP
         </Animated.Text>
       </Animated.View>
+
+      {/* New PR flash */}
+      {prFlash && (
+        <Animated.View style={[styles.prFlash, { opacity: prFlashAnim }]} pointerEvents="none">
+          <Ionicons name="star" size={22} color={COLORS.accentGold} />
+          <Text style={styles.prFlashTxt}>NEW PR</Text>
+          <Text style={styles.prFlashSub}>{prFlash}</Text>
+        </Animated.View>
+      )}
 
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 60 + insets.bottom }]} showsVerticalScrollIndicator={false}>
         {/* Progress header — the native header already names the quest */}
@@ -515,10 +668,16 @@ const SessionScreen: React.FC = () => {
         )}
       </ScrollView>
 
-      {/* Level-up modal */}
+      {/* QUEST CLEAR summary — shown on every finish; Continue exits the quest.
+          Rendered before the level-up modal so LEVEL UP rises on top of it. */}
+      <SessionClearModal visible={clearVisible} data={clearData}
+        onClose={() => { setClearVisible(false); allowLeaveRef.current = true; navigation.goBack(); }} />
+
+      {/* Level-up modal — rises above the QUEST CLEAR summary */}
       {player && (
         <LevelUpModal visible={levelUpVisible} player={player} newTitle={newTitle}
-          onClose={() => { setLvlUp(false); allowLeaveRef.current = true; navigation.goBack(); }} />
+          rankUp={rankUp} statDeltas={awardStatGains}
+          onClose={() => setLvlUp(false)} />
       )}
 
       {/* Amount input modal (for distance/time exercises) */}
@@ -635,6 +794,10 @@ const styles = StyleSheet.create({
 
   flash:         { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: `${COLORS.accentCyan}12`, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 110, zIndex: 99 },
   flashTxt:      { color: COLORS.accentCyan, fontSize: 32, fontWeight: '900', letterSpacing: 3 },
+
+  prFlash:       { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: `${COLORS.accentGold}15`, alignItems: 'center', justifyContent: 'flex-start', paddingTop: 160, zIndex: 100, gap: 4 },
+  prFlashTxt:    { color: COLORS.accentGold, fontSize: 26, fontWeight: '900', letterSpacing: 4 },
+  prFlashSub:    { color: COLORS.accentGold, fontSize: 14, fontWeight: '700' },
 
   sessionHdr:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingTop: 8, marginBottom: 10 },
   sessionProgress: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },
