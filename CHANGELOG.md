@@ -69,3 +69,6 @@
 - UI polish: higher-contrast muted text, haptics and click sounds on remaining bare controls, accessibility labels on lists/buttons, flatter lists (no more scroll jank on long libraries), and date labels that stay consistent across timezones.
 - Dev quality gates: ESLint flat config, jest unit tests for the pure logic utils, and a GitHub Actions workflow running typecheck + lint + tests.
 - Added lint, unit tests, and a CI workflow.
+### 20 Oct, 2026
+
+- Added a global Tutorials section in the sidebar: same tutorial/notes experience as the Dojo, but stored under a global collection that belongs to no single art (reuses the existing tables — no migration).

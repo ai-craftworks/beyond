@@ -12,19 +12,18 @@ import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navig
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  getMartialArt, getSkills, getSkillGroups, getTutorials, getUnassignedNotes, parseNoteMedia,
-  MartialArt, Skill, SkillGroup, Tutorial, Note,
+  getMartialArt, getSkills, getSkillGroups,
+  MartialArt, Skill, SkillGroup,
 } from '../database/Database';
 import {
   SystemPanel, SystemButton, SectionHeader, ExpBar, EmptyState, FilterChip, SegmentedTabs,
 } from '../components/UIComponents';
 import SkillFormModal from '../components/SkillFormModal';
-import TutorialFormModal from '../components/TutorialFormModal';
+import TutorialsSection from '../components/TutorialsSection';
 import SkillGroupSheet from '../components/SkillGroupSheet';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, getBeltForLevel, parseGroupIds } from '../constants/game';
 import { playSound } from '../utils/sounds';
-import { fmtShortDate } from '../utils/dates';
 import { RootStackParamList } from '../../App';
 
 type Route = RouteProp<RootStackParamList, 'MartialArtDetail'>;
@@ -40,25 +39,18 @@ const MartialArtDetailScreen: React.FC = () => {
   const [skills, setSkills]   = useState<Skill[]>([]);
   const [skillGroups, setSkillGroups] = useState<SkillGroup[]>([]);
   const [groupFilter, setGroupFilter] = useState<number | 'all' | 'ungrouped'>('all');
-  const [tutorials, setTutorials] = useState<Tutorial[]>([]);
-  const [unassignedNotes, setUnassignedNotes] = useState<Note[]>([]);
   const [tab, setTab]         = useState<'skills' | 'tutorials'>('skills');
   const [loading, setLoading] = useState(true);
   const [skillModal, setSkillModal] = useState(false);
-  const [tutorialModal, setTutorialModal] = useState(false);
-  const [tutorialInitial, setTutorialInitial] = useState<Tutorial | null>(null);
   const [groupSheet, setGroupSheet] = useState(false);
 
   const load = async () => {
-    const [a, s, g, t, n] = await Promise.all([
+    const [a, s, g] = await Promise.all([
       getMartialArt(artId), getSkills(artId), getSkillGroups(artId),
-      getTutorials(artId), getUnassignedNotes(artId),
     ]);
     setArt(a);
     setSkills(s);
     setSkillGroups(g);
-    setTutorials(t);
-    setUnassignedNotes(n);
     // A group may have just been deleted — fall back to "All" if the filter vanished.
     setGroupFilter(prev =>
       typeof prev === 'number' && !g.some(x => x.id === prev) ? 'all' : prev
@@ -210,81 +202,7 @@ const MartialArtDetailScreen: React.FC = () => {
           style={styles.addBtn} onPress={() => setSkillModal(true)} />
         </>)}
 
-        {tab === 'tutorials' && (<>
-          <SectionHeader
-            title="Tutorials"
-            subtitle={`${tutorials.length} tutorial${tutorials.length === 1 ? '' : 's'}`}
-            action={{ label: '+ New Tutorial', onPress: () => { setTutorialInitial(null); setTutorialModal(true); } }}
-          />
-
-          {tutorials.length === 0 && unassignedNotes.length === 0 ? (
-            <EmptyState icon="book-outline"
-              title="No tutorials yet"
-              subtitle="A tutorial is a titled series of notes — theory, principles, drills, references." />
-          ) : (
-            tutorials.map(tut => (
-              <TouchableOpacity
-                key={tut.id}
-                style={styles.tutCard}
-                activeOpacity={0.8}
-                onPress={() => { playSound('navigate'); navigation.navigate('TutorialDetail', { tutorialId: tut.id! }); }}
-              >
-                <View style={styles.tutMain}>
-                  <Text style={styles.tutTitle} numberOfLines={1}>{tut.title}</Text>
-                  {!!tut.description && (
-                    <Text style={styles.tutDesc} numberOfLines={2}>{tut.description}</Text>
-                  )}
-                  <View style={styles.tutMeta}>
-                    <Ionicons name="documents-outline" size={11} color={COLORS.textMuted} />
-                    <Text style={styles.tutMetaTxt}>
-                      {tut.note_count ?? 0} note{(tut.note_count ?? 0) === 1 ? '' : 's'}
-                    </Text>
-                    <Ionicons name="calendar-outline" size={11} color={COLORS.textMuted} style={{ marginLeft: 8 }} />
-                    <Text style={styles.tutMetaTxt}>{fmtShortDate(tut.updated_at || tut.created_at || '') || '—'}</Text>
-                  </View>
-                </View>
-                <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
-              </TouchableOpacity>
-            ))
-          )}
-
-          {unassignedNotes.length > 0 && (<>
-            <SectionHeader title="Unassigned Notes"
-              subtitle={`${unassignedNotes.length} note${unassignedNotes.length === 1 ? '' : 's'} not in any tutorial`} />
-            {unassignedNotes.map(note => {
-              const attachments = parseNoteMedia(note.media).length;
-              const date = fmtShortDate(note.updated_at || note.created_at || '');
-              return (
-                <TouchableOpacity
-                  key={note.id}
-                  style={styles.noteCard}
-                  activeOpacity={0.8}
-                  onPress={() => { playSound('navigate'); navigation.navigate('NoteDetail', { noteId: note.id! }); }}
-                >
-                  <View style={styles.noteMain}>
-                    <Text style={styles.noteTitle} numberOfLines={1}>{note.title}</Text>
-                    {!!note.body && <Text style={styles.notePreview} numberOfLines={2}>{note.body}</Text>}
-                    <View style={styles.noteMeta}>
-                      <Ionicons name="calendar-outline" size={11} color={COLORS.textMuted} />
-                      <Text style={styles.noteMetaTxt}>{date || '—'}</Text>
-                      {attachments > 0 && (
-                        <>
-                          <Ionicons name="attach" size={12} color={COLORS.textMuted} style={{ marginLeft: 8 }} />
-                          <Text style={styles.noteMetaTxt}>{attachments}</Text>
-                        </>
-                      )}
-                    </View>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
-                </TouchableOpacity>
-              );
-            })}
-          </>)}
-
-          <SystemButton title="New Tutorial" icon="add" variant="ghost"
-            style={styles.addBtn}
-            onPress={() => { setTutorialInitial(null); setTutorialModal(true); }} />
-        </>)}
+        {tab === 'tutorials' && <TutorialsSection martialArtId={artId} />}
       </ScrollView>
 
       <SkillFormModal
@@ -292,14 +210,6 @@ const MartialArtDetailScreen: React.FC = () => {
         martialArtId={artId}
         initial={null}
         onClose={() => setSkillModal(false)}
-        onSaved={load}
-      />
-
-      <TutorialFormModal
-        visible={tutorialModal}
-        martialArtId={artId}
-        initial={tutorialInitial}
-        onClose={() => setTutorialModal(false)}
         onSaved={load}
       />
 
@@ -344,20 +254,6 @@ const styles = StyleSheet.create({
   skillMetaTxt: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600' },
   skillRight:{ flexDirection: 'row', alignItems: 'center', gap: 6 },
   skillLvl:  { color: COLORS.accentCyan, fontSize: 13, fontWeight: '700' },
-
-  tutCard:   { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bgSecondary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 10, padding: 13, marginBottom: 8, gap: 10 },
-  tutMain:   { flex: 1 },
-  tutTitle:  { color: COLORS.textPrimary, fontSize: 14, fontWeight: '700', marginBottom: 3 },
-  tutDesc:   { color: COLORS.textSecondary, fontSize: 12, lineHeight: 17, marginBottom: 6 },
-  tutMeta:   { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  tutMetaTxt:{ color: COLORS.textMuted, fontSize: 11, fontWeight: '600' },
-
-  noteCard:  { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bgSecondary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 10, padding: 13, marginBottom: 8, gap: 10 },
-  noteMain:  { flex: 1 },
-  noteTitle: { color: COLORS.textPrimary, fontSize: 14, fontWeight: '700', marginBottom: 3 },
-  notePreview:{ color: COLORS.textSecondary, fontSize: 12, lineHeight: 17, marginBottom: 6 },
-  noteMeta:  { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  noteMetaTxt:{ color: COLORS.textMuted, fontSize: 11, fontWeight: '600' },
 
   addBtn:    { marginTop: 8 },
 });

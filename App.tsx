@@ -30,6 +30,7 @@ import NoteEditorScreen   from './src/screens/NoteEditorScreen';
 import ProfileScreen      from './src/screens/ProfileScreen';
 import SessionScreen      from './src/screens/SessionScreen';
 import GroupsScreen       from './src/screens/GroupsScreen';
+import TutorialsScreen    from './src/screens/TutorialsScreen';
 import HistoryScreen      from './src/screens/HistoryScreen';
 import AboutScreen from './src/screens/AboutScreen';
 import { initAudio, playSound } from './src/utils/sounds';
@@ -49,6 +50,7 @@ export type RootStackParamList = {
   NoteDetail:       { noteId: number };
   NoteEditor:       { tutorialId?: number; noteId?: number };
   Groups:           { kind?: GroupKind } | undefined;
+  Tutorials:        undefined;
   Guide:            undefined;
   History:          undefined;
 };
@@ -339,6 +341,18 @@ const App: React.FC = () => {
               options={{
                 headerShown: true,
                 headerTitle: 'Groups',
+                headerStyle: styles.header,
+                headerTitleStyle: styles.headerTitle,
+                headerTintColor: COLORS.accentCyan,
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="Tutorials"
+              component={TutorialsScreen}
+              options={{
+                headerShown: true,
+                headerTitle: 'Tutorials',
                 headerStyle: styles.header,
                 headerTitleStyle: styles.headerTitle,
                 headerTintColor: COLORS.accentCyan,
