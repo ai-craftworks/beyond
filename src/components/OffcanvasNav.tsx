@@ -21,9 +21,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { COLORS, getRankForLevel } from '../constants/game';
 import { getPlayer, Player } from '../database/Database';
-import { playSound } from '../utils/sounds';
 import { percentOf } from '../utils/math';
-import { navigationRef } from '../navigation/ref';
+import { navigationRef, playNavSound } from '../navigation/ref';
 import type { IonName } from './UIComponents';
 
 // ── Context ──────────────────────────────────
@@ -114,7 +113,7 @@ export const OffcanvasNav: React.FC = () => {
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const go = (item: typeof MENU[number]) => {
-    playSound('navigate');
+    playNavSound(item.tab ?? item.key);
     closeNav();
     if (item.tab) {
       navigationRef.navigate('Main', { screen: item.tab });
@@ -128,7 +127,7 @@ export const OffcanvasNav: React.FC = () => {
   };
 
   const openProfile = () => {
-    playSound('navigate');
+    playNavSound('Profile');
     closeNav();
     navigationRef.navigate('Main', { screen: 'Profile' });
   };

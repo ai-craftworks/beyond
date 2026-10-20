@@ -104,7 +104,7 @@ const NoteDetailScreen: React.FC = () => {
           {!!art && (
             <TouchableOpacity
               style={[styles.chip, { borderColor: art.color, backgroundColor: `${art.color}18` }]}
-              onPress={() => { playSound('navigate'); navigation.goBack(); }}
+              onPress={() => navigation.goBack()}
             >
               <View style={[styles.chipDot, { backgroundColor: art.color }]} />
               <Text style={[styles.chipTxt, { color: art.color }]}>{art.name.toUpperCase()}</Text>

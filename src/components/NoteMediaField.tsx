@@ -14,7 +14,6 @@ import { COLORS } from '../constants/game';
 import { NoteMedia } from '../database/Database';
 import { pickMedia } from '../utils/media';
 import { MediaThumb } from './MediaViewer';
-import { playSound } from '../utils/sounds';
 
 interface NoteMediaFieldProps {
   items: NoteMedia[];
@@ -28,7 +27,6 @@ const NoteMediaField: React.FC<NoteMediaFieldProps> = ({ items, onChange }) => {
 
   const handleAdd = async () => {
     if (picking) return;
-    playSound('click');
     setPicking(true);
     try {
       const picked = await pickMedia();
@@ -41,7 +39,6 @@ const NoteMediaField: React.FC<NoteMediaFieldProps> = ({ items, onChange }) => {
   };
 
   const handleRemove = (uri: string) => {
-    playSound('click');
     onChange(items.filter(m => m.uri !== uri));
   };
 

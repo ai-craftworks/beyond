@@ -19,7 +19,6 @@ import { COLORS, groupColorForIndex } from '../constants/game';
 import {
   SkillGroup, getSkillGroups, createSkillGroup, renameSkillGroup, deleteSkillGroup,
 } from '../database/Database';
-import { playSound } from '../utils/sounds';
 
 interface SkillGroupSheetProps {
   visible: boolean;
@@ -54,7 +53,6 @@ const SkillGroupSheet: React.FC<SkillGroupSheetProps> = ({
   const handleAdd = async () => {
     const name = newName.trim();
     if (!name) return;
-    playSound('click');
     try {
       await createSkillGroup(martialArtId, name, groupColorForIndex(groups.length));
       setNewName('');
@@ -67,7 +65,6 @@ const SkillGroupSheet: React.FC<SkillGroupSheetProps> = ({
   };
 
   const startRename = (g: SkillGroup) => {
-    playSound('click');
     setEditingId(g.id!);
     setEditName(g.name);
   };
@@ -82,7 +79,6 @@ const SkillGroupSheet: React.FC<SkillGroupSheetProps> = ({
         Alert.alert('System', 'A group with that name already exists in this martial art.');
         return;           // keep the editor open so the name can be fixed
       }
-      playSound('click');
       setEditingId(null);
       await load();
       onSaved();

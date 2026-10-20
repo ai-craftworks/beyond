@@ -13,7 +13,7 @@ import { COLORS } from './src/constants/game';
 import type { GroupKind } from './src/constants/game';
 import { Ionicons } from '@expo/vector-icons';
 import { NavProvider, OffcanvasNav, HamburgerButton } from './src/components/OffcanvasNav';
-import { navigationRef } from './src/navigation/ref';
+import { navigationRef, playNavSound } from './src/navigation/ref';
 
 import RegistrationScreen from './src/screens/RegistrationScreen';
 import DashboardScreen    from './src/screens/DashboardScreen';
@@ -93,7 +93,7 @@ const MainTabs: React.FC = () => {
       <Tab.Screen
         name="Exercises"
         component={ExercisesScreen}
-        listeners={{ tabPress: () => playSound('navigate') }}
+        listeners={{ tabPress: () => playNavSound('Exercises') }}
         options={{
           title: 'Exercises',
           headerTitle: 'Exercises',
@@ -107,7 +107,7 @@ const MainTabs: React.FC = () => {
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
-        listeners={{ tabPress: () => playSound('navigate') }}
+        listeners={{ tabPress: () => playNavSound('Profile') }}
         options={{
           title: 'Profile',
           headerTitle: 'Profile',
@@ -121,7 +121,7 @@ const MainTabs: React.FC = () => {
       <Tab.Screen
         name="Home"
         component={DashboardScreen}
-        listeners={{ tabPress: () => playSound('navigate') }}
+        listeners={{ tabPress: () => playNavSound('Home') }}
         options={{
           title: 'Home',
           headerTitle: 'Beyond',           // ← app name
@@ -135,7 +135,7 @@ const MainTabs: React.FC = () => {
       <Tab.Screen
         name="Plans"
         component={PlansScreen}
-        listeners={{ tabPress: () => playSound('navigate') }}
+        listeners={{ tabPress: () => playNavSound('Plans') }}
         options={{
           title: 'Plans',
           headerTitle: 'Plans',
@@ -149,7 +149,7 @@ const MainTabs: React.FC = () => {
       <Tab.Screen
         name="Dojo"
         component={MartialArtsScreen}
-        listeners={{ tabPress: () => playSound('navigate') }}
+        listeners={{ tabPress: () => playNavSound('Dojo') }}
         options={{
           title: 'Dojo',
           headerTitle: 'Martial Arts',

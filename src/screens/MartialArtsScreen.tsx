@@ -155,10 +155,10 @@ const MartialArtsScreen: React.FC = () => {
                   </View>
                 </View>
                 <View style={styles.cardActions}>
-                  <TouchableOpacity onPress={() => { playSound('click'); openEdit(item); }} style={styles.actionBtn}>
+                  <TouchableOpacity onPress={() => openEdit(item)} style={styles.actionBtn}>
                     <Ionicons name="create" size={16} color={COLORS.accentCyan} />
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={() => { playSound('click'); handleDelete(item); }} style={styles.actionBtn}>
+                  <TouchableOpacity onPress={() => handleDelete(item)} style={styles.actionBtn}>
                     <Ionicons name="close" size={18} color={COLORS.accentRed} />
                   </TouchableOpacity>
                 </View>
@@ -199,7 +199,7 @@ const MartialArtsScreen: React.FC = () => {
                   return (
                     <TouchableOpacity key={ic}
                       style={[styles.iconChip, on && { borderColor: color, backgroundColor: `${color}18` }]}
-                      onPress={() => { playSound('click'); setIcon(ic); }}>
+                      onPress={() => setIcon(ic)}>
                       <Ionicons name={ic} size={18} color={on ? color : COLORS.textSecondary} />
                     </TouchableOpacity>
                   );
@@ -211,7 +211,7 @@ const MartialArtsScreen: React.FC = () => {
                 {COLOR_CHOICES.map(c => (
                   <TouchableOpacity key={c}
                     style={[styles.colorChip, { backgroundColor: c }, color === c && styles.colorChipOn]}
-                    onPress={() => { playSound('click'); setColor(c); }} />
+                    onPress={() => setColor(c)} />
                 ))}
               </View>
 

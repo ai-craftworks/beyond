@@ -200,7 +200,7 @@ const DashboardScreen: React.FC = () => {
         {!!streak && streak.current >= 1 && (
           <TouchableOpacity
             style={styles.streakPill}
-            onPress={() => { playSound('click'); hapticTap(); navigation.navigate('History'); }}
+            onPress={() => { hapticTap(); navigation.navigate('History'); }}
             accessibilityRole="button"
             accessibilityLabel={`Streak ${streak.current} days, open quest log`}
           >
@@ -305,7 +305,7 @@ const DashboardScreen: React.FC = () => {
           { icon: 'person',  label: 'Profile',   screen: 'Profile'   as const },
         ] as const).map(item => (
           <TouchableOpacity key={item.label} style={styles.quickBtn}
-            onPress={() => { playSound('click'); navigation.navigate(item.screen); }}
+            onPress={() => navigation.navigate(item.screen)}
             accessibilityRole="button"
             accessibilityLabel={item.label}>
             <Ionicons name={item.icon} size={22} color={COLORS.accentCyan} />

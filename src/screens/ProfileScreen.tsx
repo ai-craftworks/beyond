@@ -51,7 +51,6 @@ const ProfileScreen: React.FC = () => {
   };
 
   useFocusEffect(useCallback(() => {
-    playSound('profile'); // ambient system scan — the one place this sound fires
     loadAll();
   }, []));
 

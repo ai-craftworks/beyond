@@ -26,7 +26,6 @@ import {
   SystemButton, EmptyState, SegmentedTabs,
 } from '../components/UIComponents';
 import WorkoutRow from '../components/WorkoutRow';
-import { playSound } from '../utils/sounds';
 import {
   COLORS, GroupKind, groupColorForIndex, parseGroupIds,
   statAccent, expBadgeLabel, workoutMetaLine,
@@ -136,7 +135,6 @@ const GroupsScreen: React.FC = () => {
     ]);
 
   const toggleExpand = (gid: number) => {
-    playSound('click');
     setExpandedId(prev => (prev === gid ? null : gid));
   };
 
@@ -216,15 +214,15 @@ const GroupsScreen: React.FC = () => {
 
                   <View style={styles.cardIcons}>
                     {editing ? (
-                      <TouchableOpacity onPress={() => { playSound('click'); saveRename(); }} style={styles.iconBtn}>
+                      <TouchableOpacity onPress={() => saveRename()} style={styles.iconBtn}>
                         <Ionicons name="checkmark" size={18} color={COLORS.accentGreen} />
                       </TouchableOpacity>
                     ) : (
-                      <TouchableOpacity onPress={() => { playSound('click'); startRename(g); }} style={styles.iconBtn}>
+                      <TouchableOpacity onPress={() => startRename(g)} style={styles.iconBtn}>
                         <Ionicons name="create" size={16} color={COLORS.accentCyan} />
                       </TouchableOpacity>
                     )}
-                    <TouchableOpacity onPress={() => { playSound('click'); remove(g); }} style={styles.iconBtn}>
+                    <TouchableOpacity onPress={() => remove(g)} style={styles.iconBtn}>
                       <Ionicons name="trash" size={16} color={COLORS.accentRed} />
                     </TouchableOpacity>
                   </View>

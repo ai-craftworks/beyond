@@ -18,7 +18,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { COLORS } from '../constants/game';
 import { RootStackParamList } from '../../App';
-import { playSound } from '../utils/sounds';
 
 type Props = { navigation: NativeStackNavigationProp<RootStackParamList, 'Registration'> };
 
@@ -125,7 +124,7 @@ const RegistrationScreen: React.FC<Props> = ({ navigation }) => {
               <SystemInput label="Weight (kg)" value={weight} onChangeText={setWeight} keyboardType="decimal-pad" />
               <SystemInput label="Height (cm)" value={height} onChangeText={setHeight} keyboardType="decimal-pad" />
               <View style={styles.row}>
-                <TouchableOpacity style={styles.backBtn} onPress={() => { playSound('click'); setStep(0); }}>
+                <TouchableOpacity style={styles.backBtn} onPress={() => setStep(0)}>
                   <View style={styles.backRow}>
                     <Ionicons name="arrow-back" size={14} color={COLORS.accentCyan} />
                     <Text style={styles.backTxt}>BACK</Text>
@@ -150,7 +149,7 @@ const RegistrationScreen: React.FC<Props> = ({ navigation }) => {
                 <Text style={styles.noticeTxt}>Starting stats: All at 10  ·  Rank: E  ·  Level: 1</Text>
               </View>
               <View style={styles.row}>
-                <TouchableOpacity style={styles.backBtn} onPress={() => { playSound('click'); setStep(1); }}>
+                <TouchableOpacity style={styles.backBtn} onPress={() => setStep(1)}>
                   <View style={styles.backRow}>
                     <Ionicons name="arrow-back" size={14} color={COLORS.accentCyan} />
                     <Text style={styles.backTxt}>BACK</Text>

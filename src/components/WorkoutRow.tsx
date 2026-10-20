@@ -14,7 +14,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, StyleProp, ViewStyle } from 'react-native';
 import { COLORS } from '../constants/game';
-import { playSound } from '../utils/sounds';
 import { hapticTap } from '../utils/haptics';
 
 export type WorkoutRowState = 'default' | 'selected' | 'done' | 'dimmed' | 'pending';
@@ -97,7 +96,7 @@ const WorkoutRow: React.FC<WorkoutRowProps> = ({
   }
   return (
     <TouchableOpacity style={shell} activeOpacity={0.8}
-      onPress={() => { playSound('click'); hapticTap(); onPress(); }}
+      onPress={() => { hapticTap(); onPress(); }}
       onLongPress={onLongPress}
       accessible
       accessibilityRole="button"

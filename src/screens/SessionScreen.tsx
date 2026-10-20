@@ -348,12 +348,14 @@ const SessionScreen: React.FC = () => {
     setPlayer({ ...p, ...updates } as Player);
     setNewTitle(awardedTitle);
 
-    if (awardedTitle) playSound('title');
-
+    // Exactly one celebration sound per finish — never stacked.
     if (levelled) {
       playSound('levelUp');
       hapticSuccess();
       setLvlUp(true);
+    } else if (awardedTitle) {
+      playSound('title');
+      hapticSuccess();
     } else {
       playSound('sessionDone');
       hapticSuccess();

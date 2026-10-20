@@ -129,7 +129,7 @@ export const SystemDropdown: React.FC<DropdownProps> = ({
   return (
     <View style={[styles.dropWrap, style]}>
       <Text style={styles.inputLabel}>{label}</Text>
-      <TouchableOpacity style={styles.dropTrigger} onPress={() => { playSound('click'); setOpen(true); }} activeOpacity={0.75}>
+      <TouchableOpacity style={styles.dropTrigger} onPress={() => setOpen(true)} activeOpacity={0.75}>
         <View style={styles.dropTriggerMain}>
           {selected?.color && <View style={[styles.optDot, { backgroundColor: selected.color }]} />}
           <Text style={[styles.dropValue, !selected && styles.dropPlaceholder]} numberOfLines={1}>
@@ -141,7 +141,7 @@ export const SystemDropdown: React.FC<DropdownProps> = ({
       <DropdownModal visible={open} title={label} onClose={() => setOpen(false)}>
         {options.map(o => (
           <TouchableOpacity key={o.value} style={styles.dropOption}
-            onPress={() => { playSound('click'); onChange(o.value); setOpen(false); }}>
+            onPress={() => { onChange(o.value); setOpen(false); }}>
             <View style={styles.dropOptionMain}>
               {o.color && <View style={[styles.optDot, { backgroundColor: o.color }]} />}
               <Text style={[styles.dropOptionTxt, o.value === value && styles.dropOptionTxtOn]} numberOfLines={1}>{o.label}</Text>
@@ -174,7 +174,7 @@ export const SystemMultiDropdown: React.FC<MultiDropdownProps> = ({
   return (
     <View style={[styles.dropWrap, style]}>
       <Text style={styles.inputLabel}>{label}</Text>
-      <TouchableOpacity style={styles.dropTrigger} onPress={() => { playSound('click'); setOpen(true); }} activeOpacity={0.75}>
+      <TouchableOpacity style={styles.dropTrigger} onPress={() => setOpen(true)} activeOpacity={0.75}>
         <View style={styles.dropTriggerMain}>
           {soleColor && <View style={[styles.optDot, { backgroundColor: soleColor }]} />}
           <Text style={[styles.dropValue, values.length === 0 && styles.dropPlaceholder]} numberOfLines={1}>
@@ -187,10 +187,10 @@ export const SystemMultiDropdown: React.FC<MultiDropdownProps> = ({
         visible={open} title={label} onClose={() => setOpen(false)}
         footer={
           <>
-            <TouchableOpacity style={styles.dropFooterBtn} onPress={() => { playSound('click'); onChange([]); }}>
+            <TouchableOpacity style={styles.dropFooterBtn} onPress={() => onChange([])}>
               <Text style={styles.dropFooterTxt}>Clear</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.dropFooterBtn} onPress={() => { playSound('click'); setOpen(false); }}>
+            <TouchableOpacity style={styles.dropFooterBtn} onPress={() => setOpen(false)}>
               <Text style={[styles.dropFooterTxt, styles.dropFooterTxtOn]}>Done</Text>
             </TouchableOpacity>
           </>
@@ -199,7 +199,7 @@ export const SystemMultiDropdown: React.FC<MultiDropdownProps> = ({
         {options.map(o => {
           const on = values.includes(o.value);
           return (
-            <TouchableOpacity key={o.value} style={styles.dropOption} onPress={() => { playSound('click'); toggle(o.value); }}>
+            <TouchableOpacity key={o.value} style={styles.dropOption} onPress={() => toggle(o.value)}>
               <View style={styles.dropOptionMain}>
                 {o.color && <View style={[styles.optDot, { backgroundColor: o.color }]} />}
                 <Text style={[styles.dropOptionTxt, on && styles.dropOptionTxtOn]} numberOfLines={1}>{o.label}</Text>
@@ -231,7 +231,7 @@ export const SectionHeader: React.FC<SecHdrProps> = ({ title, subtitle, action, 
     <View style={styles.secHdrActions}>
       {secondary && (
         <TouchableOpacity
-          onPress={() => { playSound('click'); secondary.onPress(); }}
+          onPress={() => secondary.onPress()}
           accessibilityRole="button"
           accessibilityLabel={`${secondary.label} — ${title}`}
         >
@@ -240,7 +240,7 @@ export const SectionHeader: React.FC<SecHdrProps> = ({ title, subtitle, action, 
       )}
       {action && (
         <TouchableOpacity
-          onPress={() => { playSound('click'); action.onPress(); }}
+          onPress={() => action.onPress()}
           accessibilityRole="button"
           accessibilityLabel={`${action.label} — ${title}`}
         >
@@ -271,7 +271,7 @@ export const FilterSheet: React.FC<FilterSheetProps> = ({
         <View style={styles.filterHandle} />
         <View style={styles.filterHdr}>
           <Text style={styles.filterTitle}>◆ {title.toUpperCase()}</Text>
-          <TouchableOpacity onPress={() => { playSound('click'); onClose(); }}>
+          <TouchableOpacity onPress={onClose}>
             <Ionicons name="close" size={20} color={COLORS.textMuted} />
           </TouchableOpacity>
         </View>
@@ -281,11 +281,11 @@ export const FilterSheet: React.FC<FilterSheetProps> = ({
         </ScrollView>
         <View style={styles.filterFooter}>
           <TouchableOpacity style={[styles.filterBtn, styles.filterReset]}
-            onPress={() => { playSound('click'); onReset(); }} activeOpacity={0.75}>
+            onPress={onReset} activeOpacity={0.75}>
             <Text style={styles.filterResetTxt}>Reset</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.filterBtn, styles.filterApply]}
-            onPress={() => { playSound('click'); onClose(); }} activeOpacity={0.75}>
+            onPress={onClose} activeOpacity={0.75}>
             <Text style={styles.filterApplyTxt}>Apply</Text>
           </TouchableOpacity>
         </View>
@@ -314,7 +314,7 @@ export const FilterChip: React.FC<FilterChipProps> = ({ label, active, onPress, 
   return (
     <TouchableOpacity
       style={[styles.fChip, active && { borderColor: c, backgroundColor: `${c}22` }]}
-      onPress={() => { playSound('click'); onPress(); }} activeOpacity={0.75}
+      onPress={onPress} activeOpacity={0.75}
     >
       {color && <View style={[styles.fChipDot, { backgroundColor: active ? c : COLORS.textMuted }]} />}
       <Text style={[styles.fChipTxt, active && { color: c }]}>{label}</Text>
@@ -326,7 +326,7 @@ interface FilterButtonProps { count: number; onPress: () => void; }
 
 /** The funnel button shown at the right of a search row; shows an active-filter count. */
 export const FilterButton: React.FC<FilterButtonProps> = ({ count, onPress }) => (
-  <TouchableOpacity style={styles.filterTrigger} onPress={() => { playSound('click'); onPress(); }}
+  <TouchableOpacity style={styles.filterTrigger} onPress={onPress}
     activeOpacity={0.75} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
     accessibilityRole="button"
     accessibilityLabel={count > 0 ? `Filters, ${count} active` : 'Filters'}>
@@ -422,7 +422,7 @@ export const SegmentedTabs: React.FC<{
         <TouchableOpacity
           key={t.key}
           style={[styles.segBtn, on && styles.segBtnOn]}
-          onPress={() => { playSound('click'); onChange(t.key); }}
+          onPress={() => onChange(t.key)}
           activeOpacity={0.8}
         >
           {!!t.icon && (

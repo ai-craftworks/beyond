@@ -56,6 +56,8 @@
 - Upgraded the note editor to a full-screen page with a large auto-growing writing area, character count, attachments and a tutorial picker.
 - Refined the note reading view: paragraph spacing, larger line height, tutorial chip.
 - Backups now include tutorials.
+- Cleaned up the sound design: removed click sounds from micro-toggles (chips, dropdowns, pickers, close buttons, row taps); fixed the overlapping tap + completion sounds on workout rows; tab re-press no longer replays the navigation blip; navigation cards now consistently use the navigate sound.
+- Every action now produces at most one sound: removed the ambient profile sound that stacked with the navigation blip; sidebar items skip the blip when already on the destination; session completion plays a single celebration sound (level up > title > whoosh) instead of stacking up to three.
 
 ### 19 Oct, 2026
 
