@@ -26,6 +26,7 @@ import { playSound } from '../utils/sounds';
 import { hapticWarning, hapticTap } from '../utils/haptics';
 import { fmtLongDay } from '../utils/dates';
 import { computeStreaks } from '../utils/stats';
+import { consumeDashCelebrations, Celebration } from '../utils/celebrations';
 
 type Nav = CompositeNavigationProp<
   BottomTabNavigationProp<TabParamList>,
@@ -47,8 +48,10 @@ const DashboardScreen: React.FC = () => {
   const [pickerPlans, setPickerPlans]     = useState<PickerPlan[]>([]);
   const [loadError, setLoadError]         = useState(false);
   const [streak, setStreak]               = useState<{ current: number; best: number } | null>(null);
+  const [celebrations, setCelebrations]   = useState<Celebration[]>([]);
 
   const pulseAnim = useRef(new Animated.Value(1)).current;
+  const celebAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     const loop = Animated.loop(
       Animated.sequence([
@@ -70,6 +73,9 @@ const DashboardScreen: React.FC = () => {
       setSessions(await getTodaySessions());
       setArts(await getMartialArts());
       setStreak(computeStreaks((await getLifetimeStats()).completedDates));
+      // Surface any celebrations queued by the last session finish.
+      const queued = consumeDashCelebrations();
+      if (queued.length > 0) setCelebrations(prev => [...prev, ...queued]);
     } catch (e) {
       // Never leave the dashboard permanently blank on a transient DB error.
       console.warn('Dashboard loadData failed', e);
@@ -155,6 +161,20 @@ const DashboardScreen: React.FC = () => {
 
   useFocusEffect(useCallback(() => { loadData(); }, []));
 
+  // Show each queued celebration card for a few seconds, one after another.
+  const activeCelebration = celebrations[0] ?? null;
+  useEffect(() => {
+    if (!activeCelebration) return;
+    celebAnim.setValue(0);
+    Animated.timing(celebAnim, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+    const t = setTimeout(() => {
+      Animated.timing(celebAnim, { toValue: 0, duration: 300, useNativeDriver: true }).start(() =>
+        setCelebrations(prev => prev.slice(1))
+      );
+    }, 3800);
+    return () => clearTimeout(t);
+  }, [activeCelebration, celebAnim]);
+
   const onRefresh = async () => {
     setRefreshing(true);
     await loadData();
@@ -200,7 +220,7 @@ const DashboardScreen: React.FC = () => {
         {!!streak && streak.current >= 1 && (
           <TouchableOpacity
             style={styles.streakPill}
-            onPress={() => { playSound('click'); hapticTap(); navigation.navigate('History'); }}
+            onPress={() => { hapticTap(); navigation.navigate('History'); }}
             accessibilityRole="button"
             accessibilityLabel={`Streak ${streak.current} days, open quest log`}
           >
@@ -212,6 +232,29 @@ const DashboardScreen: React.FC = () => {
           </TouchableOpacity>
         )}
       </View>
+
+      {/* Celebration flash — level-up / rank-up / new best streak */}
+      {activeCelebration && (
+        <Animated.View style={[
+          styles.celebCard,
+          { borderColor: activeCelebration.color ?? COLORS.accentCyan, opacity: celebAnim,
+            transform: [{ translateY: celebAnim.interpolate({ inputRange: [0, 1], outputRange: [-10, 0] }) }] },
+        ]}>
+          <Ionicons
+            name={activeCelebration.kind === 'streak' ? 'flame' : activeCelebration.kind === 'belt' ? 'ribbon' : activeCelebration.kind === 'rank' ? 'shield' : 'trending-up'}
+            size={20}
+            color={activeCelebration.color ?? COLORS.accentCyan}
+          />
+          <View style={styles.celebBody}>
+            <Text style={[styles.celebTitle, { color: activeCelebration.color ?? COLORS.accentCyan }]}>
+              {activeCelebration.title}
+            </Text>
+            {!!activeCelebration.subtitle && (
+              <Text style={styles.celebSub}>{activeCelebration.subtitle}</Text>
+            )}
+          </View>
+        </Animated.View>
+      )}
 
       {/* Player card */}
       <SystemPanel glow>
@@ -232,7 +275,7 @@ const DashboardScreen: React.FC = () => {
             <Text style={[styles.levelNum, { color: rank.color }]}>{player.level}</Text>
           </View>
         </View>
-        <ExpBar current={player.exp} max={player.exp_to_next} />
+        <ExpBar current={player.exp} max={player.exp_to_next} animated />
       </SystemPanel>
 
       {/* Stats */}
@@ -305,7 +348,7 @@ const DashboardScreen: React.FC = () => {
           { icon: 'person',  label: 'Profile',   screen: 'Profile'   as const },
         ] as const).map(item => (
           <TouchableOpacity key={item.label} style={styles.quickBtn}
-            onPress={() => { playSound('click'); navigation.navigate(item.screen); }}
+            onPress={() => navigation.navigate(item.screen)}
             accessibilityRole="button"
             accessibilityLabel={item.label}>
             <Ionicons name={item.icon} size={22} color={COLORS.accentCyan} />
@@ -412,6 +455,10 @@ const styles = StyleSheet.create({
   sysTag:    { color: COLORS.accentCyan, fontSize: 11, fontWeight: '700', letterSpacing: 4, marginBottom: 3 },
   dateText:  { color: COLORS.textMuted, fontSize: 12 },
   streakPill:{ flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 8, backgroundColor: COLORS.bgTertiary, borderWidth: 1, borderColor: `${COLORS.accentGold}55`, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 5 },
+  celebCard: { flexDirection: 'row', alignItems: 'center', gap: 10, backgroundColor: COLORS.bgSecondary, borderWidth: 1.5, borderRadius: 12, padding: 13, marginBottom: 12 },
+  celebBody: { flex: 1 },
+  celebTitle:{ fontSize: 13, fontWeight: '800', letterSpacing: 1 },
+  celebSub:  { color: COLORS.textSecondary, fontSize: 11, marginTop: 2, lineHeight: 15 },
   streakPillTxt:{ color: COLORS.accentGold, fontSize: 11, fontWeight: '800', letterSpacing: 0.4 },
 
   playerRow:   { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 14 },

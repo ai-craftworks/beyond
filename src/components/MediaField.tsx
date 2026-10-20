@@ -14,7 +14,6 @@ import { COLORS } from '../constants/game';
 import { MediaType } from '../database/Database';
 import { pickMedia } from '../utils/media';
 import MediaViewer from './MediaViewer';
-import { playSound } from '../utils/sounds';
 
 interface MediaFieldProps {
   mediaType: MediaType;
@@ -27,7 +26,6 @@ const MediaField: React.FC<MediaFieldProps> = ({ mediaType, mediaUri, onChange }
 
   const handlePick = async () => {
     if (picking) return;
-    playSound('click');
     setPicking(true);
     try {
       const picked = await pickMedia();
@@ -41,7 +39,6 @@ const MediaField: React.FC<MediaFieldProps> = ({ mediaType, mediaUri, onChange }
   };
 
   const handleRemove = () => {
-    playSound('click');
     onChange({ type: 'none', uri: '' });
   };
 

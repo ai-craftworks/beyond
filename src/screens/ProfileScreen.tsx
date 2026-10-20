@@ -8,7 +8,7 @@ import React, { useCallback, useState } from 'react';
 import { View, Text, ScrollView, StyleSheet, Alert, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { getPlayer, Player, getTitles, EarnedTitle, getRecentSessions, Session, getSessionSummary, resetAllData, getMartialArts, MartialArt, getLifetimeStats, LifetimeStats, exportAllData, importAllData, ImportBackupError } from '../database/Database';
+import { getPlayer, Player, getTitles, EarnedTitle, getRecentSessions, Session, getSessionSummary, resetAllData, getMartialArts, MartialArt, getLifetimeStats, LifetimeStats, exportAllData, importAllData, ImportBackupError, getBodyMetrics, BodyMetric } from '../database/Database';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import * as DocumentPicker from 'expo-document-picker';
@@ -34,24 +34,26 @@ const ProfileScreen: React.FC = () => {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [arts,     setArts]     = useState<MartialArt[]>([]);
   const [lifetime, setLifetime] = useState<LifetimeStats | null>(null);
+  const [metrics,  setMetrics]  = useState<BodyMetric[]>([]);
 
   const [expandedSession, setExpandedSession] = useState<number | null>(null);
   const [sessionDetails, setSessionDetails] = useState<Record<number, any>>({});
   const [busy, setBusy] = useState<'export' | 'import' | null>(null);
 
   const loadAll = async () => {
-    const [p, t, s, a, life] = await Promise.all([
+    const [p, t, s, a, life, m] = await Promise.all([
       getPlayer(), getTitles(), getRecentSessions(15), getMartialArts(), getLifetimeStats(),
+      getBodyMetrics(),
     ]);
     setPlayer(p);
     setTitles(t);
     setSessions(s);
     setArts(a);
     setLifetime(life);
+    setMetrics(m);
   };
 
   useFocusEffect(useCallback(() => {
-    playSound('profile'); // ambient system scan — the one place this sound fires
     loadAll();
   }, []));
 
@@ -200,6 +202,29 @@ const ProfileScreen: React.FC = () => {
       <SystemPanel>
         <ExpBar current={player.exp} max={player.exp_to_next} />
         <Text style={styles.expHint}>{expToNextRemaining(player.exp, player.exp_to_next)} EXP to Level {player.level + 1}</Text>
+        <SystemButton title="View Progress" icon="stats-chart-outline" variant="ghost"
+          style={styles.progressBtn} onPress={() => navigation.navigate('Progress')} />
+      </SystemPanel>
+
+      {/* Body */}
+      <SystemPanel>
+        <SectionHeader title="Body" subtitle="Physical metrics" />
+        <View style={styles.bodyRow}>
+          <View>
+            <Text style={styles.bodyVal}>{player.weight || '—'}</Text>
+            <Text style={styles.bodyLbl}>WEIGHT (KG)</Text>
+          </View>
+          <View>
+            <Text style={styles.bodyVal}>{player.height || '—'}</Text>
+            <Text style={styles.bodyLbl}>HEIGHT (CM)</Text>
+          </View>
+          <View>
+            <Text style={styles.bodyVal}>{metrics.length}</Text>
+            <Text style={styles.bodyLbl}>LOGGED</Text>
+          </View>
+        </View>
+        <SystemButton title="Log Weight & View Trend" icon="body-outline" variant="ghost"
+          style={styles.progressBtn} onPress={() => navigation.navigate('Progress')} />
       </SystemPanel>
 
       {/* Stats */}
@@ -425,6 +450,11 @@ const styles = StyleSheet.create({
   bannerLevel:  { color: COLORS.textSecondary, fontSize: 14, fontWeight: '600' },
 
   expHint:      { color: COLORS.textMuted, fontSize: 11, textAlign: 'center', marginTop: 6 },
+  progressBtn:  { marginTop: 12 },
+
+  bodyRow:      { flexDirection: 'row', justifyContent: 'space-around', paddingVertical: 10 },
+  bodyVal:      { color: COLORS.textPrimary, fontSize: 18, fontWeight: '700', textAlign: 'center' },
+  bodyLbl:      { color: COLORS.textMuted, fontSize: 9, letterSpacing: 1, fontWeight: '600', textAlign: 'center', marginTop: 4 },
 
   achieveRow:   { flexDirection: 'row', gap: 10 },
   achieveBox:   { flex: 1, alignItems: 'center', backgroundColor: COLORS.bgTertiary, borderRadius: 8, paddingVertical: 14 },

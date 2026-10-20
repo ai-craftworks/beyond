@@ -50,6 +50,14 @@
 - Added shared media picker and viewer components, now used by both skills and workouts.
 - Added fullscreen landscape video playback with screen orientation unlock while open.
 - Tapping skill demos now opens them fullscreen.
+- Replaced the martial art notes tab with Tutorials — a tutorial is a titled, described series of notes.
+- Notes now live inside tutorials; legacy notes show in an Unassigned section and can be moved via the editor.
+- Notes inside a tutorial are numbered and can be reordered manually (up/down).
+- Upgraded the note editor to a full-screen page with a large auto-growing writing area, character count, attachments and a tutorial picker.
+- Refined the note reading view: paragraph spacing, larger line height, tutorial chip.
+- Backups now include tutorials.
+- Cleaned up the sound design: removed click sounds from micro-toggles (chips, dropdowns, pickers, close buttons, row taps); fixed the overlapping tap + completion sounds on workout rows; tab re-press no longer replays the navigation blip; navigation cards now consistently use the navigate sound.
+- Every action now produces at most one sound: removed the ambient profile sound that stacked with the navigation blip; sidebar items skip the blip when already on the destination; session completion plays a single celebration sound (level up > title > whoosh) instead of stacking up to three.
 
 ### 19 Oct, 2026
 
@@ -61,3 +69,22 @@
 - UI polish: higher-contrast muted text, haptics and click sounds on remaining bare controls, accessibility labels on lists/buttons, flatter lists (no more scroll jank on long libraries), and date labels that stay consistent across timezones.
 - Dev quality gates: ESLint flat config, jest unit tests for the pure logic utils, and a GitHub Actions workflow running typecheck + lint + tests.
 - Added lint, unit tests, and a CI workflow.
+### 20 Oct, 2026
+
+- Added a global Tutorials section in the sidebar: same tutorial/notes experience as the Dojo, but stored under a global collection that belongs to no single art (reuses the existing tables — no migration).
+
+### 21 Oct, 2026
+
+- Level-up is now the spotlight: rank changes get a dedicated E→D-style transition in the level-up modal, and the modal shows the stat gains earned with the level.
+- Every session finish now shows a "QUEST CLEAR" summary (EXP breakdown with the full-clear bonus, stat gains, streak, personal records, belt promotions, title) instead of silently returning to the dashboard; the level-up modal rises on top when applicable.
+- Dashboard celebrates your return with a flash card (level reached, rank up, new best streak) and an animated EXP bar; the Dojo shows belt promotions.
+- Personal records now flash a gold "NEW PR" banner mid-session; new best streaks are detected on finish.
+- Belt promotions (skill and art) are detected when proficiency is awarded and celebrated — they were completely silent before.
+- Added a Settings screen (sidebar → Settings): toggle sound and haptics (persisted, effective immediately), and edit hunter profile (name, age, weight, height) without exporting/importing a backup.
+- Sound and haptic toggles are now honored app-wide via a single gate in the sound/haptic modules — turning them off silences everything, including the boot sound.
+
+### 22 Oct, 2026
+
+- Added a Progress screen (Profile → View Progress): weekly EXP bar chart (last 12 weeks), level progression by week-end, and body-weight trend.
+- Added body metrics logging: log your weight with an optional note; the player's weight updates automatically and is used everywhere the System knows a weight.
+- Added a Body panel on the Profile screen showing current weight/height and entry count, with a shortcut to log and view the trend.

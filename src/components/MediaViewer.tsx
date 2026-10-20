@@ -19,7 +19,6 @@ import * as ScreenOrientation from 'expo-screen-orientation';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/game';
 import { MediaType } from '../database/Database';
-import { playSound } from '../utils/sounds';
 import { hapticTap } from '../utils/haptics';
 
 // ── Fullscreen ───────────────────────────────
@@ -71,7 +70,7 @@ export const FullscreenMedia: React.FC<FullscreenProps> = ({
         </View>
         <TouchableOpacity
           style={fsStyles.close}
-          onPress={() => { playSound('click'); onClose(); }}
+          onPress={() => { hapticTap(); onClose(); }}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           accessibilityRole="button"
           accessibilityLabel="Close media viewer"
@@ -117,7 +116,7 @@ const MediaViewer: React.FC<MediaViewerProps> = ({ mediaType, mediaUri }) => {
         <TouchableOpacity
           style={styles.tapWrap}
           activeOpacity={0.9}
-          onPress={() => { playSound('click'); hapticTap(); setFullscreen(true); }}
+          onPress={() => { hapticTap(); setFullscreen(true); }}
           delayPressIn={120}
           accessibilityRole="button"
           accessibilityLabel={mediaType === 'video' ? 'Play demo video fullscreen' : 'View demo image fullscreen'}
@@ -168,7 +167,7 @@ export const MediaThumb: React.FC<MediaThumbProps> = ({
       <TouchableOpacity
         style={[styles.thumb, { width, height }]}
         activeOpacity={0.85}
-        onPress={() => { playSound('click'); hapticTap(); setFullscreen(true); }}
+        onPress={() => { hapticTap(); setFullscreen(true); }}
         accessibilityRole="button"
         accessibilityLabel={mediaType === 'video' ? 'Play demo video' : 'View demo image'}
       >

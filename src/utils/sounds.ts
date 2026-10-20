@@ -14,7 +14,6 @@
  *   levelUp     – epic chime on level up
  *   title       – crystalline ping when a title is earned
  *   penalty     – low warning tone on missed quest penalty
- *   profile     – ambient system scan on profile open
  *   questStart  – tension build when entering a session
  */
 
@@ -43,8 +42,6 @@ const SOUNDS: Record<string, string | number> = {
   title:        require('../../assets/sounds/title.mp3'),
   // Low warning drone — penalty applied
   penalty:      require('../../assets/sounds/penalty.mp3'),
-  // Ambient scan — profile opened
-  profile:      require('../../assets/sounds/profile.mp3'),
   // Tension swell — session started
   questStart:   require('../../assets/sounds/questStart.mp3'),
 };
@@ -62,11 +59,15 @@ const VOLUMES: Record<string, number> = {
   levelUp:      1.0,
   title:        0.9,
   penalty:      0.8,
-  profile:      0.4,
   questStart:   0.65,
 };
 
 let audioReady = false;
+let soundsEnabled = true;
+
+/** Master mute — loaded from the settings store at bootstrap. */
+export const setSoundsEnabled = (enabled: boolean): void => { soundsEnabled = enabled; };
+export const areSoundsEnabled = (): boolean => soundsEnabled;
 
 // ─────────────────────────────────────────────
 // PUBLIC API
@@ -94,7 +95,7 @@ export const initAudio = async (): Promise<void> => {
  * Non-blocking — returns immediately, plays in background.
  */
 export const playSound = (name: keyof typeof SOUNDS): void => {
-  if (!audioReady) return;
+  if (!audioReady || !soundsEnabled) return;
   _play(name).catch(() => {}); // fire and forget, never throws
 };
 

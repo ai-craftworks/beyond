@@ -22,7 +22,6 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, parseUnitValues, formatUnitValues, statColor } from '../constants/game';
 import { expForUnits } from '../utils/math';
 import { specsOf, primarySpecOf } from '../utils/units';
-import { playSound } from '../utils/sounds';
 import { RootStackParamList } from '../../App';
 
 type Route = RouteProp<RootStackParamList, 'ManagePlan'>;
@@ -134,7 +133,7 @@ const ManagePlanScreen: React.FC = () => {
               accent={statColor(pe.stat_type)}
               exp={`+${peExp(pe).toFixed(0)} EXP`}
               trailing={
-                <TouchableOpacity onPress={() => { playSound('click'); handleRemoveExercise(pe.id!); }} style={styles.removeBtn}>
+                <TouchableOpacity onPress={() => handleRemoveExercise(pe.id!)} style={styles.removeBtn}>
                   <Ionicons name="close" size={18} color={COLORS.accentRed} />
                 </TouchableOpacity>
               }

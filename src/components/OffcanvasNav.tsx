@@ -21,9 +21,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { COLORS, getRankForLevel } from '../constants/game';
 import { getPlayer, Player } from '../database/Database';
-import { playSound } from '../utils/sounds';
 import { percentOf } from '../utils/math';
-import { navigationRef } from '../navigation/ref';
+import { navigationRef, playNavSound } from '../navigation/ref';
 import type { IonName } from './UIComponents';
 
 // ── Context ──────────────────────────────────
@@ -71,9 +70,11 @@ const MENU: { key: string; label: string; icon: IonName; iconOn: IonName; tab?: 
   { key: 'Profile',   label: 'Profile',   icon: 'person-outline',            iconOn: 'person',            tab: 'Profile' },
   { key: 'Plans',     label: 'Plans',     icon: 'list-outline',              iconOn: 'list',              tab: 'Plans' },
   { key: 'Groups',    label: 'Groups',    icon: 'pricetags-outline',         iconOn: 'pricetags' },
-  { key: 'Dojo',     label: 'Dojo',      icon: 'hand-left-outline',         iconOn: 'hand-left',         tab: 'Dojo' },
-  { key: 'History',  label: 'Quest Log', icon: 'time-outline',              iconOn: 'time' },
-  { key: 'Guide',    label: 'Guide',     icon: 'information-circle-outline', iconOn: 'information-circle' },
+  { key: 'Dojo',      label: 'Dojo',      icon: 'hand-left-outline',         iconOn: 'hand-left',         tab: 'Dojo' },
+  { key: 'Tutorials', label: 'Tutorials', icon: 'book-outline',              iconOn: 'book' },
+  { key: 'History',   label: 'Quest Log', icon: 'time-outline',              iconOn: 'time' },
+  { key: 'Guide',     label: 'Guide',     icon: 'information-circle-outline', iconOn: 'information-circle' },
+  { key: 'Settings',  label: 'Settings',  icon: 'settings-outline',          iconOn: 'settings' },
 ];
 
 // ── Overlay ──────────────────────────────────
@@ -114,12 +115,16 @@ export const OffcanvasNav: React.FC = () => {
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const go = (item: typeof MENU[number]) => {
-    playSound('navigate');
+    playNavSound(item.tab ?? item.key);
     closeNav();
     if (item.tab) {
       navigationRef.navigate('Main', { screen: item.tab });
     } else if (item.key === 'Groups') {
       navigationRef.navigate('Groups');
+    } else if (item.key === 'Tutorials') {
+      navigationRef.navigate('Tutorials');
+    } else if (item.key === 'Settings') {
+      navigationRef.navigate('Settings');
     } else if (item.key === 'History') {
       navigationRef.navigate('History');
     } else {
@@ -128,7 +133,7 @@ export const OffcanvasNav: React.FC = () => {
   };
 
   const openProfile = () => {
-    playSound('navigate');
+    playNavSound('Profile');
     closeNav();
     navigationRef.navigate('Main', { screen: 'Profile' });
   };

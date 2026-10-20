@@ -7,13 +7,13 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { SafeAreaProvider, useSafeAreaInsets } from 'react-native-safe-area-context'; // ← added useSafeAreaInsets
 
-import { initDatabase, getPlayer } from './src/database/Database';
+import { initDatabase, getPlayer, getSetting } from './src/database/Database';
 import type { Plan } from './src/database/Database';
 import { COLORS } from './src/constants/game';
 import type { GroupKind } from './src/constants/game';
 import { Ionicons } from '@expo/vector-icons';
 import { NavProvider, OffcanvasNav, HamburgerButton } from './src/components/OffcanvasNav';
-import { navigationRef } from './src/navigation/ref';
+import { navigationRef, playNavSound } from './src/navigation/ref';
 
 import RegistrationScreen from './src/screens/RegistrationScreen';
 import DashboardScreen    from './src/screens/DashboardScreen';
@@ -24,13 +24,19 @@ import WorkoutSelectScreen from './src/screens/WorkoutSelectScreen';
 import MartialArtsScreen  from './src/screens/MartialArtsScreen';
 import MartialArtDetailScreen from './src/screens/MartialArtDetailScreen';
 import SkillDetailScreen  from './src/screens/SkillDetailScreen';
+import TutorialDetailScreen from './src/screens/TutorialDetailScreen';
 import NoteDetailScreen   from './src/screens/NoteDetailScreen';
+import NoteEditorScreen   from './src/screens/NoteEditorScreen';
 import ProfileScreen      from './src/screens/ProfileScreen';
+import ProgressScreen     from './src/screens/ProgressScreen';
 import SessionScreen      from './src/screens/SessionScreen';
 import GroupsScreen       from './src/screens/GroupsScreen';
+import TutorialsScreen    from './src/screens/TutorialsScreen';
+import SettingsScreen     from './src/screens/SettingsScreen';
 import HistoryScreen      from './src/screens/HistoryScreen';
 import AboutScreen from './src/screens/AboutScreen';
-import { initAudio, playSound } from './src/utils/sounds';
+import { initAudio, playSound, setSoundsEnabled } from './src/utils/sounds';
+import { setHapticsEnabled } from './src/utils/haptics';
 
 export type RootStackParamList = {
   Registration: undefined;
@@ -43,8 +49,13 @@ export type RootStackParamList = {
     | { mode: 'skill'; skillId: number; skillName: string };
   MartialArtDetail: { artId: number };
   SkillDetail:      { skillId: number };
+  TutorialDetail:   { tutorialId: number };
   NoteDetail:       { noteId: number };
+  NoteEditor:       { tutorialId?: number; noteId?: number };
   Groups:           { kind?: GroupKind } | undefined;
+  Tutorials:        undefined;
+  Settings:         undefined;
+  Progress:         undefined;
   Guide:            undefined;
   History:          undefined;
 };
@@ -89,7 +100,7 @@ const MainTabs: React.FC = () => {
       <Tab.Screen
         name="Exercises"
         component={ExercisesScreen}
-        listeners={{ tabPress: () => playSound('navigate') }}
+        listeners={{ tabPress: () => playNavSound('Exercises') }}
         options={{
           title: 'Exercises',
           headerTitle: 'Exercises',
@@ -103,7 +114,7 @@ const MainTabs: React.FC = () => {
       <Tab.Screen
         name="Profile"
         component={ProfileScreen}
-        listeners={{ tabPress: () => playSound('navigate') }}
+        listeners={{ tabPress: () => playNavSound('Profile') }}
         options={{
           title: 'Profile',
           headerTitle: 'Profile',
@@ -117,7 +128,7 @@ const MainTabs: React.FC = () => {
       <Tab.Screen
         name="Home"
         component={DashboardScreen}
-        listeners={{ tabPress: () => playSound('navigate') }}
+        listeners={{ tabPress: () => playNavSound('Home') }}
         options={{
           title: 'Home',
           headerTitle: 'Beyond',           // ← app name
@@ -131,7 +142,7 @@ const MainTabs: React.FC = () => {
       <Tab.Screen
         name="Plans"
         component={PlansScreen}
-        listeners={{ tabPress: () => playSound('navigate') }}
+        listeners={{ tabPress: () => playNavSound('Plans') }}
         options={{
           title: 'Plans',
           headerTitle: 'Plans',
@@ -145,7 +156,7 @@ const MainTabs: React.FC = () => {
       <Tab.Screen
         name="Dojo"
         component={MartialArtsScreen}
-        listeners={{ tabPress: () => playSound('navigate') }}
+        listeners={{ tabPress: () => playNavSound('Dojo') }}
         options={{
           title: 'Dojo',
           headerTitle: 'Martial Arts',
@@ -166,9 +177,15 @@ const App: React.FC = () => {
 
   async function bootstrap() {
     try {
-      await initAudio();
-      playSound('boot'); 
       await initDatabase();
+      // Apply stored preferences before any UI can fire sounds/haptics.
+      const [soundPref, hapticPref] = await Promise.all([
+        getSetting('sound_enabled'), getSetting('haptics_enabled'),
+      ]);
+      setSoundsEnabled(soundPref !== 'false');
+      setHapticsEnabled(hapticPref !== 'false');
+      await initAudio();
+      playSound('boot');
       const player = await getPlayer();
       setAppState(player ? 'main' : 'register');
     } catch (e) {
@@ -285,6 +302,18 @@ const App: React.FC = () => {
               }}
             />
             <Stack.Screen
+              name="TutorialDetail"
+              component={TutorialDetailScreen}
+              options={{
+                headerShown: true,
+                headerTitle: 'Tutorial',
+                headerStyle: styles.header,
+                headerTitleStyle: styles.headerTitle,
+                headerTintColor: COLORS.accentCyan,
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
               name="NoteDetail"
               component={NoteDetailScreen}
               options={{
@@ -294,6 +323,14 @@ const App: React.FC = () => {
                 headerTitleStyle: styles.headerTitle,
                 headerTintColor: COLORS.accentCyan,
                 animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="NoteEditor"
+              component={NoteEditorScreen}
+              options={{
+                headerShown: false,
+                animation: 'slide_from_bottom',
               }}
             />
             <Stack.Screen
@@ -315,6 +352,42 @@ const App: React.FC = () => {
               options={{
                 headerShown: true,
                 headerTitle: 'Groups',
+                headerStyle: styles.header,
+                headerTitleStyle: styles.headerTitle,
+                headerTintColor: COLORS.accentCyan,
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="Tutorials"
+              component={TutorialsScreen}
+              options={{
+                headerShown: true,
+                headerTitle: 'Tutorials',
+                headerStyle: styles.header,
+                headerTitleStyle: styles.headerTitle,
+                headerTintColor: COLORS.accentCyan,
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="Settings"
+              component={SettingsScreen}
+              options={{
+                headerShown: true,
+                headerTitle: 'Settings',
+                headerStyle: styles.header,
+                headerTitleStyle: styles.headerTitle,
+                headerTintColor: COLORS.accentCyan,
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="Progress"
+              component={ProgressScreen}
+              options={{
+                headerShown: true,
+                headerTitle: 'Progress',
                 headerStyle: styles.header,
                 headerTitleStyle: styles.headerTitle,
                 headerTintColor: COLORS.accentCyan,

@@ -21,7 +21,6 @@ import SkillFormModal from '../components/SkillFormModal';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, getBeltForLevel, statAccent, expBadgeLabel, workoutMetaLine } from '../constants/game';
 import { deleteMedia } from '../utils/media';
-import { playSound } from '../utils/sounds';
 import { RootStackParamList } from '../../App';
 
 type Route = RouteProp<RootStackParamList, 'SkillDetail'>;
@@ -165,7 +164,7 @@ const SkillDetailScreen: React.FC = () => {
               accent={statAccent(ex.category)}
               exp={expBadgeLabel(ex)}
               trailing={
-                <TouchableOpacity onPress={() => { playSound('click'); handleRemoveWorkout(ex); }} style={styles.removeBtn}>
+                <TouchableOpacity onPress={() => handleRemoveWorkout(ex)} style={styles.removeBtn}>
                   <Ionicons name="close" size={18} color={COLORS.accentRed} />
                 </TouchableOpacity>
               }

@@ -337,7 +337,7 @@ const PlanCard: React.FC<{
     const groupIds = parseGroupIds(plan.groups);
     return (
       <View style={[styles.planCard, plan.is_active ? styles.planCardOn : null]}>
-        <TouchableOpacity style={styles.planMain} onPress={() => { playSound('click'); onManage(); }} activeOpacity={0.8}>
+        <TouchableOpacity style={styles.planMain} onPress={() => { playSound('navigate'); onManage(); }} activeOpacity={0.8}>
           <View style={styles.planTop}>
             <Text style={styles.planName}>{plan.name}</Text>
             <View style={[styles.activePill, plan.is_active ? styles.activePillOn : null]}>
@@ -371,15 +371,15 @@ const PlanCard: React.FC<{
           )}
         </TouchableOpacity>
         <View style={styles.planActions}>
-          <TouchableOpacity style={styles.actionBtn} onPress={() => { playSound('click'); onToggle(); }}>
+          <TouchableOpacity style={styles.actionBtn} onPress={onToggle}>
             <Text style={[styles.actionTxt, { color: plan.is_active ? COLORS.accentRed : COLORS.accentGreen }]}>
               {plan.is_active ? 'Deactivate' : 'Activate'}
             </Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtn} onPress={() => { playSound('click'); onEdit(); }}>
+          <TouchableOpacity style={styles.actionBtn} onPress={onEdit}>
             <Text style={[styles.actionTxt, { color: COLORS.accentCyan }]}>Edit</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.actionBtn} onPress={() => { playSound('click'); onDelete(); }}>
+          <TouchableOpacity style={styles.actionBtn} onPress={onDelete}>
             <Text style={[styles.actionTxt, { color: COLORS.textMuted }]}>Delete</Text>
           </TouchableOpacity>
         </View>

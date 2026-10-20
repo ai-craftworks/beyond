@@ -5,10 +5,10 @@
  * and lets the hunter create, edit or delete arts.
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet, TouchableOpacity,
-  Modal, ScrollView, Alert, KeyboardAvoidingView, Platform,
+  Modal, ScrollView, Alert, KeyboardAvoidingView, Platform, Animated,
 } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -21,6 +21,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { COLORS, getBeltForLevel } from '../constants/game';
 import { deleteMedia } from '../utils/media';
 import { playSound } from '../utils/sounds';
+import { consumeDojoCelebrations, Celebration } from '../utils/celebrations';
 import { RootStackParamList } from '../../App';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
@@ -47,10 +48,30 @@ const MartialArtsScreen: React.FC = () => {
   const [icon, setIcon]       = useState<string>(ICON_CHOICES[0]);
   const [color, setColor]     = useState<string>(COLOR_CHOICES[0]);
   const [saving, setSaving]   = useState(false);
+  const [celebrations, setCelebrations] = useState<Celebration[]>([]);
+  const celebAnim = useRef(new Animated.Value(0)).current;
 
-  const load = async () => setArts(await getMartialArts());
+  const load = async () => {
+    setArts(await getMartialArts());
+    // Surface any belt promotions queued by the last session finish.
+    const queued = consumeDojoCelebrations();
+    if (queued.length > 0) setCelebrations(prev => [...prev, ...queued]);
+  };
 
   useFocusEffect(useCallback(() => { load(); }, []));
+
+  const activeCelebration = celebrations[0] ?? null;
+  useEffect(() => {
+    if (!activeCelebration) return;
+    celebAnim.setValue(0);
+    Animated.timing(celebAnim, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+    const t = setTimeout(() => {
+      Animated.timing(celebAnim, { toValue: 0, duration: 300, useNativeDriver: true }).start(() =>
+        setCelebrations(prev => prev.slice(1))
+      );
+    }, 4200);
+    return () => clearTimeout(t);
+  }, [activeCelebration, celebAnim]);
 
   const openCreate = () => {
     setEditing(null);
@@ -121,11 +142,30 @@ const MartialArtsScreen: React.FC = () => {
         keyExtractor={item => String(item.id)}
         contentContainerStyle={styles.list}
         ListHeaderComponent={
-          <SectionHeader
-            title="Martial Arts"
-            subtitle={`${arts.length} art${arts.length === 1 ? '' : 's'} practiced`}
-            action={{ label: '+ Create', onPress: openCreate }}
-          />
+          <>
+            {activeCelebration && (
+              <Animated.View style={[
+                styles.celebCard,
+                { borderColor: activeCelebration.color ?? COLORS.accentGreen, opacity: celebAnim,
+                  transform: [{ translateY: celebAnim.interpolate({ inputRange: [0, 1], outputRange: [-10, 0] }) }] },
+              ]}>
+                <Ionicons name="ribbon" size={20} color={activeCelebration.color ?? COLORS.accentGreen} />
+                <View style={styles.celebBody}>
+                  <Text style={[styles.celebTitle, { color: activeCelebration.color ?? COLORS.accentGreen }]}>
+                    {activeCelebration.title}
+                  </Text>
+                  {!!activeCelebration.subtitle && (
+                    <Text style={styles.celebSub}>{activeCelebration.subtitle}</Text>
+                  )}
+                </View>
+              </Animated.View>
+            )}
+            <SectionHeader
+              title="Martial Arts"
+              subtitle={`${arts.length} art${arts.length === 1 ? '' : 's'} practiced`}
+              action={{ label: '+ Create', onPress: openCreate }}
+            />
+          </>
         }
         ListEmptyComponent={
           <EmptyState
@@ -155,10 +195,10 @@ const MartialArtsScreen: React.FC = () => {
                   </View>
                 </View>
                 <View style={styles.cardActions}>
-                  <TouchableOpacity onPress={() => { playSound('click'); openEdit(item); }} style={styles.actionBtn}>
+                  <TouchableOpacity onPress={() => openEdit(item)} style={styles.actionBtn}>
                     <Ionicons name="create" size={16} color={COLORS.accentCyan} />
                   </TouchableOpacity>
-                  <TouchableOpacity onPress={() => { playSound('click'); handleDelete(item); }} style={styles.actionBtn}>
+                  <TouchableOpacity onPress={() => handleDelete(item)} style={styles.actionBtn}>
                     <Ionicons name="close" size={18} color={COLORS.accentRed} />
                   </TouchableOpacity>
                 </View>
@@ -199,7 +239,7 @@ const MartialArtsScreen: React.FC = () => {
                   return (
                     <TouchableOpacity key={ic}
                       style={[styles.iconChip, on && { borderColor: color, backgroundColor: `${color}18` }]}
-                      onPress={() => { playSound('click'); setIcon(ic); }}>
+                      onPress={() => setIcon(ic)}>
                       <Ionicons name={ic} size={18} color={on ? color : COLORS.textSecondary} />
                     </TouchableOpacity>
                   );
@@ -211,7 +251,7 @@ const MartialArtsScreen: React.FC = () => {
                 {COLOR_CHOICES.map(c => (
                   <TouchableOpacity key={c}
                     style={[styles.colorChip, { backgroundColor: c }, color === c && styles.colorChipOn]}
-                    onPress={() => { playSound('click'); setColor(c); }} />
+                    onPress={() => setColor(c)} />
                 ))}
               </View>
 
@@ -232,6 +272,10 @@ const MartialArtsScreen: React.FC = () => {
 const styles = StyleSheet.create({
   root:        { flex: 1, backgroundColor: COLORS.bgPrimary },
   list:        { padding: 16, paddingBottom: 100 },
+  celebCard:   { flexDirection: 'row', alignItems: 'flex-start', gap: 10, backgroundColor: COLORS.bgSecondary, borderWidth: 1.5, borderRadius: 12, padding: 13, marginBottom: 12 },
+  celebBody:   { flex: 1 },
+  celebTitle:  { fontSize: 13, fontWeight: '800', letterSpacing: 1 },
+  celebSub:    { color: COLORS.textSecondary, fontSize: 11, marginTop: 2, lineHeight: 15 },
 
   card:        { backgroundColor: COLORS.bgSecondary, borderRadius: 10, borderWidth: 1, borderColor: COLORS.borderMain, borderLeftWidth: 3, padding: 13, marginBottom: 10 },
   cardTop:     { flexDirection: 'row', alignItems: 'center', marginBottom: 8, gap: 10 },

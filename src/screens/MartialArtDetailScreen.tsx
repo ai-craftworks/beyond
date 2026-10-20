@@ -2,7 +2,8 @@
  * src/screens/MartialArtDetailScreen.tsx
  * =========================================
  * One martial art: its proficiency header (belt, level, EXP) and two tabs —
- * the skills trained under it, and the theory notes written about it.
+ * the skills trained under it, and the tutorials (ordered note series)
+ * written about it.
  */
 
 import React, { useCallback, useState } from 'react';
@@ -11,19 +12,18 @@ import { useFocusEffect, useNavigation, useRoute, RouteProp } from '@react-navig
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
-  getMartialArt, getSkills, getSkillGroups, getNotes, parseNoteMedia,
-  MartialArt, Skill, SkillGroup, Note,
+  getMartialArt, getSkills, getSkillGroups,
+  MartialArt, Skill, SkillGroup,
 } from '../database/Database';
 import {
   SystemPanel, SystemButton, SectionHeader, ExpBar, EmptyState, FilterChip, SegmentedTabs,
 } from '../components/UIComponents';
 import SkillFormModal from '../components/SkillFormModal';
-import NoteFormModal from '../components/NoteFormModal';
+import TutorialsSection from '../components/TutorialsSection';
 import SkillGroupSheet from '../components/SkillGroupSheet';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, getBeltForLevel, parseGroupIds } from '../constants/game';
 import { playSound } from '../utils/sounds';
-import { fmtShortDate } from '../utils/dates';
 import { RootStackParamList } from '../../App';
 
 type Route = RouteProp<RootStackParamList, 'MartialArtDetail'>;
@@ -39,21 +39,18 @@ const MartialArtDetailScreen: React.FC = () => {
   const [skills, setSkills]   = useState<Skill[]>([]);
   const [skillGroups, setSkillGroups] = useState<SkillGroup[]>([]);
   const [groupFilter, setGroupFilter] = useState<number | 'all' | 'ungrouped'>('all');
-  const [notes, setNotes]     = useState<Note[]>([]);
-  const [tab, setTab]         = useState<'skills' | 'notes'>('skills');
+  const [tab, setTab]         = useState<'skills' | 'tutorials'>('skills');
   const [loading, setLoading] = useState(true);
   const [skillModal, setSkillModal] = useState(false);
-  const [noteModal, setNoteModal] = useState(false);
   const [groupSheet, setGroupSheet] = useState(false);
 
   const load = async () => {
-    const [a, s, g, n] = await Promise.all([
-      getMartialArt(artId), getSkills(artId), getSkillGroups(artId), getNotes(artId),
+    const [a, s, g] = await Promise.all([
+      getMartialArt(artId), getSkills(artId), getSkillGroups(artId),
     ]);
     setArt(a);
     setSkills(s);
     setSkillGroups(g);
-    setNotes(n);
     // A group may have just been deleted — fall back to "All" if the filter vanished.
     setGroupFilter(prev =>
       typeof prev === 'number' && !g.some(x => x.id === prev) ? 'all' : prev
@@ -121,10 +118,10 @@ const MartialArtDetailScreen: React.FC = () => {
         <SegmentedTabs
           tabs={[
             { key: 'skills', label: 'Skills', icon: 'layers-outline' },
-            { key: 'notes', label: 'Notes', icon: 'document-text-outline' },
+            { key: 'tutorials', label: 'Tutorials', icon: 'book-outline' },
           ]}
           value={tab}
-          onChange={k => setTab(k as 'skills' | 'notes')}
+          onChange={k => setTab(k as 'skills' | 'tutorials')}
         />
 
         {tab === 'skills' && (<>
@@ -205,51 +202,7 @@ const MartialArtDetailScreen: React.FC = () => {
           style={styles.addBtn} onPress={() => setSkillModal(true)} />
         </>)}
 
-        {tab === 'notes' && (<>
-          <SectionHeader
-            title="Notes"
-            subtitle={`${notes.length} note${notes.length === 1 ? '' : 's'}`}
-            action={{ label: '+ New Note', onPress: () => setNoteModal(true) }}
-          />
-
-          {notes.length === 0 ? (
-            <EmptyState icon="document-text-outline"
-              title="No notes yet"
-              subtitle="Theory, principles and reference notes live here." />
-          ) : (
-            notes.map(note => {
-              const attachments = parseNoteMedia(note.media).length;
-              const date = fmtShortDate(note.updated_at || note.created_at || '');
-              return (
-                <TouchableOpacity
-                  key={note.id}
-                  style={styles.noteCard}
-                  activeOpacity={0.8}
-                  onPress={() => { playSound('navigate'); navigation.navigate('NoteDetail', { noteId: note.id! }); }}
-                >
-                  <View style={styles.noteMain}>
-                    <Text style={styles.noteTitle} numberOfLines={1}>{note.title}</Text>
-                    {!!note.body && <Text style={styles.notePreview} numberOfLines={2}>{note.body}</Text>}
-                    <View style={styles.noteMeta}>
-                      <Ionicons name="calendar-outline" size={11} color={COLORS.textMuted} />
-                      <Text style={styles.noteMetaTxt}>{date || '—'}</Text>
-                      {attachments > 0 && (
-                        <>
-                          <Ionicons name="attach" size={12} color={COLORS.textMuted} style={{ marginLeft: 8 }} />
-                          <Text style={styles.noteMetaTxt}>{attachments}</Text>
-                        </>
-                      )}
-                    </View>
-                  </View>
-                  <Ionicons name="chevron-forward" size={16} color={COLORS.textSecondary} />
-                </TouchableOpacity>
-              );
-            })
-          )}
-
-          <SystemButton title="New Note" icon="add" variant="ghost"
-            style={styles.addBtn} onPress={() => setNoteModal(true)} />
-        </>)}
+        {tab === 'tutorials' && <TutorialsSection martialArtId={artId} />}
       </ScrollView>
 
       <SkillFormModal
@@ -257,14 +210,6 @@ const MartialArtDetailScreen: React.FC = () => {
         martialArtId={artId}
         initial={null}
         onClose={() => setSkillModal(false)}
-        onSaved={load}
-      />
-
-      <NoteFormModal
-        visible={noteModal}
-        martialArtId={artId}
-        initial={null}
-        onClose={() => setNoteModal(false)}
         onSaved={load}
       />
 
@@ -309,13 +254,6 @@ const styles = StyleSheet.create({
   skillMetaTxt: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600' },
   skillRight:{ flexDirection: 'row', alignItems: 'center', gap: 6 },
   skillLvl:  { color: COLORS.accentCyan, fontSize: 13, fontWeight: '700' },
-
-  noteCard:  { flexDirection: 'row', alignItems: 'center', backgroundColor: COLORS.bgSecondary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 10, padding: 13, marginBottom: 8, gap: 10 },
-  noteMain:  { flex: 1 },
-  noteTitle: { color: COLORS.textPrimary, fontSize: 14, fontWeight: '700', marginBottom: 3 },
-  notePreview:{ color: COLORS.textSecondary, fontSize: 12, lineHeight: 17, marginBottom: 6 },
-  noteMeta:  { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  noteMetaTxt:{ color: COLORS.textMuted, fontSize: 11, fontWeight: '600' },
 
   addBtn:    { marginTop: 8 },
 });
