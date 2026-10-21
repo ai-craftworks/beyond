@@ -68,7 +68,7 @@
 - Added personal records, full session history with filters and streaks, and JSON backup export/import.
 - UI polish: higher-contrast muted text, haptics and click sounds on remaining bare controls, accessibility labels on lists/buttons, flatter lists (no more scroll jank on long libraries), and date labels that stay consistent across timezones.
 - Dev quality gates: ESLint flat config, jest unit tests for the pure logic utils, and a GitHub Actions workflow running typecheck + lint + tests.
-- Added lint, unit tests, and a CI workflow.
+
 ### 20 Oct, 2026
 
 - Added a global Tutorials section in the sidebar: same tutorial/notes experience as the Dojo, but stored under a global collection that belongs to no single art (reuses the existing tables — no migration).
@@ -82,9 +82,9 @@
 - Belt promotions (skill and art) are detected when proficiency is awarded and celebrated — they were completely silent before.
 - Added a Settings screen (sidebar → Settings): toggle sound and haptics (persisted, effective immediately), and edit hunter profile (name, age, weight, height) without exporting/importing a backup.
 - Sound and haptic toggles are now honored app-wide via a single gate in the sound/haptic modules — turning them off silences everything, including the boot sound.
-
-### 22 Oct, 2026
-
 - Added a Progress screen (Profile → View Progress): weekly EXP bar chart (last 12 weeks), level progression by week-end, and body-weight trend.
 - Added body metrics logging: log your weight with an optional note; the player's weight updates automatically and is used everywhere the System knows a weight.
 - Added a Body panel on the Profile screen showing current weight/height and entry count, with a shortcut to log and view the trend.
+- Primary actions are now pinned in an action bar instead of being buried at the bottom of the screen: the workout picker's "Add N Workouts", the session's complete/abandon, saving the hunter profile, and every create/edit form (skills, tutorials, workouts, plans, martial arts).
+- The workout picker's target setup (sets, units and the EXP preview) now opens right under the selected workout, and the pinned bar spells out what is about to be added.
+- Fixed the Android media picker: it opens the device gallery instead of the Google Photos cloud library, and says so clearly when photo permission is denied.
