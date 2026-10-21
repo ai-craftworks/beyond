@@ -10,6 +10,7 @@
  * animated inline and in the fullscreen viewer.
  */
 
+import { Alert, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Directory, File, Paths } from 'expo-file-system';
 import { MediaType } from '../database/Database';
@@ -55,13 +56,28 @@ export const persistMedia = async (
 /** Opens the system library picker and persists the chosen image/GIF/video. */
 export const pickMedia = async (): Promise<PickedMedia | null> => {
   const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-  if (!permission.granted) return null;
+  if (!permission.granted) {
+    Alert.alert(
+      'Permission needed',
+      'Allow access to your photos and files to attach media.',
+    );
+    return null;
+  }
 
-  const result = await ImagePicker.launchImageLibraryAsync({
+  const options: ImagePicker.ImagePickerOptions = {
     mediaTypes: ['images', 'videos'],
     allowsEditing: false,
     quality: 1,
-  });
+  };
+
+  // On Android the default picker is the system Photo Picker, which is backed
+  // by Google Photos and shows the cloud library instead of the device's own
+  // gallery. The legacy picker opens the system file/gallery browser
+  // (ACTION_GET_CONTENT) filtered to image/* and video/*, so local photos and
+  // videos are both reachable. Ignored on iOS.
+  if (Platform.OS === 'android') options.legacy = true;
+
+  const result = await ImagePicker.launchImageLibraryAsync(options);
   if (result.canceled || result.assets.length === 0) return null;
 
   const asset = result.assets[0];

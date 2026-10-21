@@ -198,8 +198,6 @@ const MartialArtDetailScreen: React.FC = () => {
           })
         )}
 
-        <SystemButton title="Add Skill" icon="add" variant="ghost"
-          style={styles.addBtn} onPress={() => setSkillModal(true)} />
         </>)}
 
         {tab === 'tutorials' && <TutorialsSection martialArtId={artId} />}
@@ -254,8 +252,6 @@ const styles = StyleSheet.create({
   skillMetaTxt: { color: COLORS.textMuted, fontSize: 11, fontWeight: '600' },
   skillRight:{ flexDirection: 'row', alignItems: 'center', gap: 6 },
   skillLvl:  { color: COLORS.accentCyan, fontSize: 13, fontWeight: '700' },
-
-  addBtn:    { marginTop: 8 },
 });
 
 export default MartialArtDetailScreen;

@@ -59,7 +59,7 @@ export const SystemButton: React.FC<BtnProps> = ({
         : (
           <View style={styles.btnRow}>
             {icon && <Ionicons name={icon} size={16} color={clr} />}
-            <Text style={[styles.btnText, { color: clr }, textStyle]}>{title}</Text>
+            <Text style={[styles.btnText, { color: clr }, textStyle]} numberOfLines={1}>{title}</Text>
           </View>
         )}
     </TouchableOpacity>
@@ -458,7 +458,7 @@ const styles = StyleSheet.create({
   btnRow:       { flexDirection: 'row', alignItems: 'center', gap: 8 },
   btnGhost:     { borderWidth: 1, borderColor: COLORS.accentCyan },
   btnDisabled:  { opacity: 0.4 },
-  btnText:      { fontSize: 14, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase' },
+  btnText:      { fontSize: 14, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase', flexShrink: 1 },
 
   inputWrap:    { marginBottom: 14 },
   inputLabel:   { color: COLORS.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 },

@@ -15,6 +15,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SystemButton } from './UIComponents';
+import ActionBar from './ActionBar';
 import MediaViewer from './MediaViewer';
 import { COLORS, EXERCISE_CATEGORIES, expBadgeLabel, prLabel, parseUnits, parseBodyParts, parseGroupIds, statAccent, bodyPartLabel } from '../constants/game';
 import { Exercise, Group } from '../database/Database';
@@ -55,8 +56,8 @@ const ExerciseDetailSheet: React.FC<ExerciseDetailSheetProps> = ({
           <View style={styles.handle} />
           <Text style={styles.sheetTitle}>◆ WORKOUT</Text>
 
-          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingBottom: 24 }}>
+          <ScrollView style={styles.body} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 16 }}>
             {hasMedia && (
               <View style={styles.mediaWrap}>
                 <MediaViewer mediaType={exercise.media_type} mediaUri={exercise.media_uri} />
@@ -128,13 +129,16 @@ const ExerciseDetailSheet: React.FC<ExerciseDetailSheetProps> = ({
               </>
             )}
 
-            <View style={styles.actions}>
-              <SystemButton title="Edit" icon="create-outline" variant="ghost"
-                style={styles.flex1} onPress={() => onEdit(exercise)} />
-              <SystemButton title="Delete" icon="trash-outline" variant="danger"
-                style={styles.flex1} onPress={() => onDelete(exercise)} />
-            </View>
           </ScrollView>
+
+          {/* Pinned outside the scroll view so the actions are always
+              reachable, however long the workout description is. */}
+          <ActionBar style={styles.footer}>
+            <SystemButton title="Edit" icon="create-outline" variant="ghost"
+              style={styles.flex1} onPress={() => onEdit(exercise)} />
+            <SystemButton title="Delete" icon="trash-outline" variant="danger"
+              style={styles.flex1} onPress={() => onDelete(exercise)} />
+          </ActionBar>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -161,7 +165,8 @@ const styles = StyleSheet.create({
   chipSoftTxt:{ color: COLORS.textMuted, fontSize: 11, fontWeight: '600' },
   dot:        { width: 6, height: 6, borderRadius: 3 },
 
-  actions:    { flexDirection: 'row', gap: 12, marginTop: 22 },
+  body:       { flexShrink: 1 },
+  footer:     { marginTop: 16 },
   flex1:      { flex: 1 },
 });
 

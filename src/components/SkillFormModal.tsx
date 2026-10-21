@@ -12,6 +12,7 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { SystemButton, SystemInput, SystemMultiDropdown } from './UIComponents';
+import ActionBar from './ActionBar';
 import MediaField from './MediaField';
 import { COLORS } from '../constants/game';
 import {
@@ -109,8 +110,8 @@ const SkillFormModal: React.FC<SkillFormModalProps> = ({
         <View style={[styles.sheet, { paddingBottom: 20 + insets.bottom }]}>
           <View style={styles.handle} />
           <Text style={styles.sheetTitle}>◆ {initial ? 'EDIT' : 'NEW'} SKILL</Text>
-          <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
-            contentContainerStyle={{ paddingBottom: 40 }}>
+          <ScrollView style={styles.body} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 16 }}>
             <SystemInput label="Name" value={name} onChangeText={setName} placeholder="e.g. Roundhouse Kick" />
             <SystemInput label="Description" value={desc} onChangeText={setDesc}
               placeholder="Optional..." multiline />
@@ -129,12 +130,15 @@ const SkillFormModal: React.FC<SkillFormModalProps> = ({
               onChange={handleMediaChange}
             />
 
-            <View style={styles.row}>
-              <SystemButton title="Cancel" variant="ghost" style={styles.flex1} onPress={handleClose} />
-              <SystemButton title={initial ? 'Save' : 'Create'} style={styles.flex1}
-                onPress={handleSave} loading={saving} />
-            </View>
           </ScrollView>
+
+          {/* Pinned outside the scroll view so the form can be submitted
+              without scrolling to the bottom of it. */}
+          <ActionBar style={styles.footer}>
+            <SystemButton title="Cancel" variant="ghost" style={styles.flex1} onPress={handleClose} />
+            <SystemButton title={initial ? 'Save' : 'Create'} style={styles.flex1}
+              onPress={handleSave} loading={saving} />
+          </ActionBar>
         </View>
       </KeyboardAvoidingView>
     </Modal>
@@ -147,7 +151,8 @@ const styles = StyleSheet.create({
   handle:       { width: 40, height: 4, backgroundColor: COLORS.borderMain, borderRadius: 2, alignSelf: 'center', marginBottom: 16 },
   sheetTitle:   { color: COLORS.accentCyan, fontSize: 13, fontWeight: '700', letterSpacing: 2, marginBottom: 18 },
 
-  row:          { flexDirection: 'row', gap: 12, marginTop: 14 },
+  body:         { flexShrink: 1 },
+  footer:       { marginTop: 16 },
   flex1:        { flex: 1 },
 });
 

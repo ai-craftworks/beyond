@@ -12,6 +12,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getPlayer, updatePlayer, Player, setSetting } from '../database/Database';
 import { SystemPanel, SystemButton, SystemInput, SectionHeader } from '../components/UIComponents';
+import ActionBar from '../components/ActionBar';
 import { COLORS } from '../constants/game';
 import { setSoundsEnabled, areSoundsEnabled } from '../utils/sounds';
 import { setHapticsEnabled, areHapticsEnabled, hapticTap } from '../utils/haptics';
@@ -84,7 +85,7 @@ const SettingsScreen: React.FC = () => {
 
   return (
     <KeyboardAvoidingView style={styles.root} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 60 + insets.bottom }]}
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 24 }]}
         keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
 
         <SystemPanel>
@@ -122,10 +123,22 @@ const SettingsScreen: React.FC = () => {
           <SystemInput label="AGE" value={age} onChangeText={setAge} placeholder="Age" keyboardType="numeric" />
           <SystemInput label="WEIGHT (KG)" value={weight} onChangeText={setWeight} placeholder="Weight" keyboardType="decimal-pad" />
           <SystemInput label="HEIGHT (CM)" value={height} onChangeText={setHeight} placeholder="Height" keyboardType="decimal-pad" />
-          <SystemButton title="Save Profile" icon="save-outline" onPress={saveProfile} loading={saving}
-            style={styles.saveBtn} />
         </SystemPanel>
       </ScrollView>
+
+      <ActionBar
+        style={[styles.actionBar, { paddingBottom: 12 + insets.bottom }]}
+        label="Hunter Profile"
+      >
+        <SystemButton
+          title="Save Profile"
+          icon="save-outline"
+          style={styles.barBtn}
+          textStyle={styles.barBtnTxt}
+          onPress={saveProfile}
+          loading={saving}
+        />
+      </ActionBar>
     </KeyboardAvoidingView>
   );
 };
@@ -140,7 +153,9 @@ const styles = StyleSheet.create({
   toggleSub:    { color: COLORS.textMuted, fontSize: 11, marginTop: 2 },
   toggleDivider:{ height: 1, backgroundColor: COLORS.borderMain, marginVertical: 4 },
 
-  saveBtn:      { marginTop: 18 },
+  actionBar:    { paddingHorizontal: 16, paddingTop: 12, backgroundColor: COLORS.bgSecondary, borderTopWidth: 1, borderTopColor: COLORS.borderMain },
+  barBtn:       { paddingHorizontal: 18 },
+  barBtnTxt:    { fontSize: 13, letterSpacing: 1 },
 });
 
 export default SettingsScreen;
