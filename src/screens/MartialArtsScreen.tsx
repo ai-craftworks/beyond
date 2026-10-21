@@ -17,6 +17,7 @@ import {
   getMartialArts, createMartialArt, updateMartialArt, deleteMartialArt, MartialArt,
 } from '../database/Database';
 import { SystemButton, SystemInput, SectionHeader, EmptyState, ExpBar } from '../components/UIComponents';
+import ActionBar from '../components/ActionBar';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, getBeltForLevel } from '../constants/game';
 import { deleteMedia } from '../utils/media';
@@ -226,8 +227,8 @@ const MartialArtsScreen: React.FC = () => {
           <View style={[styles.sheet, { paddingBottom: 20 + insets.bottom }]}>
             <View style={styles.handle} />
             <Text style={styles.sheetTitle}>◆ {editing ? 'EDIT' : 'NEW'} MARTIAL ART</Text>
-            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: 40 }}>
+            <ScrollView style={styles.body} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 16 }}>
               <SystemInput label="Name" value={name} onChangeText={setName} placeholder="e.g. Karate" />
               <SystemInput label="Description" value={desc} onChangeText={setDesc}
                 placeholder="Optional..." multiline />
@@ -255,13 +256,16 @@ const MartialArtsScreen: React.FC = () => {
                 ))}
               </View>
 
-              <View style={styles.row}>
-                <SystemButton title="Cancel" variant="ghost" style={styles.flex1}
-                  onPress={() => { setModal(false); setEditing(null); }} />
-                <SystemButton title={editing ? 'Save' : 'Create'} style={styles.flex1}
-                  onPress={handleSave} loading={saving} />
-              </View>
             </ScrollView>
+
+            {/* Pinned outside the scroll view so the form can be submitted
+                without scrolling to the bottom of it. */}
+            <ActionBar style={styles.footer}>
+              <SystemButton title="Cancel" variant="ghost" style={styles.flex1}
+                onPress={() => { setModal(false); setEditing(null); }} />
+              <SystemButton title={editing ? 'Save' : 'Create'} style={styles.flex1}
+                onPress={handleSave} loading={saving} />
+            </ActionBar>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -304,8 +308,9 @@ const styles = StyleSheet.create({
   colorChip:   { width: 36, height: 36, borderRadius: 18, borderWidth: 2, borderColor: 'transparent' },
   colorChipOn: { borderColor: COLORS.textPrimary },
 
-  row:         { flexDirection: 'row', gap: 12, marginTop: 6 },
   flex1:       { flex: 1 },
+  body:        { flexShrink: 1 },
+  footer:      { marginTop: 16 },
 });
 
 export default MartialArtsScreen;

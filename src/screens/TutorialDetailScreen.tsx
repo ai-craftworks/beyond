@@ -133,6 +133,7 @@ const TutorialDetailScreen: React.FC = () => {
         <SectionHeader
           title="Series"
           subtitle={notes.length === 0 ? 'No notes yet' : 'Tap a note to read it · arrows reorder'}
+          action={{ label: '+ Add Note', onPress: () => navigation.navigate('NoteEditor', { tutorialId }) }}
         />
 
         {notes.length === 0 ? (
@@ -191,9 +192,6 @@ const TutorialDetailScreen: React.FC = () => {
           })
         )}
 
-        <SystemButton title="Add Note" icon="add" variant="ghost"
-          style={styles.addBtn}
-          onPress={() => navigation.navigate('NoteEditor', { tutorialId })} />
       </ScrollView>
 
       <TutorialFormModal
@@ -234,8 +232,6 @@ const styles = StyleSheet.create({
   moveCol:   { justifyContent: 'center', gap: 4 },
   moveBtn:   { width: 30, height: 30, borderRadius: 8, borderWidth: 1, borderColor: COLORS.borderMain, backgroundColor: COLORS.bgSecondary, alignItems: 'center', justifyContent: 'center' },
   moveBtnOff:{ opacity: 0.5 },
-
-  addBtn:    { marginTop: 8 },
 });
 
 export default TutorialDetailScreen;

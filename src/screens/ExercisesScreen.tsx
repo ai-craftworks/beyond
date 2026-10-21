@@ -8,6 +8,7 @@ import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { createExercise, deleteExercise, updateExercise, Exercise, MediaType, getExercises, getGroups, Group } from '../database/Database';
 import { SystemButton, SystemInput, SectionHeader, EmptyState, SystemDropdown, SystemMultiDropdown, FilterSheet, FilterSection, FilterChip, FilterButton } from '../components/UIComponents';
+import ActionBar from '../components/ActionBar';
 import MediaField from '../components/MediaField';
 import WorkoutRow from '../components/WorkoutRow';
 import ExerciseDetailSheet from '../components/ExerciseDetailSheet';
@@ -343,9 +344,10 @@ const ExercisesScreen: React.FC = () => {
             <View style={styles.handle} />
             <Text style={styles.sheetTitle}>◆ NEW EXERCISE</Text>
             <ScrollView
+              style={styles.body}
               keyboardShouldPersistTaps="handled"
               showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: 40 }}
+              contentContainerStyle={{ paddingBottom: 16 }}
             >
               <SystemInput label="Name" value={name} onChangeText={setName} placeholder="e.g. Push-ups" />
               <SystemInput label="Description" value={desc} onChangeText={setDesc} placeholder="Optional..." multiline />
@@ -488,13 +490,16 @@ const ExercisesScreen: React.FC = () => {
                 onChange={handleCreateMediaChange}
               />
 
-              <View style={styles.row}>
-                <SystemButton title="Cancel" variant="ghost" style={styles.flex1}
-                  onPress={closeCreateModal} />
-                <SystemButton title="Create" style={styles.flex1}
-                  onPress={handleCreate} loading={loading} />
-              </View>
             </ScrollView>
+
+            {/* Pinned outside the scroll view so the form can be submitted
+                without scrolling to the bottom of it. */}
+            <ActionBar style={styles.footer}>
+              <SystemButton title="Cancel" variant="ghost" style={styles.flex1}
+                onPress={closeCreateModal} />
+              <SystemButton title="Create" style={styles.flex1}
+                onPress={handleCreate} loading={loading} />
+            </ActionBar>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -508,8 +513,8 @@ const ExercisesScreen: React.FC = () => {
           <View style={[styles.sheet, { paddingBottom: 20 + insets.bottom }]}>
             <View style={styles.handle} />
             <Text style={styles.sheetTitle}>◆ EDIT EXERCISE</Text>
-            <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: 40 }}>
+            <ScrollView style={styles.body} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 16 }}>
               <SystemInput label="Name" value={editName} onChangeText={setEditName} />
               <SystemInput label="Description" value={editDesc} onChangeText={setEditDesc} multiline />
 
@@ -630,13 +635,16 @@ const ExercisesScreen: React.FC = () => {
                 onChange={handleEditMediaChange}
               />
 
-              <View style={styles.row}>
-                <SystemButton title="Cancel" variant="ghost" style={styles.flex1}
-                  onPress={closeEditModal} />
-                <SystemButton title="Save" style={styles.flex1}
-                  onPress={handleSaveEdit} loading={editLoading} />
-              </View>
             </ScrollView>
+
+            {/* Pinned outside the scroll view so the form can be submitted
+                without scrolling to the bottom of it. */}
+            <ActionBar style={styles.footer}>
+              <SystemButton title="Cancel" variant="ghost" style={styles.flex1}
+                onPress={closeEditModal} />
+              <SystemButton title="Save" style={styles.flex1}
+                onPress={handleSaveEdit} loading={editLoading} />
+            </ActionBar>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -716,6 +724,8 @@ const styles = StyleSheet.create({
 
   row:        { flexDirection: 'row', gap: 12, marginBottom: 6 },
   flex1:      { flex: 1 },
+  body:       { flexShrink: 1 },
+  footer:     { marginTop: 16 },
 
   perLabel:    { justifyContent: 'flex-end', paddingBottom: 14, alignItems: 'center', paddingHorizontal: 6 },
   perLabelTxt: { color: COLORS.textSecondary, fontSize: 13, fontWeight: '600' },

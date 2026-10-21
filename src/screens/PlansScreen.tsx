@@ -17,6 +17,7 @@ import {
   getGroups, setPlanGroups, Group,
 } from '../database/Database';
 import { SystemButton, SystemInput, SectionHeader, EmptyState, SystemMultiDropdown, FilterSheet, FilterSection, FilterChip, FilterButton } from '../components/UIComponents';
+import ActionBar from '../components/ActionBar';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, parseGroupIds } from '../constants/game';
 import { filterPlans } from '../utils/filterPlans';
@@ -217,7 +218,7 @@ const PlansScreen: React.FC = () => {
           <View style={[styles.sheet, { paddingBottom: 20 + insets.bottom }]}>
             <View style={styles.handle} />
             <Text style={styles.sheetTitle}>◆ NEW PLAN</Text>
-            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
+            <ScrollView style={styles.body} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 16 }}>
               <SystemInput label="Plan Name" value={planName} onChangeText={setPlanName} placeholder="e.g. Morning Grind" />
               <SystemInput label="Description" value={planDesc} onChangeText={setPlanDesc} placeholder="Optional..." multiline />
               <Text style={styles.selectLbl}>REPEAT DAYS</Text>
@@ -244,11 +245,14 @@ const PlansScreen: React.FC = () => {
                 onChange={ids => setCreateGroups(ids.map(Number))}
                 placeholder={groups.length === 0 ? 'No groups yet' : 'Any'}
               />
-              <View style={styles.row}>
-                <SystemButton title="Cancel" variant="ghost" style={styles.flex1} onPress={() => setCreateModal(false)} />
-                <SystemButton title="Create" style={styles.flex1} onPress={handleCreatePlan} />
-              </View>
             </ScrollView>
+
+            {/* Pinned outside the scroll view so the form can be submitted
+                without scrolling to the bottom of it. */}
+            <ActionBar style={styles.footer}>
+              <SystemButton title="Cancel" variant="ghost" style={styles.flex1} onPress={() => setCreateModal(false)} />
+              <SystemButton title="Create" style={styles.flex1} onPress={handleCreatePlan} />
+            </ActionBar>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -259,7 +263,7 @@ const PlansScreen: React.FC = () => {
           <View style={[styles.sheet, { paddingBottom: 20 + insets.bottom }]}>
             <View style={styles.handle} />
             <Text style={styles.sheetTitle}>◆ EDIT PLAN</Text>
-            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 40 }}>
+            <ScrollView style={styles.body} keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: 16 }}>
               <SystemInput label="Plan Name" value={editPlanName} onChangeText={setEditPlanName} />
               <SystemInput label="Description" value={editPlanDesc} onChangeText={setEditPlanDesc} multiline />
 
@@ -291,12 +295,15 @@ const PlansScreen: React.FC = () => {
                 placeholder={groups.length === 0 ? 'No groups yet' : 'Any'}
               />
 
-              <View style={styles.row}>
-                <SystemButton title="Cancel" variant="ghost" style={styles.flex1}
-                  onPress={() => { setEditPlanModal(false); setEditPlanTarget(null); }} />
-                <SystemButton title="Save" style={styles.flex1} onPress={handleSaveEditPlan} />
-              </View>
             </ScrollView>
+
+            {/* Pinned outside the scroll view so the form can be submitted
+                without scrolling to the bottom of it. */}
+            <ActionBar style={styles.footer}>
+              <SystemButton title="Cancel" variant="ghost" style={styles.flex1}
+                onPress={() => { setEditPlanModal(false); setEditPlanTarget(null); }} />
+              <SystemButton title="Save" style={styles.flex1} onPress={handleSaveEditPlan} />
+            </ActionBar>
           </View>
         </KeyboardAvoidingView>
       </Modal>
@@ -420,8 +427,9 @@ const styles = StyleSheet.create({
   dayTxt:       { color: COLORS.textSecondary, fontSize: 12, fontWeight: '600' },
   dayTxtOn:     { color: COLORS.accentCyan },
   hint:         { color: COLORS.textMuted, fontSize: 11, marginBottom: 16 },
-  row:          { flexDirection: 'row', gap: 12, marginBottom: 8 },
   flex1:        { flex: 1 },
+  body:         { flexShrink: 1 },
+  footer:       { marginTop: 16 },
 
   penaltyRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 },
   penaltyTxt: { color: COLORS.accentRed, fontSize: 11, fontWeight: '600' },

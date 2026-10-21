@@ -12,7 +12,7 @@ import { Text, View, StyleSheet, TouchableOpacity } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { getTutorials, getUnassignedNotes, parseNoteMedia, Tutorial, Note } from '../database/Database';
-import { SectionHeader, SystemButton, EmptyState } from './UIComponents';
+import { SectionHeader, EmptyState } from './UIComponents';
 import TutorialFormModal from './TutorialFormModal';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS } from '../constants/game';
@@ -112,10 +112,6 @@ const TutorialsSection: React.FC<{ martialArtId: number }> = ({ martialArtId }) 
         })}
       </>)}
 
-      <SystemButton title="New Tutorial" icon="add" variant="ghost"
-        style={styles.addBtn}
-        onPress={() => { setTutorialInitial(null); setTutorialModal(true); }} />
-
       <TutorialFormModal
         visible={tutorialModal}
         martialArtId={martialArtId}
@@ -141,8 +137,6 @@ const styles = StyleSheet.create({
   notePreview:{ color: COLORS.textSecondary, fontSize: 12, lineHeight: 17, marginBottom: 6 },
   noteMeta:  { flexDirection: 'row', alignItems: 'center', gap: 4 },
   noteMetaTxt:{ color: COLORS.textMuted, fontSize: 11, fontWeight: '600' },
-
-  addBtn:    { marginTop: 8 },
 });
 
 export default TutorialsSection;

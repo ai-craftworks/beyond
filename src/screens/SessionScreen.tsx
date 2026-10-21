@@ -16,6 +16,7 @@ import {
   awardMartialProficiency, getLifetimeStats, BeltPromotion,
 } from '../database/Database';
 import { SystemPanel, SystemButton, ExpBar } from '../components/UIComponents';
+import ActionBar from '../components/ActionBar';
 import WorkoutRow from '../components/WorkoutRow';
 import { Ionicons } from '@expo/vector-icons';
 import LevelUpModal from '../components/LevelUpModal';
@@ -551,6 +552,11 @@ const SessionScreen: React.FC = () => {
   const completedCount = exercises.filter(e => e.is_completed).length;
   const progressPct    = exercises.length > 0 ? (completedCount / exercises.length) * 100 : 0;
 
+  // What the pinned bar offers: claim leftover bonus EXP once the session is
+  // logged, otherwise finish the session as soon as one quest is done.
+  const hasUnclaimedBonus = bonusExercises.some(b => b.is_completed && !b.exp_awarded);
+  const anyQuestDone = completedCount > 0 || bonusExercises.some(b => b.is_completed);
+
   // Amount modal data
   const pendingUnits = pendingExercise
     ? specsOf(pendingExercise.units, pendingExercise.unit_type)
@@ -584,7 +590,7 @@ const SessionScreen: React.FC = () => {
         </Animated.View>
       )}
 
-      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 60 + insets.bottom }]} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingBottom: 24 }]} showsVerticalScrollIndicator={false}>
         {/* Progress header — the native header already names the quest */}
         <View style={styles.sessionHdr}>
           <Text style={styles.sessionProgress}>{completedCount} / {exercises.length}</Text>
@@ -635,38 +641,49 @@ const SessionScreen: React.FC = () => {
           ))
         )}
 
-        {/* Actions */}
-        {isAlreadyCompleted ? (
-          /* Session already done — show completed banner, plus "Claim Bonus EXP"
-             when newly-completed bonus quests have unclaimed rewards. */
+        {/* Session already done — the banner explains the state; the action
+            itself lives in the pinned bar below. */}
+        {isAlreadyCompleted && (
           <View style={styles.completedBanner}>
             <Ionicons name="checkmark-circle" size={28} color={COLORS.accentGreen} />
             <Text style={styles.completedBannerText}>QUEST COMPLETED</Text>
             <Text style={styles.completedBannerSub}>You can still add bonus exercises above</Text>
-            {bonusExercises.some(b => b.is_completed && !b.exp_awarded) && (
-              <SystemButton
-                title={finishing ? 'Processing...' : 'CLAIM BONUS EXP'}
-                icon="flag"
-                onPress={handleFinishSession}
-                loading={finishing}
-                style={styles.finishBtn}
-              />
-            )}
           </View>
-        ) : (
-          <>
-            <SystemButton
-              title={finishing ? 'Processing...' : 'COMPLETE SESSION'}
-              icon="fitness"
-              onPress={handleFinishSession}
-              loading={finishing}
-              disabled={(exercises.filter(e => e.is_completed).length === 0 && bonusExercises.filter(e => e.is_completed).length === 0) || finishing}
-              style={styles.finishBtn}
-            />
-            <SystemButton title="Abandon Session" variant="ghost" onPress={abandonSession} disabled={finishing} style={styles.abandonBtn} />
-          </>
         )}
       </ScrollView>
+
+      {/* The session's primary action is pinned so it is reachable no matter
+          how many quests are queued up. */}
+      <ActionBar
+        stacked
+        style={[styles.actionBar, { paddingBottom: 12 + insets.bottom }]}
+        label={`${completedCount} / ${exercises.length} quests`}
+        hint={isAlreadyCompleted ? 'Session already logged' : undefined}
+        secondary={isAlreadyCompleted ? undefined : { label: 'Abandon Session', onPress: abandonSession, disabled: finishing }}
+      >
+        {isAlreadyCompleted ? (
+          hasUnclaimedBonus && (
+            <SystemButton
+              title={finishing ? 'Processing...' : 'CLAIM BONUS EXP'}
+              icon="flag"
+              style={styles.barBtn}
+              textStyle={styles.barBtnTxt}
+              onPress={handleFinishSession}
+              loading={finishing}
+            />
+          )
+        ) : (
+          <SystemButton
+            title={finishing ? 'Processing...' : 'COMPLETE SESSION'}
+            icon="fitness"
+            style={styles.barBtn}
+            textStyle={styles.barBtnTxt}
+            onPress={handleFinishSession}
+            loading={finishing}
+            disabled={!anyQuestDone || finishing}
+          />
+        )}
+      </ActionBar>
 
       {/* QUEST CLEAR summary — shown on every finish; Continue exits the quest.
           Rendered before the level-up modal so LEVEL UP rises on top of it. */}
@@ -830,8 +847,9 @@ const styles = StyleSheet.create({
 
   tapHint:       { color: COLORS.textMuted, fontSize: 10, fontStyle: 'italic', marginTop: 4 },
 
-  finishBtn:     { marginTop: 20, marginBottom: 8 },
-  abandonBtn:    {},
+  actionBar:     { paddingHorizontal: 16, paddingTop: 12, backgroundColor: COLORS.bgSecondary, borderTopWidth: 1, borderTopColor: COLORS.borderMain },
+  barBtn:        { flex: 1 },
+  barBtnTxt:     { fontSize: 13, letterSpacing: 1 },
 
   // Amount input modal
   amountOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'flex-end' },

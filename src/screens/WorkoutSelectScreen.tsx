@@ -7,10 +7,11 @@
  *   - mode 'skill' → tag one or more workouts to a martial-art skill (multi-select)
  */
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, FlatList, StyleSheet,
   TextInput, Alert, ActivityIndicator,
+  KeyboardAvoidingView, Platform,
 } from 'react-native';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -21,16 +22,77 @@ import {
   getTaggedExerciseIdsForSkill, Exercise, getGroups, Group,
 } from '../database/Database';
 import { SystemButton, SystemInput, EmptyState, FilterSheet, FilterSection, FilterChip, FilterButton } from '../components/UIComponents';
+import ActionBar from '../components/ActionBar';
 import WorkoutRow from '../components/WorkoutRow';
 import { Ionicons } from '@expo/vector-icons';
 import { COLORS, EXERCISE_CATEGORIES, BODY_PARTS, unitSuffix, statAccent, expBadgeLabel, workoutMetaLine } from '../constants/game';
-import { expForUnits, UnitValue } from '../utils/math';
+import { expForUnits, UnitValue, UnitSpec } from '../utils/math';
 import { specsOf, primarySpecOf } from '../utils/units';
 import { filterExercises } from '../utils/filterExercises';
 import { RootStackParamList } from '../../App';
 
 type Route = RouteProp<RootStackParamList, 'WorkoutSelect'>;
 type Nav   = NativeStackNavigationProp<RootStackParamList>;
+
+/** A row in the picker list: either a workout, or the target panel that sits
+ *  directly underneath the selected workout. */
+type PickerRow =
+  | { kind: 'exercise'; ex: Exercise }
+  | { kind: 'target' };
+
+interface TargetPanelProps {
+  isPlan: boolean;
+  sets: string;
+  onChangeSets: (v: string) => void;
+  specs: UnitSpec[];
+  primary: string;
+  values: Record<string, string>;
+  onChangeValue: (type: string, value: string) => void;
+  previewExp: number;
+}
+
+/**
+ * The TARGET box: sets + per-unit targets + EXP preview.
+ * Rendered inline, right below the workout the user picked, so the unit setup
+ * is never below the fold. The commit action lives in the pinned bar.
+ */
+const TargetPanel: React.FC<TargetPanelProps> = ({
+  isPlan, sets, onChangeSets, specs, primary, values, onChangeValue, previewExp,
+}) => (
+  <View style={styles.targetPanel}>
+    <View style={styles.targetHeader}>
+      <Text style={styles.selectLbl}>TARGET</Text>
+      <Text style={styles.targetHint}>Prefilled from the workout defaults</Text>
+    </View>
+
+    {isPlan && (
+      <SystemInput label="Sets" value={sets} onChangeText={onChangeSets} keyboardType="numeric" />
+    )}
+
+    {specs.map(s => {
+      const isPrimary = s.type === primary;
+      return (
+        <View key={s.type} style={styles.unitRow}>
+          <Text style={styles.unitRowLbl}>{unitSuffix(s.type)}{isPrimary ? ' · EXP' : ''}</Text>
+          <TextInput
+            style={styles.unitRowInput}
+            value={values[s.type] ?? ''}
+            onChangeText={v => onChangeValue(s.type, v)}
+            keyboardType="decimal-pad"
+            placeholder="0"
+            placeholderTextColor={COLORS.textMuted}
+          />
+        </View>
+      );
+    })}
+
+    <Text style={styles.expPreview}>
+      ≈ {previewExp} EXP{isPlan && Number(sets) > 1 ? ` · ${Number(sets)} sets` : ''}
+    </Text>
+
+    <Text style={styles.confirmHint}>Confirm with ADD below</Text>
+  </View>
+);
 
 const WorkoutSelectScreen: React.FC = () => {
   const route      = useRoute<Route>();
@@ -142,7 +204,27 @@ const WorkoutSelectScreen: React.FC = () => {
     }
   };
 
-  const exShown = filterExercises(exercises, { search, category: cat, bodyParts: parts, groups: groupFilter.map(Number) });
+  const exShown = useMemo(
+    () => filterExercises(exercises, { search, category: cat, bodyParts: parts, groups: groupFilter.map(Number) }),
+    [exercises, search, cat, parts, groupFilter],
+  );
+
+  // The target panel is a list row of its own, inserted directly underneath
+  // the selected workout so the unit setup is never below the fold.
+  const rows: PickerRow[] = useMemo(() => {
+    const out: PickerRow[] = [];
+    for (const ex of exShown) {
+      out.push({ kind: 'exercise', ex });
+      if (!isSkill && selected?.id === ex.id) out.push({ kind: 'target' });
+    }
+    return out;
+  }, [exShown, selected, isSkill]);
+
+  // FlatList only re-renders its cells when `data` or `extraData` changes.
+  // `data` changes on selection; this key changes whenever the target inputs
+  // do, so the panel's values and EXP preview stay live while typing.
+  const targetKey = useMemo(() => `${JSON.stringify(unitVals)}|${sets}`, [unitVals, sets]);
+
   const filterCount = (cat !== 'all' ? 1 : 0) + (parts.length > 0 ? 1 : 0) + (groupFilter.length > 0 ? 1 : 0);
   const resetFilters = () => { setCat('all'); setParts([]); setGroupFilter([]); };
   const togglePart = (v: string) => setParts(prev => prev.includes(v) ? prev.filter(x => x !== v) : [...prev, v]);
@@ -167,62 +249,41 @@ const WorkoutSelectScreen: React.FC = () => {
     </View>
   );
 
-  const listFooter = (
-    <View>
-      {/* Values (plan / bonus only) */}
-      {!isSkill && selected && (
-        <>
-          <Text style={styles.selectLbl}>TARGET</Text>
-          {isPlan && (
-            <SystemInput label="Sets" value={sets} onChangeText={setSets} keyboardType="numeric" />
-          )}
-          {specs.map(s => {
-            const isPrimary = s.type === primary;
-            return (
-              <View key={s.type} style={styles.unitRow}>
-                <Text style={styles.unitRowLbl}>{unitSuffix(s.type)}{isPrimary ? ' · EXP' : ''}</Text>
-                <TextInput
-                  style={styles.unitRowInput}
-                  value={unitVals[s.type] ?? ''}
-                  onChangeText={v => setUnitVals(prev => ({ ...prev, [s.type]: v }))}
-                  keyboardType="decimal-pad"
-                  placeholder="0"
-                  placeholderTextColor={COLORS.textMuted}
-                />
-              </View>
-            );
-          })}
-          <Text style={styles.expPreview}>
-            ≈ {previewExp} EXP{isPlan && Number(sets) > 1 ? ` · ${Number(sets)} sets` : ''}
-          </Text>
-        </>
-      )}
+  // The pinned bar mirrors whatever this mode is waiting on: how many
+  // workouts are tagged, or which workout + target is about to be committed.
+  const targetSummary = specs
+    .map(s => `${Number(unitVals[s.type]) || 0} ${unitSuffix(s.type)}`)
+    .join(' × ');
 
-      <View style={styles.row}>
-        <SystemButton title="Cancel" variant="ghost" style={styles.flex1} onPress={() => navigation.goBack()} />
-        <SystemButton
-          title={isSkill
-            ? `Add ${pickedIds.length} Workout${pickedIds.length === 1 ? '' : 's'}`
-            : isPlan ? 'Add' : 'Add Bonus'}
-          style={styles.flex1}
-          onPress={handleConfirm}
-          loading={submitting}
-          disabled={isSkill ? pickedIds.length === 0 : !selected}
-        />
-      </View>
-    </View>
-  );
+  const barLabel = isSkill
+    ? (pickedIds.length === 0 ? 'No workouts selected' : `${pickedIds.length} selected`)
+    : (selected ? selected.name : 'No workout selected');
+
+  const barHint = isSkill
+    ? (pickedIds.length === 0 ? 'Tap a workout to tag it' : 'Tap a tagged workout again to remove it')
+    : (selected
+      ? `${isPlan ? `${Number(sets) || 0} sets · ` : ''}${targetSummary} · ≈ ${previewExp} EXP`
+      : 'Pick a workout to set its target');
+
+  const barTitle = isSkill
+    ? (pickedIds.length > 0 ? `Add ${pickedIds.length} Workout${pickedIds.length === 1 ? '' : 's'}` : 'Add Workouts')
+    : (mode === 'bonus' ? 'Add Bonus' : 'Add');
+
+  const barDisabled = isSkill ? pickedIds.length === 0 : !selected;
 
   return (
-    <View style={styles.root}>
+    <KeyboardAvoidingView
+      style={styles.root}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+    >
       <FlatList
-        data={exShown}
-        keyExtractor={item => String(item.id)}
-        contentContainerStyle={[styles.content, { paddingBottom: 40 + insets.bottom }]}
+        data={rows}
+        keyExtractor={item => (item.kind === 'target' ? 'target' : String(item.ex.id))}
+        extraData={targetKey}
+        contentContainerStyle={[styles.content, { paddingBottom: 24 }]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
         ListHeaderComponent={listHeader}
-        ListFooterComponent={listFooter}
         ListEmptyComponent={
           loading ? (
             <ActivityIndicator color={COLORS.accentCyan} style={{ marginVertical: 24 }} />
@@ -230,7 +291,23 @@ const WorkoutSelectScreen: React.FC = () => {
             <EmptyState icon="barbell" title="No workouts match" subtitle="Try a different search or filter." />
           )
         }
-        renderItem={({ item: ex }) => {
+        renderItem={({ item }) => {
+          if (item.kind === 'target') {
+            return (
+              <TargetPanel
+                isPlan={isPlan}
+                sets={sets}
+                onChangeSets={setSets}
+                specs={specs}
+                primary={primary}
+                values={unitVals}
+                onChangeValue={(type, value) => setUnitVals(prev => ({ ...prev, [type]: value }))}
+                previewExp={previewExp}
+              />
+            );
+          }
+
+          const ex = item.ex;
           const tagged = isSkill && taggedIds.includes(ex.id!);
           const picked = isSkill && pickedIds.includes(ex.id!);
           const isOn   = isSkill ? (tagged || picked) : selected?.id === ex.id;
@@ -257,6 +334,21 @@ const WorkoutSelectScreen: React.FC = () => {
           );
         }}
       />
+
+      <ActionBar
+        style={[styles.actionBar, { paddingBottom: 12 + insets.bottom }]}
+        label={barLabel}
+        hint={barHint}
+      >
+        <SystemButton
+          title={barTitle}
+          style={styles.barBtn}
+          textStyle={styles.barBtnTxt}
+          onPress={handleConfirm}
+          loading={submitting}
+          disabled={barDisabled}
+        />
+      </ActionBar>
 
       <FilterSheet
         visible={filtersOpen}
@@ -289,7 +381,7 @@ const WorkoutSelectScreen: React.FC = () => {
           ))}
         </FilterSection>
       </FilterSheet>
-    </View>
+    </KeyboardAvoidingView>
   );
 };
 
@@ -306,13 +398,20 @@ const styles = StyleSheet.create({
 
   selectLbl:   { color: COLORS.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 1, marginBottom: 8, marginTop: 6, textTransform: 'uppercase' },
 
+  targetPanel: { backgroundColor: COLORS.bgSecondary, borderWidth: 1, borderColor: COLORS.accentCyan, borderRadius: 10, padding: 12, marginBottom: 10 },
+  targetHeader:{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 },
+  targetHint:  { color: COLORS.textMuted, fontSize: 10, fontStyle: 'italic' },
+
   unitRow:      { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 },
   unitRowLbl:   { color: COLORS.textSecondary, fontSize: 12, fontWeight: '700', width: 80 },
   unitRowInput: { flex: 1, backgroundColor: COLORS.bgTertiary, borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 9, color: COLORS.textPrimary, fontSize: 14 },
 
-  expPreview:  { color: COLORS.accentCyan, fontSize: 13, fontWeight: '600', textAlign: 'center', marginTop: 6, marginBottom: 10 },
-  row:         { flexDirection: 'row', gap: 12, marginTop: 16 },
-  flex1:       { flex: 1 },
+  expPreview:  { color: COLORS.accentCyan, fontSize: 13, fontWeight: '600', textAlign: 'center', marginTop: 6, marginBottom: 4 },
+  confirmHint: { color: COLORS.textMuted, fontSize: 10, fontStyle: 'italic', textAlign: 'center' },
+
+  actionBar:   { paddingHorizontal: 16, paddingTop: 12, backgroundColor: COLORS.bgSecondary, borderTopWidth: 1, borderTopColor: COLORS.borderMain },
+  barBtn:      { paddingHorizontal: 18 },
+  barBtnTxt:   { fontSize: 13, letterSpacing: 1 },
 });
 
 export default WorkoutSelectScreen;
