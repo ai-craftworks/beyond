@@ -146,6 +146,7 @@ const ChallengesScreen: React.FC = () => {
       </ScrollView>
 
       <ActionBar
+        stacked
         style={[styles.actionBar, { paddingBottom: 12 + insets.bottom }]}
         label={counts.active > 0 ? `${counts.active} ACTIVE` : 'NO ACTIVE CHALLENGES'}
         hint="Progress updates from every logged quest"
@@ -248,7 +249,7 @@ const styles = StyleSheet.create({
   cardTime:     { color: COLORS.textSecondary, fontSize: 11, fontWeight: '700' },
 
   actionBar:    { paddingHorizontal: 16, paddingTop: 12, backgroundColor: COLORS.bgSecondary, borderTopWidth: 1, borderTopColor: COLORS.borderMain },
-  barBtn:       { paddingHorizontal: 18 },
+  barBtn:       { flex: 1 },
   barBtnTxt:    { fontSize: 13, letterSpacing: 1 },
 });
 
