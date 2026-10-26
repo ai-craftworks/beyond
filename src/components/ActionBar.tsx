@@ -9,8 +9,10 @@
  * footers outside the scroll view; this is the same idea, reusable.
  *
  * Two layouts:
- *   - horizontal (default) — status on the left, buttons on the right.
- *   - stacked              — status on its own row, buttons full width below.
+ *   - horizontal — buttons only (Cancel / Create in sheets).
+ *   - stacked    — status on its own row, buttons full width below.
+ *     Used whenever there is status text (or `stacked` is passed), so a
+ *     primary CTA never competes with the label for width.
  */
 
 import React from 'react';
@@ -46,9 +48,11 @@ const ActionBar: React.FC<ActionBarProps> = ({
   label, hint, secondary, stacked, children, style, actionsStyle,
 }) => {
   const hasInfo = !!label || !!hint || !!secondary;
+  const isStacked = stacked || hasInfo;
+  const hasActions = React.Children.toArray(children).length > 0;
 
   const info = hasInfo ? (
-    <View style={[styles.info, stacked && styles.infoStack]}>
+    <View style={[styles.info, isStacked && styles.infoStack]}>
       <View style={styles.infoText}>
         {!!label && <Text style={styles.label} numberOfLines={1}>{label}</Text>}
         {!!hint && <Text style={styles.hint} numberOfLines={1}>{hint}</Text>}
@@ -68,11 +72,17 @@ const ActionBar: React.FC<ActionBarProps> = ({
     </View>
   ) : null;
 
-  if (stacked) {
+  const actions = hasActions ? (
+    <View style={[styles.actions, isStacked ? styles.actionsStack : styles.actionsGrow, actionsStyle]}>
+      {children}
+    </View>
+  ) : null;
+
+  if (isStacked) {
     return (
       <View style={[styles.bar, styles.barStack, style]}>
         {info}
-        <View style={[styles.actions, actionsStyle]}>{children}</View>
+        {actions}
       </View>
     );
   }
@@ -80,7 +90,7 @@ const ActionBar: React.FC<ActionBarProps> = ({
   return (
     <View style={[styles.bar, style]}>
       {info}
-      <View style={[styles.actions, !hasInfo && styles.actionsGrow, actionsStyle]}>{children}</View>
+      {actions}
     </View>
   );
 };
@@ -98,11 +108,12 @@ const styles = StyleSheet.create({
   hint:        { color: COLORS.textMuted, fontSize: 11, marginTop: 2 },
 
   secondaryBtn:{ borderWidth: 1, borderColor: COLORS.borderMain, borderRadius: 6, paddingHorizontal: 10, paddingVertical: 6 },
-  secondaryTxt:{ color: COLORS.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
   secondaryOff:{ opacity: 0.4 },
+  secondaryTxt:{ color: COLORS.textSecondary, fontSize: 11, fontWeight: '700', letterSpacing: 0.8, textTransform: 'uppercase' },
 
-  actions:     { flexDirection: 'row', alignItems: 'center', gap: 10, flexShrink: 1 },
-  actionsGrow: { flexGrow: 1 },
+  actions:      { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  actionsGrow:  { flexGrow: 1, flexShrink: 1 },
+  actionsStack: { alignSelf: 'stretch' },
 });
 
 export default ActionBar;

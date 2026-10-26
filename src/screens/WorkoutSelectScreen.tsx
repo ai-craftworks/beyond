@@ -336,6 +336,7 @@ const WorkoutSelectScreen: React.FC = () => {
       />
 
       <ActionBar
+        stacked
         style={[styles.actionBar, { paddingBottom: 12 + insets.bottom }]}
         label={barLabel}
         hint={barHint}
@@ -410,7 +411,7 @@ const styles = StyleSheet.create({
   confirmHint: { color: COLORS.textMuted, fontSize: 10, fontStyle: 'italic', textAlign: 'center' },
 
   actionBar:   { paddingHorizontal: 16, paddingTop: 12, backgroundColor: COLORS.bgSecondary, borderTopWidth: 1, borderTopColor: COLORS.borderMain },
-  barBtn:      { paddingHorizontal: 18 },
+  barBtn:      { flex: 1 },
   barBtnTxt:   { fontSize: 13, letterSpacing: 1 },
 });
 

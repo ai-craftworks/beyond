@@ -187,8 +187,7 @@ const PlansScreen: React.FC = () => {
           <>
             <SectionHeader title="Workout Plans"
               subtitle={filtersActive ? `${shown.length} / ${plans.length} shown` : `${plans.filter(p => p.is_active).length} active`}
-              secondary={{ label: 'Groups', onPress: () => navigation.navigate('Groups', { kind: 'plan' }) }}
-              action={{ label: '+ Create', onPress: () => setCreateModal(true) }} />
+              secondary={{ label: 'Groups', onPress: () => navigation.navigate('Groups', { kind: 'plan' }) }} />
 
             <View style={styles.searchRow}>
               <Ionicons name="search" size={16} color={COLORS.textMuted} />
@@ -211,6 +210,21 @@ const PlansScreen: React.FC = () => {
             onEdit={() => openEditPlan(item)} />
         )}
       />
+
+      <ActionBar
+        stacked
+        style={[styles.actionBar, { paddingBottom: 12 + insets.bottom }]}
+        label={`${plans.filter(p => p.is_active).length} ACTIVE`}
+        hint="Repeat days generate today's quests"
+      >
+        <SystemButton
+          title="New Plan"
+          icon="add"
+          style={styles.barBtn}
+          textStyle={styles.barBtnTxt}
+          onPress={() => setCreateModal(true)}
+        />
+      </ActionBar>
 
       {/* ── Create Plan Modal ── */}
       <Modal visible={createModal} animationType="slide" transparent onRequestClose={() => setCreateModal(false)}>
@@ -396,7 +410,7 @@ const PlanCard: React.FC<{
 
 const styles = StyleSheet.create({
   root:         { flex: 1, backgroundColor: COLORS.bgPrimary },
-  list:         { padding: 16, paddingBottom: 100 },
+  list:         { padding: 16, paddingBottom: 24 },
 
   planCard:     { backgroundColor: COLORS.bgSecondary, borderRadius: 10, borderWidth: 1, borderColor: COLORS.borderMain, marginBottom: 10, overflow: 'hidden' },
   planCardOn:   { borderColor: COLORS.accentCyan },
@@ -430,6 +444,10 @@ const styles = StyleSheet.create({
   flex1:        { flex: 1 },
   body:         { flexShrink: 1 },
   footer:       { marginTop: 16 },
+
+  actionBar:    { paddingHorizontal: 16, paddingTop: 12, backgroundColor: COLORS.bgSecondary, borderTopWidth: 1, borderTopColor: COLORS.borderMain },
+  barBtn:       { flex: 1 },
+  barBtnTxt:    { fontSize: 13, letterSpacing: 1 },
 
   penaltyRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 5 },
   penaltyTxt: { color: COLORS.accentRed, fontSize: 11, fontWeight: '600' },
