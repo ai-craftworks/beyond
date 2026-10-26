@@ -34,6 +34,8 @@ import GroupsScreen       from './src/screens/GroupsScreen';
 import TutorialsScreen    from './src/screens/TutorialsScreen';
 import SettingsScreen     from './src/screens/SettingsScreen';
 import HistoryScreen      from './src/screens/HistoryScreen';
+import ChallengesScreen   from './src/screens/ChallengesScreen';
+import ChallengeDetailScreen from './src/screens/ChallengeDetailScreen';
 import AboutScreen from './src/screens/AboutScreen';
 import { initAudio, playSound, setSoundsEnabled } from './src/utils/sounds';
 import { setHapticsEnabled } from './src/utils/haptics';
@@ -58,6 +60,8 @@ export type RootStackParamList = {
   Progress:         undefined;
   Guide:            undefined;
   History:          undefined;
+  Challenges:       undefined;
+  ChallengeDetail:  { challengeId: number };
 };
 
 export type TabParamList = {
@@ -400,6 +404,31 @@ const App: React.FC = () => {
               options={{
                 headerShown: true,
                 headerTitle: 'Quest Log',
+                headerStyle: styles.header,
+                headerTitleStyle: styles.headerTitle,
+                headerTintColor: COLORS.accentCyan,
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="Challenges"
+              component={ChallengesScreen}
+              options={{
+                headerShown: true,
+                headerTitle: 'Challenges',
+                headerLeft: () => <HamburgerButton />,
+                headerStyle: styles.header,
+                headerTitleStyle: styles.headerTitle,
+                headerTintColor: COLORS.accentCyan,
+                animation: 'slide_from_right',
+              }}
+            />
+            <Stack.Screen
+              name="ChallengeDetail"
+              component={ChallengeDetailScreen}
+              options={{
+                headerShown: true,
+                headerTitle: 'Challenge',
                 headerStyle: styles.header,
                 headerTitleStyle: styles.headerTitle,
                 headerTintColor: COLORS.accentCyan,

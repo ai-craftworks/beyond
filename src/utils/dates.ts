@@ -82,3 +82,54 @@ export const fmtRelativeDay = (value: string | Date, today?: Date): string => {
 /** Extract UTC calendar parts regardless of local timezone. */
 const utcParts = (d: Date): [number, number, number] =>
   [d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate()];
+
+/** Today's UTC date-only string — matches how sessions are keyed. */
+export const todayDateStr = (): string => new Date().toISOString().split('T')[0];
+
+const dayMs = 86_400_000;
+
+/** Shift a UTC date-only string by whole days (DST-proof). */
+export const addDaysUTC = (value: string, days: number): string => {
+  const p = dateOnlyParts(value);
+  if (!p) return value;
+  const d = new Date(Date.UTC(p.y, p.m - 1, p.d) + Math.round(days) * dayMs);
+  const [y, m, dd] = utcParts(d);
+  return `${y}-${String(m).padStart(2, '0')}-${String(dd).padStart(2, '0')}`;
+};
+
+/** Whole days from `a` to `b` (b - a), both UTC date-only strings. */
+export const diffDaysUTC = (a: string, b: string): number => {
+  const pa = dateOnlyParts(a);
+  const pb = dateOnlyParts(b);
+  if (!pa || !pb) return 0;
+  return Math.round(
+    (Date.UTC(pb.y, pb.m - 1, pb.d) - Date.UTC(pa.y, pa.m - 1, pa.d)) / dayMs
+  );
+};
+
+/** 'October 2026' — calendar sheet header. */
+export const fmtMonthYear = (value: string | Date): string => {
+  const d = toDate(value, true);
+  if (!d) return '';
+  const [y, m] = utcParts(d);
+  return `${MONTHS_LONG[m - 1]} ${y}`;
+};
+
+/** Strict check for a real UTC date-only string ('2026-02-30' is invalid). */
+export const isDateOnly = (value: string): boolean => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const p = dateOnlyParts(value);
+  if (!p) return false;
+  const [y, m, d] = utcParts(new Date(Date.UTC(p.y, p.m - 1, p.d)));
+  return y === p.y && m === p.m && d === p.d;
+};
+
+/** The 42 UTC dates (6 weeks, Sunday-first) covering the month of `value`. */
+export const monthGrid = (value: string): string[] => {
+  const p = dateOnlyParts(value);
+  if (!p) return [];
+  const first = `${p.y}-${String(p.m).padStart(2, '0')}-01`;
+  const firstDow = new Date(Date.UTC(p.y, p.m - 1, 1)).getUTCDay();
+  const start = addDaysUTC(first, -firstDow);
+  return Array.from({ length: 42 }, (_, i) => addDaysUTC(start, i));
+};

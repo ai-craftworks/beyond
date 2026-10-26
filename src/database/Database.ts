@@ -350,6 +350,26 @@ export const initDatabase = async (): Promise<void> => {
       note        TEXT DEFAULT '',
       created_at  TEXT DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS challenges (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      name        TEXT NOT NULL,
+      description TEXT DEFAULT '',
+      start_date  TEXT NOT NULL,
+      end_date    TEXT NOT NULL,
+      created_at  TEXT DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS challenge_goals (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      challenge_id  INTEGER NOT NULL,
+      exercise_id   INTEGER NOT NULL,
+      exercise_name TEXT    DEFAULT '',
+      unit_type     TEXT    NOT NULL DEFAULT 'reps',
+      target        REAL    NOT NULL DEFAULT 0,
+      created_at    TEXT    DEFAULT (datetime('now')),
+      UNIQUE (challenge_id, exercise_id, unit_type)
+    );
   `);
 
   // ─────────────────────────────────────────────
@@ -574,6 +594,41 @@ export interface EarnedTitle {
   title: string;
   description: string;
   earned_at: string;
+}
+
+// ─────────────────────────────────────────────
+// CHALLENGES  (user-defined goals with a deadline)
+// ─────────────────────────────────────────────
+
+export interface Challenge {
+  id?: number;
+  name: string;
+  description: string;
+  start_date: string;   // UTC 'YYYY-MM-DD', inclusive
+  end_date: string;     // UTC 'YYYY-MM-DD', inclusive
+  created_at?: string;
+}
+
+export interface ChallengeGoal {
+  id?: number;
+  challenge_id: number;
+  exercise_id: number;
+  exercise_name: string;     // snapshot; live name when the exercise still exists
+  unit_type: string;
+  target: number;            // total volume across the whole window
+  created_at?: string;
+  exercise_exists?: number;  // 0/1, populated by getChallengeGoals
+}
+
+/** One completed exercise row (main or bonus) inside a challenge window. */
+export interface ChallengeActivityRow {
+  date: string;
+  exercise_id: number;
+  sets: number;
+  actual_amount: number;
+  primary_unit: string;
+  unit_type: string;
+  actual_units: string;
 }
 
 export interface MartialArt {
@@ -1342,6 +1397,8 @@ export const applyMissedSessionPenalty = async (sessionId: number): Promise<numb
 export const resetAllData = async (): Promise<void> => {
   const db = await getDb();
   await db.execAsync(`
+    DELETE FROM challenge_goals;
+    DELETE FROM challenges;
     DELETE FROM skill_group_links;
     DELETE FROM skill_groups;
     DELETE FROM skill_exercises;
@@ -1366,7 +1423,7 @@ export const resetAllData = async (): Promise<void> => {
   `);
   await db.execAsync(`
     DELETE FROM sqlite_sequence WHERE name IN
-      ('player','exercises','exercise_body_parts','plans','plan_exercises','sessions','session_exercises','titles','bonus_exercises','martial_arts','skills','skill_exercises','art_notes','tutorials','item_groups','exercise_groups','plan_groups','skill_groups','skill_group_links','settings','body_metrics');
+      ('player','exercises','exercise_body_parts','plans','plan_exercises','sessions','session_exercises','titles','bonus_exercises','martial_arts','skills','skill_exercises','art_notes','tutorials','item_groups','exercise_groups','plan_groups','skill_groups','skill_group_links','settings','body_metrics','challenges','challenge_goals');
   `);
 };
 
@@ -1427,11 +1484,145 @@ export const deleteBodyMetric = async (id: number): Promise<void> => {
 };
 
 // ─────────────────────────────────────────────
+// CHALLENGES
+// Progress is always derived from logged session rows - nothing is cached,
+// so editing history or deleting a session can never desync a challenge.
+// ─────────────────────────────────────────────
+
+export const getChallenges = async (): Promise<Challenge[]> => {
+  const db = await getDb();
+  return db.getAllAsync<Challenge>(
+    `SELECT * FROM challenges ORDER BY start_date DESC, id DESC`
+  );
+};
+
+export const getChallenge = async (id: number): Promise<Challenge | null> => {
+  const db = await getDb();
+  return db.getFirstAsync<Challenge>(`SELECT * FROM challenges WHERE id = ?`, [id]);
+};
+
+export const createChallenge = async (
+  challenge: Omit<Challenge, 'id' | 'created_at'>
+): Promise<number> => {
+  const db = await getDb();
+  const result = await db.runAsync(
+    `INSERT INTO challenges (name, description, start_date, end_date) VALUES (?, ?, ?, ?)`,
+    [challenge.name, challenge.description, challenge.start_date, challenge.end_date]
+  );
+  return result.lastInsertRowId;
+};
+
+export const updateChallenge = async (
+  id: number,
+  updates: Partial<Omit<Challenge, 'id' | 'created_at'>>
+): Promise<void> => {
+  const db = await getDb();
+  const keys = Object.keys(updates);
+  if (keys.length === 0) return;
+  const setClause = keys.map(k => `${k} = ?`).join(', ');
+  await db.runAsync(
+    `UPDATE challenges SET ${setClause} WHERE id = ?`,
+    [...Object.values(updates), id]
+  );
+};
+
+export const deleteChallenge = async (id: number): Promise<void> => {
+  const db = await getDb();
+  await db.withTransactionAsync(async () => {
+    await db.runAsync(`DELETE FROM challenge_goals WHERE challenge_id = ?`, [id]);
+    await db.runAsync(`DELETE FROM challenges WHERE id = ?`, [id]);
+  });
+};
+
+const CHALLENGE_GOAL_SELECT = `
+  SELECT g.id, g.challenge_id, g.exercise_id,
+         COALESCE(e.name, g.exercise_name) AS exercise_name,
+         g.unit_type, g.target, g.created_at,
+         CASE WHEN e.id IS NULL THEN 0 ELSE 1 END AS exercise_exists
+    FROM challenge_goals g
+    LEFT JOIN exercises e ON e.id = g.exercise_id`;
+
+export const getChallengeGoals = async (challengeId: number): Promise<ChallengeGoal[]> => {
+  const db = await getDb();
+  return db.getAllAsync<ChallengeGoal>(
+    `${CHALLENGE_GOAL_SELECT} WHERE g.challenge_id = ? ORDER BY g.id`,
+    [challengeId]
+  );
+};
+
+export const getAllChallengeGoals = async (): Promise<ChallengeGoal[]> => {
+  const db = await getDb();
+  return db.getAllAsync<ChallengeGoal>(
+    `${CHALLENGE_GOAL_SELECT} ORDER BY g.challenge_id, g.id`
+  );
+};
+
+export const addChallengeGoal = async (
+  goal: Pick<ChallengeGoal, 'challenge_id' | 'exercise_id' | 'exercise_name' | 'unit_type' | 'target'>
+): Promise<number> => {
+  const db = await getDb();
+  const result = await db.runAsync(
+    `INSERT INTO challenge_goals (challenge_id, exercise_id, exercise_name, unit_type, target)
+     VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(challenge_id, exercise_id, unit_type)
+     DO UPDATE SET target = excluded.target, exercise_name = excluded.exercise_name`,
+    [goal.challenge_id, goal.exercise_id, goal.exercise_name, goal.unit_type, goal.target]
+  );
+  return result.lastInsertRowId;
+};
+
+export const updateChallengeGoalTarget = async (id: number, target: number): Promise<void> => {
+  const db = await getDb();
+  await db.runAsync(`UPDATE challenge_goals SET target = ? WHERE id = ?`, [target, id]);
+};
+
+export const deleteChallengeGoal = async (id: number): Promise<void> => {
+  const db = await getDb();
+  await db.runAsync(`DELETE FROM challenge_goals WHERE id = ?`, [id]);
+};
+
+/**
+ * Every completed exercise (main + bonus) logged between two UTC dates,
+ * inclusive. Bonus rows count as a single set. Used by the Challenges screens.
+ */
+export const getChallengeActivity = async (
+  fromDate: string,
+  toDate: string
+): Promise<ChallengeActivityRow[]> => {
+  const db = await getDb();
+  return db.getAllAsync<ChallengeActivityRow>(
+    `SELECT s.date AS date,
+            se.exercise_id AS exercise_id,
+            COALESCE(se.sets_total, 1) AS sets,
+            se.actual_amount AS actual_amount,
+            COALESCE(se.primary_unit, se.unit_type, 'reps') AS primary_unit,
+            COALESCE(se.unit_type, 'reps') AS unit_type,
+            COALESCE(se.actual_units, '[]') AS actual_units
+       FROM session_exercises se
+       JOIN sessions s ON s.id = se.session_id
+      WHERE se.is_completed = 1 AND s.date >= ? AND s.date <= ?
+     UNION ALL
+     SELECT s.date,
+            be.exercise_id,
+            1,
+            be.actual_amount,
+            COALESCE(be.primary_unit, be.unit_type, 'reps'),
+            COALESCE(be.unit_type, 'reps'),
+            COALESCE(be.actual_units, '[]')
+       FROM bonus_exercises be
+       JOIN sessions s ON s.id = be.session_id
+      WHERE be.is_completed = 1 AND s.date >= ? AND s.date <= ?`,
+    [fromDate, toDate, fromDate, toDate]
+  );
+};
+
+// ─────────────────────────────────────────────
 // BACKUP  (export / import a full JSON snapshot)
 // ─────────────────────────────────────────────
 
 /** Every table included in a backup, in delete-safe order (children first). */
 const BACKUP_TABLES = [
+  'challenge_goals', 'challenges',
   'skill_group_links', 'skill_groups', 'skill_exercises', 'skills', 'art_notes', 'tutorials',
   'martial_arts', 'bonus_exercises', 'session_exercises', 'sessions',
   'plan_groups', 'plan_exercises', 'plans', 'exercise_groups', 'item_groups',
@@ -1500,6 +1691,8 @@ export const importAllData = async (input: unknown): Promise<number> => {
     await db.withTransactionAsync(async () => {
       // Same wipe order as resetAllData: children before parents.
       await db.execAsync(`
+        DELETE FROM challenge_goals;
+        DELETE FROM challenges;
         DELETE FROM skill_group_links;
         DELETE FROM skill_groups;
         DELETE FROM skill_exercises;
@@ -1522,7 +1715,7 @@ export const importAllData = async (input: unknown): Promise<number> => {
         DELETE FROM settings;
         DELETE FROM player;
         DELETE FROM sqlite_sequence WHERE name IN
-          ('player','exercises','exercise_body_parts','plans','plan_exercises','sessions','session_exercises','titles','bonus_exercises','martial_arts','skills','skill_exercises','art_notes','tutorials','item_groups','exercise_groups','plan_groups','skill_groups','skill_group_links','settings','body_metrics');
+          ('player','exercises','exercise_body_parts','plans','plan_exercises','sessions','session_exercises','titles','bonus_exercises','martial_arts','skills','skill_exercises','art_notes','tutorials','item_groups','exercise_groups','plan_groups','skill_groups','skill_group_links','settings','body_metrics','challenges','challenge_goals');
       `);
 
       for (const t of BACKUP_TABLES) {

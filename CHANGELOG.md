@@ -88,3 +88,5 @@
 - Primary actions are now pinned in an action bar instead of being buried at the bottom of the screen: the workout picker's "Add N Workouts", the session's complete/abandon, saving the hunter profile, and every create/edit form (skills, tutorials, workouts, plans, martial arts).
 - The workout picker's target setup (sets, units and the EXP preview) now opens right under the selected workout, and the pinned bar spells out what is about to be added.
 - Fixed the Android media picker: it opens the device gallery instead of the Google Photos cloud library, and says so clearly when photo permission is denied.
+- Added Challenges (sidebar → Challenges): set a date window and per-workout volume goals, then let the System score them from your logged quests (main + bonus) with live progress, extra/pending amounts, and a required daily pace.
+- Challenges clear the moment every goal is met and fail when the window closes short; windows are picked in an in-app calendar, stay editable while open, and lock after the deadline. Backups and reset now include them.
