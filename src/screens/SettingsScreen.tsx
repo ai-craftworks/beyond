@@ -127,6 +127,7 @@ const SettingsScreen: React.FC = () => {
       </ScrollView>
 
       <ActionBar
+        stacked
         style={[styles.actionBar, { paddingBottom: 12 + insets.bottom }]}
         label="Hunter Profile"
       >
@@ -154,7 +155,7 @@ const styles = StyleSheet.create({
   toggleDivider:{ height: 1, backgroundColor: COLORS.borderMain, marginVertical: 4 },
 
   actionBar:    { paddingHorizontal: 16, paddingTop: 12, backgroundColor: COLORS.bgSecondary, borderTopWidth: 1, borderTopColor: COLORS.borderMain },
-  barBtn:       { paddingHorizontal: 18 },
+  barBtn:       { flex: 1 },
   barBtnTxt:    { fontSize: 13, letterSpacing: 1 },
 });
 

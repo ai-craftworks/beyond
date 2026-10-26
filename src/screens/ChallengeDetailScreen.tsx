@@ -213,6 +213,7 @@ const ChallengeDetailScreen: React.FC = () => {
       </ScrollView>
 
       <ActionBar
+        stacked
         style={[styles.actionBar, { paddingBottom: 12 + insets.bottom }]}
         label={`${progress.goalsMet}/${progress.goalsTotal} GOALS`}
         hint={challengeCountdown(challenge, progress, todayDateStr())}
@@ -355,7 +356,7 @@ const styles = StyleSheet.create({
   goalPace:     { color: COLORS.textSecondary, fontSize: 11, fontWeight: '600' },
 
   actionBar:  { paddingHorizontal: 16, paddingTop: 12, backgroundColor: COLORS.bgSecondary, borderTopWidth: 1, borderTopColor: COLORS.borderMain },
-  barBtn:     { paddingHorizontal: 18 },
+  barBtn:     { flex: 1 },
   barBtnTxt:  { fontSize: 13, letterSpacing: 1 },
 });
 
